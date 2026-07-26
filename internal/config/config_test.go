@@ -1,0 +1,77 @@
+package config
+
+import "testing"
+
+func TestLoadDefaults(t *testing.T) {
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+
+	if cfg.Addr() != "0.0.0.0:8080" {
+		t.Errorf("Addr() = %q, want %q", cfg.Addr(), "0.0.0.0:8080")
+	}
+	if cfg.Log.Level != "info" {
+		t.Errorf("Log.Level = %q, want %q", cfg.Log.Level, "info")
+	}
+	if cfg.Log.Format != "json" {
+		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, "json")
+	}
+}
+
+func TestLoadFromEnv(t *testing.T) {
+	t.Setenv("HTTP_HOST", "127.0.0.1")
+	t.Setenv("HTTP_PORT", "9090")
+	t.Setenv("LOG_LEVEL", "debug")
+	t.Setenv("LOG_FORMAT", "text")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+
+	if cfg.Addr() != "127.0.0.1:9090" {
+		t.Errorf("Addr() = %q, want %q", cfg.Addr(), "127.0.0.1:9090")
+	}
+	if cfg.Log.Level != "debug" {
+		t.Errorf("Log.Level = %q, want %q", cfg.Log.Level, "debug")
+	}
+	if cfg.Log.Format != "text" {
+		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, "text")
+	}
+}
+
+func TestValidateRejectsBadPort(t *testing.T) {
+	cfg := Config{HTTP: HTTPConfig{Port: 0}, Log: LogConfig{Level: "info", Format: "json"}}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for port 0")
+	}
+}
+
+func TestValidateRejectsBadLogLevel(t *testing.T) {
+	cfg := Config{HTTP: HTTPConfig{Port: 8080}, Log: LogConfig{Level: "verbose", Format: "json"}}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for invalid log level")
+	}
+}
+
+func TestValidateRejectsBadLogFormat(t *testing.T) {
+	cfg := Config{HTTP: HTTPConfig{Port: 8080}, Log: LogConfig{Level: "info", Format: "xml"}}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for invalid log format")
+	}
+}
+
+func TestGetEnvIntFallsBackOnInvalidValue(t *testing.T) {
+	t.Setenv("TEST_INT_VALUE", "not-a-number")
+	if got := getEnvInt("TEST_INT_VALUE", 42); got != 42 {
+		t.Errorf("getEnvInt() = %d, want fallback 42", got)
+	}
+}
+
+func TestGetEnvDurationFallsBackOnInvalidValue(t *testing.T) {
+	t.Setenv("TEST_DURATION_VALUE", "not-a-duration")
+	if got := getEnvDuration("TEST_DURATION_VALUE", 0); got != 0 {
+		t.Errorf("getEnvDuration() = %v, want fallback 0", got)
+	}
+}
