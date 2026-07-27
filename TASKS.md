@@ -60,7 +60,7 @@
 
 ## Phase 5 — Customers
 
-- [ ] Customers
+- [x] Customers
 - [ ] Addresses
 - [ ] Contacts
 - [ ] Service assignments

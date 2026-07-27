@@ -96,3 +96,18 @@ func (m *Middleware) RequireInventoryWrite() func(http.Handler) http.Handler {
 func (m *Middleware) RequireUserManagement() func(http.Handler) http.Handler {
 	return m.Require(CanManageUsers)
 }
+
+// RequireCustomerRead returns middleware allowing any Role that
+// CanReadCustomers (Administrator, Operator, Viewer) — the same
+// authorization model as RequireInventoryRead, applied to the Customer
+// domain (goal 6).
+func (m *Middleware) RequireCustomerRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadCustomers)
+}
+
+// RequireCustomerWrite returns middleware allowing any Role that
+// CanWriteCustomers (Administrator, Operator) — the same authorization
+// model as RequireInventoryWrite, applied to the Customer domain (goal 6).
+func (m *Middleware) RequireCustomerWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteCustomers)
+}

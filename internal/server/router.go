@@ -14,6 +14,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
+	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
@@ -24,14 +25,15 @@ import (
 // this package, keeping construction explicit rather than relying on
 // globals or a framework-managed container.
 type Dependencies struct {
-	Logger         *slog.Logger
-	HealthCheckers []health.Checker
-	Version        string
-	Commit         string
-	SiteHandler    *httpapi.SiteHandler
-	Tokens         *auth.TokenIssuer
-	LoginHandler   *authhttpapi.LoginHandler
-	Authz          *authz.Middleware
+	Logger          *slog.Logger
+	HealthCheckers  []health.Checker
+	Version         string
+	Commit          string
+	SiteHandler     *httpapi.SiteHandler
+	CustomerHandler *customerhttpapi.CustomerHandler
+	Tokens          *auth.TokenIssuer
+	LoginHandler    *authhttpapi.LoginHandler
+	Authz           *authz.Middleware
 }
 
 // NewRouter builds the application's http.Handler.
@@ -98,6 +100,30 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.SiteHandler.Create)
 				r.Put("/{id}", deps.SiteHandler.Update)
 				r.Delete("/{id}", deps.SiteHandler.Delete)
+			})
+		})
+
+		// /customers uses the exact same shape as /sites above, with the
+		// exact same authorization model (goal 6) applied via its own
+		// named capabilities (RequireCustomerRead/RequireCustomerWrite,
+		// not a reuse of RequireInventoryRead/RequireInventoryWrite — see
+		// authz.CanReadCustomers's doc comment for why Customers and
+		// Inventory each get their own capability even though the role
+		// rules are identical today).
+		r.Route("/customers", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCustomerRead())
+				r.Get("/", deps.CustomerHandler.List)
+				r.Get("/{id}", deps.CustomerHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCustomerWrite())
+				r.Post("/", deps.CustomerHandler.Create)
+				r.Put("/{id}", deps.CustomerHandler.Update)
+				r.Delete("/{id}", deps.CustomerHandler.Delete)
 			})
 		})
 	})

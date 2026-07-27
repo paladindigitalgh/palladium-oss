@@ -17,6 +17,9 @@ import (
 	authpostgres "github.com/paladindigitalgh/palladium-oss/internal/auth/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
 	"github.com/paladindigitalgh/palladium-oss/internal/config"
+	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
+	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
+	customerservice "github.com/paladindigitalgh/palladium-oss/internal/customer/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpserver"
@@ -101,6 +104,13 @@ func run() error {
 	siteService := service.NewSiteService(siteRepo)
 	siteHandler := httpapi.NewSiteHandler(siteService)
 
+	// Customer follows the exact same repository -> service -> handler
+	// chain as Site, one domain package over (internal/customer instead
+	// of internal/inventory).
+	customerRepo := customerpostgres.NewCustomerRepository(pool, clock.New(), id.New())
+	customerSvc := customerservice.NewCustomerService(customerRepo)
+	customerHandler := customerhttpapi.NewCustomerHandler(customerSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -119,14 +129,15 @@ func run() error {
 	authzMiddleware := authz.NewMiddleware(userRepo)
 
 	router := api.NewRouter(api.Dependencies{
-		Logger:         logger,
-		HealthCheckers: healthCheckers,
-		Version:        version.Version,
-		Commit:         version.Commit,
-		SiteHandler:    siteHandler,
-		Tokens:         tokenIssuer,
-		LoginHandler:   loginHandler,
-		Authz:          authzMiddleware,
+		Logger:          logger,
+		HealthCheckers:  healthCheckers,
+		Version:         version.Version,
+		Commit:          version.Commit,
+		SiteHandler:     siteHandler,
+		CustomerHandler: customerHandler,
+		Tokens:          tokenIssuer,
+		LoginHandler:    loginHandler,
+		Authz:           authzMiddleware,
 	})
 
 	srv := httpserver.New(httpserver.Config{

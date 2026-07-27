@@ -61,19 +61,58 @@ func TestCanManageUsers(t *testing.T) {
 	}
 }
 
-// TestNoSiteCapabilityIsAdministratorExclusive is the direct check behind
-// goal 4's "no Site endpoint should require Administrator exclusively":
-// for every capability a Site endpoint actually uses, at least one
+// TestCanReadCustomers and TestCanWriteCustomers are the same direct proof
+// as TestCanReadInventory/TestCanWriteInventory, applied to the Customer
+// domain's access-control table (goal 6: "apply the same authorization
+// model as Sites").
+func TestCanReadCustomers(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadCustomers(role); got != want {
+			t.Errorf("CanReadCustomers(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanWriteCustomers(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanWriteCustomers(role); got != want {
+			t.Errorf("CanWriteCustomers(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+// TestNoAdministratorExclusiveCapabilityForSitesOrCustomers is the direct
+// check behind "no Site endpoint should require Administrator
+// exclusively" (goal 4) and its Customer equivalent (goal 6): for every
+// capability a Site or Customer endpoint actually uses, at least one
 // non-Administrator role must also satisfy it.
-func TestNoSiteCapabilityIsAdministratorExclusive(t *testing.T) {
-	siteCapabilities := map[string]func(auth.Role) bool{
+func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
+	capabilities := map[string]func(auth.Role) bool{
 		"CanReadInventory":  authz.CanReadInventory,
 		"CanWriteInventory": authz.CanWriteInventory,
+		"CanReadCustomers":  authz.CanReadCustomers,
+		"CanWriteCustomers": authz.CanWriteCustomers,
 	}
 
 	nonAdminRoles := []auth.Role{auth.RoleOperator, auth.RoleViewer}
 
-	for name, capability := range siteCapabilities {
+	for name, capability := range capabilities {
 		allowsANonAdmin := false
 		for _, role := range nonAdminRoles {
 			if capability(role) {

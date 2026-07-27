@@ -64,3 +64,38 @@ func CanWriteInventory(role auth.Role) bool {
 func CanManageUsers(role auth.Role) bool {
 	return role == auth.RoleAdministrator
 }
+
+// CanReadCustomers reports whether role may read Customer data. All three
+// built-in roles can — identical to CanReadInventory's rule today.
+//
+// This is a separate function from CanReadInventory, not a call to it,
+// even though the two currently return the same answer for every Role.
+// Customers and Inventory are different resources (see
+// internal/customer's package doc comment on why a Customer never
+// references Inventory), and "who can read Customer data" is a different
+// question from "who can read Inventory data" that only happens to share
+// an answer right now — e.g. a future privacy requirement could restrict
+// Customer reads to Administrator alone without that having any business
+// touching Inventory's rule at all. Reusing CanReadInventory here would
+// wire those two unrelated questions together by accident.
+func CanReadCustomers(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteCustomers reports whether role may create, update, or delete
+// Customer data. Administrator and Operator can; Viewer cannot. See
+// CanReadCustomers's doc comment for why this is not implemented in terms
+// of CanWriteInventory despite the identical rule today.
+func CanWriteCustomers(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

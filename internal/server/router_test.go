@@ -15,6 +15,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
+	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
@@ -185,6 +187,128 @@ func TestRouterAdministratorCanWriteSites(t *testing.T) {
 	token := mustIssueToken(t, tokens)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sites/", strings.NewReader(`{"name":"Test Site"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubCustomerService satisfies whatever interface
+// customerhttpapi.CustomerHandler needs structurally, the same technique
+// stubSiteService above uses.
+type stubCustomerService struct{}
+
+func (stubCustomerService) Get(context.Context, uuid.UUID) (customer.Customer, error) {
+	return customer.Customer{}, apperror.NotFound("customer not found")
+}
+func (stubCustomerService) List(context.Context) ([]customer.Customer, error) { return nil, nil }
+func (stubCustomerService) Create(_ context.Context, c customer.Customer) (customer.Customer, error) {
+	return c, nil
+}
+func (stubCustomerService) Update(_ context.Context, c customer.Customer) (customer.Customer, error) {
+	return c, nil
+}
+func (stubCustomerService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithCustomers mirrors newRouterWithSites exactly, one resource
+// over: it proves /api/v1/customers is wired up behind both
+// auth.Middleware and authz.Middleware in the real production router,
+// with RequireCustomerRead/RequireCustomerWrite applied to the right HTTP
+// methods (goal 6: "apply the same authorization model as Sites"). See
+// internal/customer/httpapi/authenticated_test.go for a far more thorough
+// version of the same checks, scoped to that package.
+func newRouterWithCustomers(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:          logger,
+		Version:         "test",
+		Commit:          "test",
+		CustomerHandler: customerhttpapi.NewCustomerHandler(stubCustomerService{}),
+		Tokens:          tokens,
+		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validCustomerBody = `{"name":"Test Customer","customer_type":"Residential","status":"Active"}`
+
+func TestRouterRejectsUnauthenticatedCustomerRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCustomers(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/customers/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadCustomers is goal 7's "Viewer can read
+// inventory", applied to Customers, proven through the real, fully wired
+// router.
+func TestRouterViewerCanReadCustomers(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCustomers(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/customers/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteCustomers is goal 7's "Viewer cannot modify
+// inventory", applied to Customers, proven through the real, fully wired
+// router.
+func TestRouterViewerCannotWriteCustomers(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCustomers(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/customers/", strings.NewReader(validCustomerBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteCustomers is goal 7's "Operator can modify
+// inventory", applied to Customers, proven through the real, fully wired
+// router.
+func TestRouterOperatorCanWriteCustomers(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCustomers(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/customers/", strings.NewReader(validCustomerBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteCustomers is goal 7's "Administrator can
+// modify inventory", applied to Customers, proven through the real, fully
+// wired router.
+func TestRouterAdministratorCanWriteCustomers(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCustomers(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/customers/", strings.NewReader(validCustomerBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
