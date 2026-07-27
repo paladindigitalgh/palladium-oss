@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
+	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
@@ -98,6 +100,39 @@ func TestRouterAllowsAuthenticatedSiteRequests(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sites/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// stubAuthService satisfies authhttpapi's unexported authService
+// interface structurally, the same technique stubSiteService above uses.
+type stubAuthService struct{}
+
+func (stubAuthService) Authenticate(context.Context, string, string) (string, error) {
+	return "stub.jwt.token", nil
+}
+
+// TestRouterLoginEndpointIsReachableWithoutAuthentication proves
+// /api/v1/auth/login is wired up outside the auth.Middleware group in the
+// real production router — a caller has no token yet at the point they
+// are trying to obtain one, so this route must never require one. See
+// internal/auth/httpapi's own tests for thorough coverage of the login
+// handler's behavior in isolation; this test only proves the wiring.
+func TestRouterLoginEndpointIsReachableWithoutAuthentication(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	router := api.NewRouter(api.Dependencies{
+		Logger:       logger,
+		Version:      "test",
+		Commit:       "test",
+		LoginHandler: authhttpapi.NewLoginHandler(stubAuthService{}, 30*time.Minute),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
+		strings.NewReader(`{"email":"admin@example.com","password":"whatever"}`))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

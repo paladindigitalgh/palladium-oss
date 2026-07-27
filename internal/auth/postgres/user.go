@@ -129,6 +129,20 @@ func (r *UserRepository) UpdatePasswordHash(ctx context.Context, userID uuid.UUI
 	return updated, nil
 }
 
+// Count returns how many Users exist. See the UserRepository interface's
+// doc comment in internal/auth/repository.go for why this exists despite
+// there being no List: it backs internal/auth/bootstrap's "refuse if a
+// user already exists" check, and nothing else needs it yet.
+func (r *UserRepository) Count(ctx context.Context) (int, error) {
+	const query = `SELECT count(*) FROM users`
+
+	var count int
+	if err := r.db.QueryRow(ctx, query).Scan(&count); err != nil {
+		return 0, translateError("count users", err)
+	}
+	return count, nil
+}
+
 func userNotFoundByID(id uuid.UUID) error {
 	return apperror.NotFound(fmt.Sprintf("user %s not found", id))
 }

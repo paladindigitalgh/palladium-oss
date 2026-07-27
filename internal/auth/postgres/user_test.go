@@ -52,6 +52,33 @@ func testUser(email string) auth.User {
 	return auth.User{Email: email, PasswordHash: "$2a$10$examplehashexamplehashexampleu"}
 }
 
+func TestUserRepositoryCount(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	count, err := repo.Count(ctx)
+	if err != nil {
+		t.Fatalf("Count() = %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("Count() = %d, want 0 on a fresh transaction", count)
+	}
+
+	if _, err := repo.Create(ctx, testUser("first@example.com")); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if _, err := repo.Create(ctx, testUser("second@example.com")); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	count, err = repo.Count(ctx)
+	if err != nil {
+		t.Fatalf("Count() = %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("Count() = %d, want 2 after creating two users", count)
+	}
+}
+
 func TestUserRepositoryCreate(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 

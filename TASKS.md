@@ -32,7 +32,7 @@
 - [ ] Permissions
 - [x] JWT
 - [ ] OIDC
-- [ ] Login API
+- [x] Login API
 
 ---
 

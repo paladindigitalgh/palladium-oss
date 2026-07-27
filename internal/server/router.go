@@ -12,6 +12,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
+	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
@@ -28,6 +29,7 @@ type Dependencies struct {
 	Commit         string
 	SiteHandler    *httpapi.SiteHandler
 	Tokens         *auth.TokenIssuer
+	LoginHandler   *authhttpapi.LoginHandler
 }
 
 // NewRouter builds the application's http.Handler.
@@ -54,6 +56,16 @@ func NewRouter(deps Dependencies) http.Handler {
 			// Replace with real CRUD routes once the repository layer has
 			// a SQL implementation.
 			r.Get("/schema", inventoryHandler.Schema)
+		})
+
+		// /auth/login is deliberately outside the auth.Middleware group
+		// below: a caller has no token yet at the point they are trying to
+		// obtain one. No other /auth route exists (no logout, no refresh,
+		// no password reset — see this milestone's scope), so there is
+		// nothing else here that would need to distinguish authenticated
+		// from unauthenticated.
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/login", deps.LoginHandler.Login)
 		})
 
 		// /sites is the first authenticated resource: every route in this

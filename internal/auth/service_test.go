@@ -78,6 +78,12 @@ func (f *fakeUserRepository) UpdatePasswordHash(_ context.Context, id uuid.UUID,
 	return auth.User{}, apperror.NotFound("user not found")
 }
 
+func (f *fakeUserRepository) Count(context.Context) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.byEmail), nil
+}
+
 var _ auth.UserRepository = (*fakeUserRepository)(nil)
 
 func newTestUser(t *testing.T, email, password string) auth.User {

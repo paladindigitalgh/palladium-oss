@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
+	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
+	authpostgres "github.com/paladindigitalgh/palladium-oss/internal/auth/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/config"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
@@ -98,14 +100,16 @@ func run() error {
 	siteService := service.NewSiteService(siteRepo)
 	siteHandler := httpapi.NewSiteHandler(siteService)
 
-	// tokenIssuer only validates tokens here (see auth.Middleware) — it
-	// does not need a UserRepository or AuthService, since this milestone
-	// adds no login endpoint (see its scope: authentication middleware and
-	// a protected resource, not the login flow that issues the token in
-	// the first place). A caller must obtain a token some other way today
-	// (e.g. issuing one directly via the auth package) until a login
-	// endpoint exists.
+	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
+	// and LoginHandler (issues new ones): both need to agree on the same
+	// secret and expiration, and a single instance is the simplest way to
+	// guarantee that rather than constructing it twice from the same
+	// config values.
 	tokenIssuer := auth.NewTokenIssuer([]byte(cfg.JWT.Secret), cfg.JWT.Expiration, clock.New())
+
+	userRepo := authpostgres.NewUserRepository(pool, clock.New(), id.New())
+	authService := auth.NewAuthService(userRepo, tokenIssuer)
+	loginHandler := authhttpapi.NewLoginHandler(authService, cfg.JWT.Expiration)
 
 	router := api.NewRouter(api.Dependencies{
 		Logger:         logger,
@@ -114,6 +118,7 @@ func run() error {
 		Commit:         version.Commit,
 		SiteHandler:    siteHandler,
 		Tokens:         tokenIssuer,
+		LoginHandler:   loginHandler,
 	})
 
 	srv := httpserver.New(httpserver.Config{
