@@ -21,6 +21,14 @@ import (
 // initial installation only, not general user management (see
 // cmd/bootstrap's doc comment): it has one method, and that method
 // refuses outright once any User exists.
+//
+// The account it creates always receives auth.RoleAdministrator — that is
+// the entire point of this tool (goal 5: "bootstrap administrator must
+// automatically receive the Administrator role"), and is not a caller
+// choice: Create takes only an email and a password, with no Role
+// parameter for a caller to (mis)set. A brand-new installation has no
+// User yet, so nothing could grant a lesser role even if this tool wanted
+// to be asked.
 type Administrator struct {
 	users auth.UserRepository
 }
@@ -60,7 +68,7 @@ func (a *Administrator) Create(ctx context.Context, email, password string) (aut
 		return auth.User{}, fmt.Errorf("bootstrap: hash password: %w", err)
 	}
 
-	user := auth.User{Email: email, PasswordHash: hash}
+	user := auth.User{Email: email, PasswordHash: hash, Role: auth.RoleAdministrator}
 	if err := user.Validate(); err != nil {
 		return auth.User{}, err
 	}

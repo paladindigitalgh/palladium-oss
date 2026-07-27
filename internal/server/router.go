@@ -13,6 +13,7 @@ import (
 
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/authz"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
@@ -30,6 +31,7 @@ type Dependencies struct {
 	SiteHandler    *httpapi.SiteHandler
 	Tokens         *auth.TokenIssuer
 	LoginHandler   *authhttpapi.LoginHandler
+	Authz          *authz.Middleware
 }
 
 // NewRouter builds the application's http.Handler.
@@ -69,17 +71,34 @@ func NewRouter(deps Dependencies) http.Handler {
 		})
 
 		// /sites is the first authenticated resource: every route in this
-		// group requires a valid JWT (see auth.Middleware). Building,
-		// Room, Rack, and Device follow the same shape once their own
-		// handlers exist — deliberately not implemented yet (see this
-		// milestone's scope).
+		// group requires a valid JWT (see auth.Middleware), applied once
+		// for the whole group so the token is validated exactly once per
+		// request regardless of which sub-group below handles it — see
+		// authz.Middleware's doc comment on why that must run after this,
+		// not instead of it. Building, Room, Rack, and Device follow the
+		// same shape once their own handlers exist — deliberately not
+		// implemented yet (see this milestone's scope).
+		//
+		// Read and write split into two sub-groups because they require
+		// different capabilities (goal 4): GET is available to every role
+		// (RequireInventoryRead), while POST/PUT/DELETE require
+		// RequireInventoryWrite, which Viewer does not have. No group here
+		// requires Administrator exclusively — Operator satisfies both.
 		r.Route("/sites", func(r chi.Router) {
 			r.Use(auth.Middleware(deps.Tokens))
-			r.Post("/", deps.SiteHandler.Create)
-			r.Get("/", deps.SiteHandler.List)
-			r.Get("/{id}", deps.SiteHandler.Get)
-			r.Put("/{id}", deps.SiteHandler.Update)
-			r.Delete("/{id}", deps.SiteHandler.Delete)
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryRead())
+				r.Get("/", deps.SiteHandler.List)
+				r.Get("/{id}", deps.SiteHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryWrite())
+				r.Post("/", deps.SiteHandler.Create)
+				r.Put("/{id}", deps.SiteHandler.Update)
+				r.Delete("/{id}", deps.SiteHandler.Delete)
+			})
 		})
 	})
 

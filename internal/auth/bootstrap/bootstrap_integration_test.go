@@ -87,6 +87,20 @@ func TestBootstrapCreatesAUsableLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Administrator.Create() = %v", err)
 	}
+	if created.Role != auth.RoleAdministrator {
+		t.Fatalf("Role = %q, want %q (goal 5: bootstrap must grant Administrator)", created.Role, auth.RoleAdministrator)
+	}
+
+	// Round-trip through the real database, not just the value Create()
+	// returned in memory: proves the role column is actually persisted
+	// and read back correctly, not merely passed through in the Go value.
+	stored, err := repo.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID() = %v", err)
+	}
+	if stored.Role != auth.RoleAdministrator {
+		t.Fatalf("stored Role = %q, want %q", stored.Role, auth.RoleAdministrator)
+	}
 
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
 	authService := auth.NewAuthService(repo, tokens)

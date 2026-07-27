@@ -28,7 +28,7 @@ func assertInvalid(t *testing.T, err error) {
 }
 
 func TestUserValidate(t *testing.T) {
-	valid := auth.User{Email: "jane@example.com", PasswordHash: "$2a$10$examplehash"}
+	valid := auth.User{Email: "jane@example.com", PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil", err)
 	}
@@ -37,7 +37,7 @@ func TestUserValidate(t *testing.T) {
 }
 
 func TestUserValidateRequiresEmail(t *testing.T) {
-	u := auth.User{PasswordHash: "$2a$10$examplehash"}
+	u := auth.User{PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer}
 
 	assertInvalid(t, u.Validate())
 }
@@ -52,7 +52,7 @@ func TestUserValidateRejectsMalformedEmail(t *testing.T) {
 	}
 
 	for _, email := range cases {
-		u := auth.User{Email: email, PasswordHash: "$2a$10$examplehash"}
+		u := auth.User{Email: email, PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer}
 		if err := u.Validate(); err == nil {
 			t.Errorf("Validate() = nil for email %q, want error", email)
 		} else {
@@ -62,7 +62,27 @@ func TestUserValidateRejectsMalformedEmail(t *testing.T) {
 }
 
 func TestUserValidateRequiresPasswordHash(t *testing.T) {
-	u := auth.User{Email: "jane@example.com"}
+	u := auth.User{Email: "jane@example.com", Role: auth.RoleViewer}
 
 	assertInvalid(t, u.Validate())
+}
+
+func TestUserValidateRequiresKnownRole(t *testing.T) {
+	base := auth.User{Email: "jane@example.com", PasswordHash: "$2a$10$examplehash"}
+
+	unrecognized := base
+	unrecognized.Role = auth.Role("SuperAdmin")
+	assertInvalid(t, unrecognized.Validate())
+
+	unset := base
+	unset.Role = ""
+	assertInvalid(t, unset.Validate())
+
+	for _, role := range []auth.Role{auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer} {
+		u := base
+		u.Role = role
+		if err := u.Validate(); err != nil {
+			t.Errorf("Validate() (role %q) = %v, want nil", role, err)
+		}
+	}
 }

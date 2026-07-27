@@ -15,6 +15,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	authpostgres "github.com/paladindigitalgh/palladium-oss/internal/auth/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/authz"
 	"github.com/paladindigitalgh/palladium-oss/internal/config"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
@@ -111,6 +112,12 @@ func run() error {
 	authService := auth.NewAuthService(userRepo, tokenIssuer)
 	loginHandler := authhttpapi.NewLoginHandler(authService, cfg.JWT.Expiration)
 
+	// authz.Middleware reuses userRepo (the same UserRepository
+	// authService already depends on) rather than a second instance —
+	// there is no reason for two, and sharing makes it obvious both are
+	// always looking at the same table.
+	authzMiddleware := authz.NewMiddleware(userRepo)
+
 	router := api.NewRouter(api.Dependencies{
 		Logger:         logger,
 		HealthCheckers: healthCheckers,
@@ -119,6 +126,7 @@ func run() error {
 		SiteHandler:    siteHandler,
 		Tokens:         tokenIssuer,
 		LoginHandler:   loginHandler,
+		Authz:          authzMiddleware,
 	})
 
 	srv := httpserver.New(httpserver.Config{

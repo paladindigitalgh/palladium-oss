@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func newTestRepository(t *testing.T, ids id.Generator) (*postgres.UserRepository
 }
 
 func testUser(email string) auth.User {
-	return auth.User{Email: email, PasswordHash: "$2a$10$examplehashexamplehashexampleu"}
+	return auth.User{Email: email, PasswordHash: "$2a$10$examplehashexamplehashexampleu", Role: auth.RoleViewer}
 }
 
 func TestUserRepositoryCount(t *testing.T) {
@@ -96,11 +97,39 @@ func TestUserRepositoryCreate(t *testing.T) {
 	if created.PasswordHash != "$2a$10$examplehashexamplehashexampleu" {
 		t.Errorf("PasswordHash = %q, want the input hash unchanged", created.PasswordHash)
 	}
+	if created.Role != auth.RoleViewer {
+		t.Errorf("Role = %q, want %q", created.Role, auth.RoleViewer)
+	}
 	if created.CreatedAt.IsZero() {
 		t.Error("CreatedAt was not set")
 	}
 	if !created.CreatedAt.Equal(created.UpdatedAt) {
 		t.Errorf("CreatedAt (%v) != UpdatedAt (%v) on a newly created row", created.CreatedAt, created.UpdatedAt)
+	}
+}
+
+func TestUserRepositoryCreatePersistsEachDefinedRole(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	for i, role := range []auth.Role{auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer} {
+		user := testUser(fmt.Sprintf("role-%d@example.com", i))
+		user.Role = role
+
+		created, err := repo.Create(ctx, user)
+		if err != nil {
+			t.Fatalf("Create() (role %q) = %v", role, err)
+		}
+		if created.Role != role {
+			t.Errorf("Create() Role = %q, want %q", created.Role, role)
+		}
+
+		got, err := repo.GetByID(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("GetByID() (role %q) = %v", role, err)
+		}
+		if got.Role != role {
+			t.Errorf("GetByID() Role = %q, want %q", got.Role, role)
+		}
 	}
 }
 
@@ -212,6 +241,9 @@ func TestUserRepositoryUpdatePasswordHash(t *testing.T) {
 	}
 	if updated.Email != created.Email {
 		t.Errorf("Email changed: was %q, now %q", created.Email, updated.Email)
+	}
+	if updated.Role != created.Role {
+		t.Errorf("Role changed: was %q, now %q; UpdatePasswordHash must not touch it", created.Role, updated.Role)
 	}
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Errorf("CreatedAt changed on UpdatePasswordHash(): was %v, now %v", created.CreatedAt, updated.CreatedAt)

@@ -80,6 +80,9 @@ func TestAdministratorCreateSucceedsWhenNoUsersExist(t *testing.T) {
 	if user.Email != "admin@example.com" {
 		t.Errorf("Email = %q, want %q", user.Email, "admin@example.com")
 	}
+	if user.Role != auth.RoleAdministrator {
+		t.Errorf("Role = %q, want %q (goal 5: bootstrap must grant Administrator)", user.Role, auth.RoleAdministrator)
+	}
 }
 
 func TestAdministratorCreateHashesThePassword(t *testing.T) {

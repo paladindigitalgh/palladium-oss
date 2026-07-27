@@ -28,7 +28,7 @@
 ## Phase 2 — Authentication
 
 - [x] User model
-- [ ] Roles
+- [x] Roles
 - [ ] Permissions
 - [x] JWT
 - [ ] OIDC
