@@ -23,11 +23,27 @@ type LogConfig struct {
 	Format string
 }
 
+// DatabaseConfig holds settings for the PostgreSQL connection pool.
+type DatabaseConfig struct {
+	Host            string
+	Port            int
+	User            string
+	Password        string
+	Name            string
+	SSLMode         string
+	MaxConns        int32
+	MinConns        int32
+	MaxConnLifetime time.Duration
+	MaxConnIdleTime time.Duration
+	ConnectTimeout  time.Duration
+}
+
 // Config is the root application configuration.
 type Config struct {
 	Environment string
 	HTTP        HTTPConfig
 	Log         LogConfig
+	Database    DatabaseConfig
 }
 
 // Load builds a Config from environment variables, applying defaults for
@@ -46,6 +62,19 @@ func Load() (Config, error) {
 		Log: LogConfig{
 			Level:  getEnvString("LOG_LEVEL", "info"),
 			Format: getEnvString("LOG_FORMAT", "json"),
+		},
+		Database: DatabaseConfig{
+			Host:            getEnvString("DB_HOST", "localhost"),
+			Port:            getEnvInt("DB_PORT", 5432),
+			User:            getEnvString("DB_USER", "palladium"),
+			Password:        getEnvString("DB_PASSWORD", "palladium"),
+			Name:            getEnvString("DB_NAME", "palladium"),
+			SSLMode:         getEnvString("DB_SSLMODE", "disable"),
+			MaxConns:        int32(getEnvInt("DB_MAX_CONNS", 10)),
+			MinConns:        int32(getEnvInt("DB_MIN_CONNS", 2)),
+			MaxConnLifetime: getEnvDuration("DB_MAX_CONN_LIFETIME", 30*time.Minute),
+			MaxConnIdleTime: getEnvDuration("DB_MAX_CONN_IDLE_TIME", 5*time.Minute),
+			ConnectTimeout:  getEnvDuration("DB_CONNECT_TIMEOUT", 5*time.Second),
 		},
 	}
 
@@ -77,6 +106,19 @@ func (c Config) Validate() error {
 	case "json", "text":
 	default:
 		return fmt.Errorf("config: invalid LOG_FORMAT %q", c.Log.Format)
+	}
+
+	if c.Database.Port <= 0 || c.Database.Port > 65535 {
+		return fmt.Errorf("config: invalid DB_PORT %d", c.Database.Port)
+	}
+	if c.Database.Name == "" {
+		return fmt.Errorf("config: DB_NAME must not be empty")
+	}
+	if c.Database.MaxConns < 1 {
+		return fmt.Errorf("config: DB_MAX_CONNS must be at least 1")
+	}
+	if c.Database.MinConns < 0 || c.Database.MinConns > c.Database.MaxConns {
+		return fmt.Errorf("config: DB_MIN_CONNS must be between 0 and DB_MAX_CONNS")
 	}
 
 	return nil

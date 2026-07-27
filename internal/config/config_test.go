@@ -17,6 +17,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Log.Format != "json" {
 		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, "json")
 	}
+	if cfg.Database.Host != "localhost" {
+		t.Errorf("Database.Host = %q, want %q", cfg.Database.Host, "localhost")
+	}
+	if cfg.Database.Port != 5432 {
+		t.Errorf("Database.Port = %d, want 5432", cfg.Database.Port)
+	}
+	if cfg.Database.MaxConns < cfg.Database.MinConns {
+		t.Errorf("Database.MaxConns (%d) < Database.MinConns (%d)", cfg.Database.MaxConns, cfg.Database.MinConns)
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
@@ -59,6 +68,28 @@ func TestValidateRejectsBadLogFormat(t *testing.T) {
 	cfg := Config{HTTP: HTTPConfig{Port: 8080}, Log: LogConfig{Level: "info", Format: "xml"}}
 	if err := cfg.Validate(); err == nil {
 		t.Error("Validate() = nil, want error for invalid log format")
+	}
+}
+
+func TestValidateRejectsBadDBPort(t *testing.T) {
+	cfg := Config{
+		HTTP:     HTTPConfig{Port: 8080},
+		Log:      LogConfig{Level: "info", Format: "json"},
+		Database: DatabaseConfig{Port: 0, Name: "palladium", MaxConns: 10, MinConns: 2},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for invalid DB_PORT")
+	}
+}
+
+func TestValidateRejectsMinConnsAboveMaxConns(t *testing.T) {
+	cfg := Config{
+		HTTP:     HTTPConfig{Port: 8080},
+		Log:      LogConfig{Level: "info", Format: "json"},
+		Database: DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 2, MinConns: 5},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error when DB_MIN_CONNS exceeds DB_MAX_CONNS")
 	}
 }
 

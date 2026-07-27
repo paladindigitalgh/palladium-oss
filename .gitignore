@@ -1,0 +1,48 @@
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+
+# Build
+build/
+tmp/
+
+# Docker
+docker-data/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Misc
+*.swp
+*.bak

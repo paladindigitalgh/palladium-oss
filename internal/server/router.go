@@ -12,6 +12,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 )
 
 // Dependencies holds everything the router needs to wire up routes and
@@ -40,8 +41,16 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Get("/readyz", healthHandler.Ready)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Domain routes (inventory, customers, services, workflows, ...)
-		// are mounted here as those phases are implemented.
+		// Domain routes (customers, services, workflows, ...) are mounted
+		// here as those phases are implemented.
+
+		inventoryHandler := inventory.NewHandler()
+		r.Route("/inventory", func(r chi.Router) {
+			// Temporary: verifies the inventory domain is wired correctly.
+			// Replace with real CRUD routes once the repository layer has
+			// a SQL implementation.
+			r.Get("/schema", inventoryHandler.Schema)
+		})
 	})
 
 	return r
