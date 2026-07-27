@@ -23,6 +23,22 @@ type LogConfig struct {
 	Format string
 }
 
+// defaultJWTSecret is used when JWT_SECRET is unset. It exists purely for
+// local development convenience (see configs/.env.example), matching how
+// DatabaseConfig.Password already defaults to a known dev value — but
+// unlike a leaked dev DB password, a leaked JWT secret lets an attacker
+// forge a valid token for any user, so Validate additionally refuses to
+// start with this exact value when APP_ENV=production, rather than only
+// checking for an empty string.
+const defaultJWTSecret = "development-only-change-me-before-deploying"
+
+// JWTConfig holds settings for signing and validating authentication JWTs
+// (see internal/auth.TokenIssuer).
+type JWTConfig struct {
+	Secret     string
+	Expiration time.Duration
+}
+
 // DatabaseConfig holds settings for the PostgreSQL connection pool.
 type DatabaseConfig struct {
 	Host            string
@@ -44,6 +60,7 @@ type Config struct {
 	HTTP        HTTPConfig
 	Log         LogConfig
 	Database    DatabaseConfig
+	JWT         JWTConfig
 }
 
 // Load builds a Config from environment variables, applying defaults for
@@ -75,6 +92,16 @@ func Load() (Config, error) {
 			MaxConnLifetime: getEnvDuration("DB_MAX_CONN_LIFETIME", 30*time.Minute),
 			MaxConnIdleTime: getEnvDuration("DB_MAX_CONN_IDLE_TIME", 5*time.Minute),
 			ConnectTimeout:  getEnvDuration("DB_CONNECT_TIMEOUT", 5*time.Second),
+		},
+		JWT: JWTConfig{
+			Secret: getEnvString("JWT_SECRET", defaultJWTSecret),
+			// There are no refresh tokens (out of scope for this
+			// milestone), so this duration alone determines how often an
+			// authenticated caller must log in again. 24h is a pragmatic
+			// default for a shift-based operational tool, not a security
+			// requirement — operators should tune JWT_EXPIRATION to their
+			// own posture.
+			Expiration: getEnvDuration("JWT_EXPIRATION", 24*time.Hour),
 		},
 	}
 
@@ -119,6 +146,16 @@ func (c Config) Validate() error {
 	}
 	if c.Database.MinConns < 0 || c.Database.MinConns > c.Database.MaxConns {
 		return fmt.Errorf("config: DB_MIN_CONNS must be between 0 and DB_MAX_CONNS")
+	}
+
+	if c.JWT.Secret == "" {
+		return fmt.Errorf("config: JWT_SECRET must not be empty")
+	}
+	if c.Environment == "production" && c.JWT.Secret == defaultJWTSecret {
+		return fmt.Errorf("config: JWT_SECRET must be overridden in production")
+	}
+	if c.JWT.Expiration <= 0 {
+		return fmt.Errorf("config: JWT_EXPIRATION must be positive")
 	}
 
 	return nil

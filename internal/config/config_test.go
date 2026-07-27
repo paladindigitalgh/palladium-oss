@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	cfg, err := Load()
@@ -25,6 +28,12 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Database.MaxConns < cfg.Database.MinConns {
 		t.Errorf("Database.MaxConns (%d) < Database.MinConns (%d)", cfg.Database.MaxConns, cfg.Database.MinConns)
+	}
+	if cfg.JWT.Secret == "" {
+		t.Error("JWT.Secret = \"\", want a non-empty dev default")
+	}
+	if cfg.JWT.Expiration <= 0 {
+		t.Errorf("JWT.Expiration = %v, want > 0", cfg.JWT.Expiration)
 	}
 }
 
@@ -90,6 +99,56 @@ func TestValidateRejectsMinConnsAboveMaxConns(t *testing.T) {
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Error("Validate() = nil, want error when DB_MIN_CONNS exceeds DB_MAX_CONNS")
+	}
+}
+
+func TestValidateRejectsEmptyJWTSecret(t *testing.T) {
+	cfg := Config{
+		HTTP:     HTTPConfig{Port: 8080},
+		Log:      LogConfig{Level: "info", Format: "json"},
+		Database: DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:      JWTConfig{Secret: "", Expiration: time.Hour},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for empty JWT_SECRET")
+	}
+}
+
+func TestValidateRejectsDefaultJWTSecretInProduction(t *testing.T) {
+	cfg := Config{
+		Environment: "production",
+		HTTP:        HTTPConfig{Port: 8080},
+		Log:         LogConfig{Level: "info", Format: "json"},
+		Database:    DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:         JWTConfig{Secret: defaultJWTSecret, Expiration: time.Hour},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for the dev-default JWT_SECRET in production")
+	}
+}
+
+func TestValidateAllowsDefaultJWTSecretOutsideProduction(t *testing.T) {
+	cfg := Config{
+		Environment: "development",
+		HTTP:        HTTPConfig{Port: 8080},
+		Log:         LogConfig{Level: "info", Format: "json"},
+		Database:    DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:         JWTConfig{Secret: defaultJWTSecret, Expiration: time.Hour},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil for the dev-default JWT_SECRET outside production", err)
+	}
+}
+
+func TestValidateRejectsNonPositiveJWTExpiration(t *testing.T) {
+	cfg := Config{
+		HTTP:     HTTPConfig{Port: 8080},
+		Log:      LogConfig{Level: "info", Format: "json"},
+		Database: DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:      JWTConfig{Secret: "s", Expiration: 0},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for non-positive JWT_EXPIRATION")
 	}
 }
 

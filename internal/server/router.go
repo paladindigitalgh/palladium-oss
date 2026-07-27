@@ -11,8 +11,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 )
 
 // Dependencies holds everything the router needs to wire up routes and
@@ -24,6 +26,8 @@ type Dependencies struct {
 	HealthCheckers []health.Checker
 	Version        string
 	Commit         string
+	SiteHandler    *httpapi.SiteHandler
+	Tokens         *auth.TokenIssuer
 }
 
 // NewRouter builds the application's http.Handler.
@@ -50,6 +54,20 @@ func NewRouter(deps Dependencies) http.Handler {
 			// Replace with real CRUD routes once the repository layer has
 			// a SQL implementation.
 			r.Get("/schema", inventoryHandler.Schema)
+		})
+
+		// /sites is the first authenticated resource: every route in this
+		// group requires a valid JWT (see auth.Middleware). Building,
+		// Room, Rack, and Device follow the same shape once their own
+		// handlers exist — deliberately not implemented yet (see this
+		// milestone's scope).
+		r.Route("/sites", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+			r.Post("/", deps.SiteHandler.Create)
+			r.Get("/", deps.SiteHandler.List)
+			r.Get("/{id}", deps.SiteHandler.Get)
+			r.Put("/{id}", deps.SiteHandler.Update)
+			r.Delete("/{id}", deps.SiteHandler.Delete)
 		})
 	})
 

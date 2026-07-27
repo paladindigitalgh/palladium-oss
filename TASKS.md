@@ -27,10 +27,10 @@
 
 ## Phase 2 — Authentication
 
-- [ ] User model
+- [x] User model
 - [ ] Roles
 - [ ] Permissions
-- [ ] JWT
+- [x] JWT
 - [ ] OIDC
 - [ ] Login API
 
@@ -38,7 +38,7 @@
 
 ## Phase 3 — Inventory
 
-- [ ] Sites
+- [x] Sites
 - [ ] Buildings
 - [ ] Cabinets
 - [ ] Racks

@@ -4,6 +4,7 @@
 package validate
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
@@ -77,4 +78,15 @@ func MinLength(value string, min int) bool {
 // InRange reports whether value falls within [min, max] inclusive.
 func InRange(value, min, max int) bool {
 	return value >= min && value <= max
+}
+
+// emailPattern is a pragmatic shape check, not full RFC 5322 validation:
+// a local part, an "@", and a domain with at least one dot. The only way
+// to truly verify an email address is to send mail to it; this exists to
+// catch obvious typos and malformed input before that ever happens.
+var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+
+// Email reports whether value looks like an email address.
+func Email(value string) bool {
+	return emailPattern.MatchString(value)
 }

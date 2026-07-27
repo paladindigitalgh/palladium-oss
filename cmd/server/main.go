@@ -12,11 +12,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	"github.com/paladindigitalgh/palladium-oss/internal/config"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpserver"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
+	inventorypostgres "github.com/paladindigitalgh/palladium-oss/internal/inventory/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory/service"
 	logging "github.com/paladindigitalgh/palladium-oss/internal/log"
+	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
+	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/retry"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	"github.com/paladindigitalgh/palladium-oss/internal/version"
@@ -82,11 +88,32 @@ func run() error {
 		database.NewHealthChecker(pool),
 	}
 
+	// Site is the only Inventory entity with an HTTP surface so far (see
+	// this milestone's scope); Building, Room, Rack, and Device follow the
+	// same repository -> service -> handler chain once their own
+	// endpoints exist. clock.New() and id.New() are shared across
+	// repositories deliberately: they are stateless, so there is no
+	// reason for each repository to hold its own instance.
+	siteRepo := inventorypostgres.NewSiteRepository(pool, clock.New(), id.New())
+	siteService := service.NewSiteService(siteRepo)
+	siteHandler := httpapi.NewSiteHandler(siteService)
+
+	// tokenIssuer only validates tokens here (see auth.Middleware) — it
+	// does not need a UserRepository or AuthService, since this milestone
+	// adds no login endpoint (see its scope: authentication middleware and
+	// a protected resource, not the login flow that issues the token in
+	// the first place). A caller must obtain a token some other way today
+	// (e.g. issuing one directly via the auth package) until a login
+	// endpoint exists.
+	tokenIssuer := auth.NewTokenIssuer([]byte(cfg.JWT.Secret), cfg.JWT.Expiration, clock.New())
+
 	router := api.NewRouter(api.Dependencies{
 		Logger:         logger,
 		HealthCheckers: healthCheckers,
 		Version:        version.Version,
 		Commit:         version.Commit,
+		SiteHandler:    siteHandler,
+		Tokens:         tokenIssuer,
 	})
 
 	srv := httpserver.New(httpserver.Config{
