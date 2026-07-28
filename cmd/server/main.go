@@ -16,6 +16,9 @@ import (
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	authpostgres "github.com/paladindigitalgh/palladium-oss/internal/auth/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
+	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
+	catalogpostgres "github.com/paladindigitalgh/palladium-oss/internal/catalog/postgres"
+	catalogservice "github.com/paladindigitalgh/palladium-oss/internal/catalog/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/config"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
@@ -33,6 +36,9 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/retry"
+	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
+	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
+	productservice "github.com/paladindigitalgh/palladium-oss/internal/product/service"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	"github.com/paladindigitalgh/palladium-oss/internal/version"
 )
@@ -121,6 +127,20 @@ func run() error {
 	locationSvc := locationservice.NewLocationService(locationRepo)
 	locationHandler := locationhttpapi.NewLocationHandler(locationSvc)
 
+	// Catalog and Product follow the exact same repository -> service ->
+	// handler chain as every domain above, two packages over
+	// (internal/catalog and internal/product instead of
+	// internal/location). Product is constructed after Catalog, mirroring
+	// the FK dependency between their tables, though nothing here actually
+	// requires that ordering — each repository only needs the shared pool.
+	catalogRepo := catalogpostgres.NewCatalogRepository(pool, clock.New(), id.New())
+	catalogSvc := catalogservice.NewCatalogService(catalogRepo)
+	catalogHandler := cataloghttpapi.NewCatalogHandler(catalogSvc)
+
+	productRepo := productpostgres.NewProductRepository(pool, clock.New(), id.New())
+	productSvc := productservice.NewProductService(productRepo)
+	productHandler := producthttpapi.NewProductHandler(productSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -146,6 +166,8 @@ func run() error {
 		SiteHandler:     siteHandler,
 		CustomerHandler: customerHandler,
 		LocationHandler: locationHandler,
+		CatalogHandler:  catalogHandler,
+		ProductHandler:  productHandler,
 		Tokens:          tokenIssuer,
 		LoginHandler:    loginHandler,
 		Authz:           authzMiddleware,

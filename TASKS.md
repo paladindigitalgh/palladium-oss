@@ -69,7 +69,7 @@
 
 ## Phase 6 — Services
 
-- [ ] Products
+- [x] Products
 - [ ] Packages
 - [ ] Service lifecycle
 

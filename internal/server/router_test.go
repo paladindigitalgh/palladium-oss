@@ -15,6 +15,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
+	"github.com/paladindigitalgh/palladium-oss/internal/catalog"
+	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/customer"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
@@ -23,6 +25,8 @@ import (
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
+	"github.com/paladindigitalgh/palladium-oss/internal/product"
+	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 )
 
@@ -429,6 +433,224 @@ func TestRouterAdministratorCanWriteLocations(t *testing.T) {
 	token := mustIssueToken(t, tokens)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/locations/", strings.NewReader(validLocationBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubCatalogService satisfies whatever interface
+// cataloghttpapi.CatalogHandler needs structurally, the same technique
+// stubSiteService, stubCustomerService, and stubLocationService above use.
+type stubCatalogService struct{}
+
+func (stubCatalogService) Get(context.Context, uuid.UUID) (catalog.ProductCatalog, error) {
+	return catalog.ProductCatalog{}, apperror.NotFound("catalog not found")
+}
+func (stubCatalogService) List(context.Context) ([]catalog.ProductCatalog, error) { return nil, nil }
+func (stubCatalogService) Create(_ context.Context, c catalog.ProductCatalog) (catalog.ProductCatalog, error) {
+	return c, nil
+}
+func (stubCatalogService) Update(_ context.Context, c catalog.ProductCatalog) (catalog.ProductCatalog, error) {
+	return c, nil
+}
+func (stubCatalogService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// stubProductService satisfies whatever interface
+// producthttpapi.ProductHandler needs structurally, the same technique
+// used above.
+type stubProductService struct{}
+
+func (stubProductService) Get(context.Context, uuid.UUID) (product.Product, error) {
+	return product.Product{}, apperror.NotFound("product not found")
+}
+func (stubProductService) List(context.Context) ([]product.Product, error) { return nil, nil }
+func (stubProductService) Create(_ context.Context, p product.Product) (product.Product, error) {
+	return p, nil
+}
+func (stubProductService) Update(_ context.Context, p product.Product) (product.Product, error) {
+	return p, nil
+}
+func (stubProductService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithCatalog mirrors newRouterWithLocations exactly, one
+// resource over: it proves /api/v1/catalogs and /api/v1/products are both
+// wired up behind auth.Middleware and authz.Middleware in the real
+// production router, sharing RequireCatalogRead/RequireCatalogWrite (see
+// authz.CanReadCatalog's doc comment for why one capability pair guards
+// both resources). See internal/catalog/httpapi/authenticated_test.go and
+// internal/product/httpapi/authenticated_test.go for far more thorough
+// versions of the same checks, scoped to each package.
+func newRouterWithCatalog(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:         logger,
+		Version:        "test",
+		Commit:         "test",
+		CatalogHandler: cataloghttpapi.NewCatalogHandler(stubCatalogService{}),
+		ProductHandler: producthttpapi.NewProductHandler(stubProductService{}),
+		Tokens:         tokens,
+		Authz:          authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validCatalogBody = `{"name":"Test Catalog","status":"Active"}`
+const validProductBody = `{"catalog_id":"11111111-1111-1111-1111-111111111111","name":"Test Product","category":"Internet","status":"Active"}`
+
+func TestRouterRejectsUnauthenticatedCatalogRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/catalogs/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+func TestRouterRejectsUnauthenticatedProductRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/products/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadCatalog is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterViewerCanReadCatalog(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/catalogs/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadProducts is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterViewerCanReadProducts(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/products/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteCatalog is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterViewerCannotWriteCatalog(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/catalogs/", strings.NewReader(validCatalogBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteProducts is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterViewerCannotWriteProducts(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/", strings.NewReader(validProductBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteCatalog is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterOperatorCanWriteCatalog(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/catalogs/", strings.NewReader(validCatalogBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteProducts is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterOperatorCanWriteProducts(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/", strings.NewReader(validProductBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteCatalog is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteCatalog(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/catalogs/", strings.NewReader(validCatalogBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteProducts is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteProducts(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithCatalog(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/", strings.NewReader(validProductBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

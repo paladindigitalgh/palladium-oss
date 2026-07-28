@@ -14,11 +14,13 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
+	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
+	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 )
 
 // Dependencies holds everything the router needs to wire up routes and
@@ -33,6 +35,8 @@ type Dependencies struct {
 	SiteHandler     *httpapi.SiteHandler
 	CustomerHandler *customerhttpapi.CustomerHandler
 	LocationHandler *locationhttpapi.LocationHandler
+	CatalogHandler  *cataloghttpapi.CatalogHandler
+	ProductHandler  *producthttpapi.ProductHandler
 	Tokens          *auth.TokenIssuer
 	LoginHandler    *authhttpapi.LoginHandler
 	Authz           *authz.Middleware
@@ -151,6 +155,49 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.LocationHandler.Create)
 				r.Put("/{id}", deps.LocationHandler.Update)
 				r.Delete("/{id}", deps.LocationHandler.Delete)
+			})
+		})
+
+		// /catalogs and /products share one capability pair
+		// (RequireCatalogRead/RequireCatalogWrite), unlike every other pair
+		// of domains mounted above: a Product only exists nested inside a
+		// ProductCatalog (see product.Product's required CatalogID), so
+		// "who can read/write the catalog" and "who can read/write a
+		// product in it" are the same question asked at two levels of one
+		// domain, not two domains that happen to share a rule today (see
+		// authz.CanReadCatalog's doc comment). Each still gets its own
+		// route group — the capability is shared, the routing is not.
+		r.Route("/catalogs", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCatalogRead())
+				r.Get("/", deps.CatalogHandler.List)
+				r.Get("/{id}", deps.CatalogHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCatalogWrite())
+				r.Post("/", deps.CatalogHandler.Create)
+				r.Put("/{id}", deps.CatalogHandler.Update)
+				r.Delete("/{id}", deps.CatalogHandler.Delete)
+			})
+		})
+
+		r.Route("/products", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCatalogRead())
+				r.Get("/", deps.ProductHandler.List)
+				r.Get("/{id}", deps.ProductHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCatalogWrite())
+				r.Post("/", deps.ProductHandler.Create)
+				r.Put("/{id}", deps.ProductHandler.Update)
+				r.Delete("/{id}", deps.ProductHandler.Delete)
 			})
 		})
 	})

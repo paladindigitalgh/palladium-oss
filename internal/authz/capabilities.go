@@ -135,3 +135,46 @@ func CanWriteLocations(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadCatalog reports whether role may read Product Catalog data —
+// both ProductCatalog and Product records (see internal/catalog and
+// internal/product). All three built-in roles can — identical to
+// CanReadLocations's rule today.
+//
+// A single capability pair (CanReadCatalog/CanWriteCatalog) guards both
+// resources, unlike Location's own dedicated pair separate from
+// Customer's: ProductCatalog and Product are not two different domains
+// that happen to share a rule the way Location and Customer are — a
+// Product only exists nested inside a ProductCatalog (see
+// product.Product's required CatalogID), so "who can see the catalog" and
+// "who can see a product in it" are the same question asked at two
+// levels of one domain, not two questions that could plausibly diverge.
+// This is a separate function from CanReadCustomers/CanReadLocations/
+// CanReadInventory, not a call to any of them, per this milestone's
+// explicit instruction — even though today's answer is identical, the
+// Catalog domain answering a future access question differently (e.g. a
+// distributor-facing read-only integration) must never require touching
+// Customer's, Location's, or Inventory's code.
+func CanReadCatalog(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteCatalog reports whether role may create, update, or delete
+// Product Catalog data — both ProductCatalog and Product records.
+// Administrator and Operator can; Viewer cannot. See CanReadCatalog's doc
+// comment for why one capability pair guards both resources, and for why
+// this is not implemented in terms of CanWriteCustomers/CanWriteLocations/
+// CanWriteInventory despite the identical rule today.
+func CanWriteCatalog(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

@@ -126,3 +126,19 @@ func (m *Middleware) RequireLocationRead() func(http.Handler) http.Handler {
 func (m *Middleware) RequireLocationWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteLocations)
 }
+
+// RequireCatalogRead returns middleware allowing any Role that
+// CanReadCatalog (Administrator, Operator, Viewer). Applied to both the
+// /catalogs and /products routes — see CanReadCatalog's doc comment for
+// why one capability guards both resources.
+func (m *Middleware) RequireCatalogRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadCatalog)
+}
+
+// RequireCatalogWrite returns middleware allowing any Role that
+// CanWriteCatalog (Administrator, Operator). Applied to both the
+// /catalogs and /products routes — see CanReadCatalog's doc comment for
+// why one capability guards both resources.
+func (m *Middleware) RequireCatalogWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteCatalog)
+}
