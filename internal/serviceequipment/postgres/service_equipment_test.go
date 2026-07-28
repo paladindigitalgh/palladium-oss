@@ -519,6 +519,83 @@ func TestServiceEquipmentRepositoryGetActiveByDeviceIDNotFoundWhenNoneActive(t *
 	assertNotFound(t, err)
 }
 
+// TestServiceEquipmentRepositoryListActiveByServiceIDReturnsOnlyActiveAssignmentsForThatService
+// proves ListActiveByServiceID (added for internal/provisioning/engine —
+// see its doc comment on ServiceEquipmentRepository in
+// internal/serviceequipment/repository.go) returns every active
+// assignment for the requested Service, excludes a removed assignment
+// for that same Service, and excludes active assignments belonging to a
+// different Service entirely.
+func TestServiceEquipmentRepositoryListActiveByServiceIDReturnsOnlyActiveAssignmentsForThatService(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	s := createTestService(t, ctx, q)
+	otherService := createTestService(t, ctx, q)
+	d1 := createTestDevice(t, ctx, q)
+	d2 := createTestDevice(t, ctx, q)
+	d3 := createTestDevice(t, ctx, q)
+	d4 := createTestDevice(t, ctx, q)
+	repo := postgres.NewServiceEquipmentRepository(q, clock.New(), id.New())
+
+	activeForS, err := repo.Create(ctx, testServiceEquipment(s.ID, d1.ID))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	secondActiveForS, err := repo.Create(ctx, testServiceEquipment(s.ID, d2.ID))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	removedForS, err := repo.Create(ctx, testServiceEquipment(s.ID, d3.ID))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	removedAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	removedForS.RemovedAt = &removedAt
+	if _, err := repo.Update(ctx, removedForS); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+
+	if _, err := repo.Create(ctx, testServiceEquipment(otherService.ID, d4.ID)); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	equipment, err := repo.ListActiveByServiceID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("ListActiveByServiceID() = %v", err)
+	}
+
+	found := make(map[uuid.UUID]bool, len(equipment))
+	for _, e := range equipment {
+		found[e.ID] = true
+		if !e.Active() {
+			t.Errorf("ListActiveByServiceID() returned an inactive record: %+v", e)
+		}
+		if e.ServiceID != s.ID {
+			t.Errorf("ListActiveByServiceID(%v) returned equipment for a different service: %+v", s.ID, e)
+		}
+	}
+	if len(equipment) != 2 {
+		t.Fatalf("len(ListActiveByServiceID()) = %d, want 2; got %+v", len(equipment), equipment)
+	}
+	if !found[activeForS.ID] || !found[secondActiveForS.ID] {
+		t.Errorf("ListActiveByServiceID() = %+v, want both %v and %v", equipment, activeForS.ID, secondActiveForS.ID)
+	}
+}
+
+func TestServiceEquipmentRepositoryListActiveByServiceIDReturnsEmptyWhenNoneActive(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	s := createTestService(t, ctx, q)
+	repo := postgres.NewServiceEquipmentRepository(q, clock.New(), id.New())
+
+	equipment, err := repo.ListActiveByServiceID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("ListActiveByServiceID() = %v", err)
+	}
+	if len(equipment) != 0 {
+		t.Errorf("len(ListActiveByServiceID()) = %d, want 0; got %+v", len(equipment), equipment)
+	}
+}
+
 // TestServiceRepositoryDeleteBlockedByExistingServiceEquipment lives
 // here, not in internal/service/postgres, so that package's existing test
 // files stay untouched — the same reasoning

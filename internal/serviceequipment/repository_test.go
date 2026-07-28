@@ -37,13 +37,17 @@ func (stubServiceEquipmentRepository) Delete(context.Context, uuid.UUID) error {
 func (stubServiceEquipmentRepository) GetActiveByDeviceID(context.Context, uuid.UUID) (serviceequipment.ServiceEquipment, error) {
 	return serviceequipment.ServiceEquipment{}, apperror.NotFound("no active assignment")
 }
+func (stubServiceEquipmentRepository) ListActiveByServiceID(context.Context, uuid.UUID) ([]serviceequipment.ServiceEquipment, error) {
+	return nil, nil
+}
 
 var _ serviceequipment.ServiceEquipmentRepository = (*stubServiceEquipmentRepository)(nil)
 
 func TestServiceEquipmentRepositoryInterfaceIsSatisfiable(t *testing.T) {
 	// The compile-time assertion above is the real test: if this package
 	// builds, ServiceEquipmentRepository has the intended
-	// Get/List/Create/Update/Delete/GetActiveByDeviceID shape. This test
-	// exists so `go test` reports that check explicitly instead of the
-	// file silently containing no tests.
+	// Get/List/Create/Update/Delete/GetActiveByDeviceID/
+	// ListActiveByServiceID shape. This test exists so `go test` reports
+	// that check explicitly instead of the file silently containing no
+	// tests.
 }

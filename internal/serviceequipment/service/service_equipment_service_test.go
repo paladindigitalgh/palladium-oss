@@ -88,6 +88,16 @@ func (f *fakeServiceEquipmentRepository) GetActiveByDeviceID(_ context.Context, 
 	return serviceequipment.ServiceEquipment{}, apperror.NotFound("no active service equipment assignment for device")
 }
 
+func (f *fakeServiceEquipmentRepository) ListActiveByServiceID(_ context.Context, serviceID uuid.UUID) ([]serviceequipment.ServiceEquipment, error) {
+	var equipment []serviceequipment.ServiceEquipment
+	for _, e := range f.byID {
+		if e.ServiceID == serviceID && e.Active() {
+			equipment = append(equipment, e)
+		}
+	}
+	return equipment, nil
+}
+
 var _ serviceequipment.ServiceEquipmentRepository = (*fakeServiceEquipmentRepository)(nil)
 
 func validServiceEquipment() serviceequipment.ServiceEquipment {

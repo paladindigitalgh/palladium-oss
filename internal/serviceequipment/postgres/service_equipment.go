@@ -207,6 +207,44 @@ func (r *ServiceEquipmentRepository) GetActiveByDeviceID(ctx context.Context, de
 	return e, nil
 }
 
+// ListActiveByServiceID returns every active (removed_at IS NULL)
+// ServiceEquipment record for serviceID, ordered by created_at — the
+// query internal/provisioning/engine uses to find every piece of
+// equipment currently participating in a Service (see this method's doc
+// comment on ServiceEquipmentRepository in
+// internal/serviceequipment/repository.go for why it exists). Unlike
+// GetActiveByDeviceID, this returns a slice, not a single record: a
+// Service can legitimately have several active equipment items at once.
+func (r *ServiceEquipmentRepository) ListActiveByServiceID(ctx context.Context, serviceID uuid.UUID) ([]serviceequipment.ServiceEquipment, error) {
+	const query = `
+		SELECT id, service_id, device_id, role, description,
+		       installed_at, removed_at, created_at, updated_at
+		FROM service_equipment
+		WHERE service_id = $1 AND removed_at IS NULL
+		ORDER BY created_at
+	`
+
+	rows, err := r.db.Query(ctx, query, serviceID)
+	if err != nil {
+		return nil, translateError("list active service equipment by service", err)
+	}
+	defer rows.Close()
+
+	equipment := []serviceequipment.ServiceEquipment{}
+	for rows.Next() {
+		e, err := scanServiceEquipment(rows)
+		if err != nil {
+			return nil, translateError("scan service equipment row", err)
+		}
+		equipment = append(equipment, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translateError("list active service equipment by service", err)
+	}
+
+	return equipment, nil
+}
+
 func equipmentNotFound(id uuid.UUID) error {
 	return apperror.NotFound(fmt.Sprintf("service equipment %s not found", id))
 }
