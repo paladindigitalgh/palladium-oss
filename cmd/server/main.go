@@ -12,6 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	accessattachmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessattachment/httpapi"
+	accessattachmentpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessattachment/postgres"
+	accessattachmentservice "github.com/paladindigitalgh/palladium-oss/internal/accessattachment/service"
+	accessinterfacehttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/httpapi"
+	accessinterfacepostgres "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/postgres"
+	accessinterfaceservice "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/service"
 	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
 	accessnetworkservice "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/service"
@@ -212,6 +218,21 @@ func run() error {
 	ponPortSvc := ponportservice.NewPONPortService(ponPortRepo)
 	ponPortHandler := ponporthttpapi.NewPONPortHandler(ponPortSvc)
 
+	// Access Interface and Access Attachment follow the same repository
+	// -> service -> handler chain as every domain above, two packages
+	// over (internal/accessinterface and internal/accessattachment).
+	// AccessAttachment is constructed after AccessInterface, mirroring
+	// the FK from access_attachments into access_interfaces, though as
+	// with every other pair above nothing here actually requires that
+	// ordering.
+	accessInterfaceRepo := accessinterfacepostgres.NewAccessInterfaceRepository(pool, clock.New(), id.New())
+	accessInterfaceSvc := accessinterfaceservice.NewAccessInterfaceService(accessInterfaceRepo)
+	accessInterfaceHandler := accessinterfacehttpapi.NewAccessInterfaceHandler(accessInterfaceSvc)
+
+	accessAttachmentRepo := accessattachmentpostgres.NewAccessAttachmentRepository(pool, clock.New(), id.New())
+	accessAttachmentSvc := accessattachmentservice.NewAccessAttachmentService(accessAttachmentRepo)
+	accessAttachmentHandler := accessattachmenthttpapi.NewAccessAttachmentHandler(accessAttachmentSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -245,6 +266,8 @@ func run() error {
 		AccessNetworkHandler:    accessNetworkHandler,
 		OLTHandler:              oltHandler,
 		PONPortHandler:          ponPortHandler,
+		AccessInterfaceHandler:  accessInterfaceHandler,
+		AccessAttachmentHandler: accessAttachmentHandler,
 		Tokens:                  tokenIssuer,
 		LoginHandler:            loginHandler,
 		Authz:                   authzMiddleware,

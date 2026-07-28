@@ -207,3 +207,21 @@ func (m *Middleware) RequireAccessNetworkRead() func(http.Handler) http.Handler 
 func (m *Middleware) RequireAccessNetworkWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteAccessNetwork)
 }
+
+// RequireAccessTopologyRead returns middleware allowing any Role that
+// CanReadAccessTopology (Administrator, Operator, Viewer). Applied to
+// the /access-interfaces and /access-attachments routes — see
+// CanReadAccessTopology's doc comment for why one capability guards
+// both resources.
+func (m *Middleware) RequireAccessTopologyRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadAccessTopology)
+}
+
+// RequireAccessTopologyWrite returns middleware allowing any Role that
+// CanWriteAccessTopology (Administrator, Operator). Applied to the
+// /access-interfaces and /access-attachments routes — see
+// CanReadAccessTopology's doc comment for why one capability guards
+// both resources.
+func (m *Middleware) RequireAccessTopologyWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteAccessTopology)
+}

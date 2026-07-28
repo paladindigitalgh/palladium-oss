@@ -11,6 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	accessattachmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessattachment/httpapi"
+	accessinterfacehttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/httpapi"
 	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
@@ -49,6 +51,8 @@ type Dependencies struct {
 	AccessNetworkHandler    *accessnetworkhttpapi.AccessNetworkHandler
 	OLTHandler              *olthttpapi.OLTHandler
 	PONPortHandler          *ponporthttpapi.PONPortHandler
+	AccessInterfaceHandler  *accessinterfacehttpapi.AccessInterfaceHandler
+	AccessAttachmentHandler *accessattachmenthttpapi.AccessAttachmentHandler
 	Tokens                  *auth.TokenIssuer
 	LoginHandler            *authhttpapi.LoginHandler
 	Authz                   *authz.Middleware
@@ -347,6 +351,49 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.PONPortHandler.Create)
 				r.Put("/{id}", deps.PONPortHandler.Update)
 				r.Delete("/{id}", deps.PONPortHandler.Delete)
+			})
+		})
+
+		// /access-interfaces and /access-attachments share one capability
+		// pair (RequireAccessTopologyRead/RequireAccessTopologyWrite),
+		// deliberately distinct from RequireAccessNetworkRead/Write above
+		// (see authz.CanReadAccessTopology's doc comment): an
+		// AccessAttachment only exists nested inside an AccessInterface,
+		// so "who can read/write" each of the two is the same question
+		// asked at two levels of one domain, not two domains that happen
+		// to share a rule today. Each still gets its own route group —
+		// the capability is shared, the routing is not.
+		r.Route("/access-interfaces", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessTopologyRead())
+				r.Get("/", deps.AccessInterfaceHandler.List)
+				r.Get("/{id}", deps.AccessInterfaceHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessTopologyWrite())
+				r.Post("/", deps.AccessInterfaceHandler.Create)
+				r.Put("/{id}", deps.AccessInterfaceHandler.Update)
+				r.Delete("/{id}", deps.AccessInterfaceHandler.Delete)
+			})
+		})
+
+		r.Route("/access-attachments", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessTopologyRead())
+				r.Get("/", deps.AccessAttachmentHandler.List)
+				r.Get("/{id}", deps.AccessAttachmentHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessTopologyWrite())
+				r.Post("/", deps.AccessAttachmentHandler.Create)
+				r.Put("/{id}", deps.AccessAttachmentHandler.Update)
+				r.Delete("/{id}", deps.AccessAttachmentHandler.Delete)
 			})
 		})
 	})

@@ -12,6 +12,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/accessattachment"
+	accessattachmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessattachment/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/accessinterface"
+	accessinterfacehttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
 	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
@@ -1299,6 +1303,192 @@ func TestRouterAdministratorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
 		{"/api/v1/access-networks/", validAccessNetworkBody},
 		{"/api/v1/olts/", validOLTBody},
 		{"/api/v1/pon-ports/", validPONPortBody},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(http.MethodPost, c.path, strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Errorf("POST %s: status = %d, want %d; body: %s", c.path, rec.Code, http.StatusCreated, rec.Body.String())
+		}
+	}
+}
+
+// stubAccessInterfaceService and stubAccessAttachmentService each
+// satisfy whatever interface their respective httpapi.*Handler needs
+// structurally, the same technique stubAccessNetworkService and every
+// other stub above uses.
+type stubAccessInterfaceService struct{}
+
+func (stubAccessInterfaceService) Get(context.Context, uuid.UUID) (accessinterface.AccessInterface, error) {
+	return accessinterface.AccessInterface{}, apperror.NotFound("access interface not found")
+}
+func (stubAccessInterfaceService) List(context.Context) ([]accessinterface.AccessInterface, error) {
+	return nil, nil
+}
+func (stubAccessInterfaceService) Create(_ context.Context, a accessinterface.AccessInterface) (accessinterface.AccessInterface, error) {
+	return a, nil
+}
+func (stubAccessInterfaceService) Update(_ context.Context, a accessinterface.AccessInterface) (accessinterface.AccessInterface, error) {
+	return a, nil
+}
+func (stubAccessInterfaceService) Delete(context.Context, uuid.UUID) error { return nil }
+
+type stubAccessAttachmentService struct{}
+
+func (stubAccessAttachmentService) Get(context.Context, uuid.UUID) (accessattachment.AccessAttachment, error) {
+	return accessattachment.AccessAttachment{}, apperror.NotFound("access attachment not found")
+}
+func (stubAccessAttachmentService) List(context.Context) ([]accessattachment.AccessAttachment, error) {
+	return nil, nil
+}
+func (stubAccessAttachmentService) Create(_ context.Context, a accessattachment.AccessAttachment) (accessattachment.AccessAttachment, error) {
+	return a, nil
+}
+func (stubAccessAttachmentService) Update(_ context.Context, a accessattachment.AccessAttachment) (accessattachment.AccessAttachment, error) {
+	return a, nil
+}
+func (stubAccessAttachmentService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithAccessTopology mirrors newRouterWithAccessNetwork exactly,
+// one domain over: it proves /api/v1/access-interfaces and
+// /api/v1/access-attachments are both wired up behind auth.Middleware and
+// authz.Middleware in the real production router, sharing
+// RequireAccessTopologyRead/RequireAccessTopologyWrite (see
+// authz.CanReadAccessTopology's doc comment for why one capability pair
+// guards both resources). See each domain's own
+// httpapi/authenticated_test.go for far more thorough versions of the
+// same checks, scoped to that package.
+func newRouterWithAccessTopology(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:                  logger,
+		Version:                 "test",
+		Commit:                  "test",
+		AccessInterfaceHandler:  accessinterfacehttpapi.NewAccessInterfaceHandler(stubAccessInterfaceService{}),
+		AccessAttachmentHandler: accessattachmenthttpapi.NewAccessAttachmentHandler(stubAccessAttachmentService{}),
+		Tokens:                  tokens,
+		Authz:                   authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validAccessInterfaceBody = `{"pon_port_id":"11111111-1111-1111-1111-111111111111","technology":"GPON","name":"gpon-0/1/1","status":"Active"}`
+const validAccessAttachmentBody = `{"access_interface_id":"11111111-1111-1111-1111-111111111111","service_equipment_id":"22222222-2222-2222-2222-222222222222"}`
+
+func TestRouterRejectsUnauthenticatedAccessInterfaceRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessTopology(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/access-interfaces/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+func TestRouterRejectsUnauthenticatedAccessAttachmentRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessTopology(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/access-attachments/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadAccessInterfacesAndAccessAttachments is "apply
+// the standard RBAC matrix", proven through the real, fully wired
+// router, for both resources at once.
+func TestRouterViewerCanReadAccessInterfacesAndAccessAttachments(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessTopology(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	for _, path := range []string{"/api/v1/access-interfaces/", "/api/v1/access-attachments/"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s: status = %d, want %d; body: %s", path, rec.Code, http.StatusOK, rec.Body.String())
+		}
+	}
+}
+
+// TestRouterViewerCannotWriteAccessInterfacesOrAccessAttachments is
+// "apply the standard RBAC matrix", proven through the real, fully wired
+// router, for both resources at once.
+func TestRouterViewerCannotWriteAccessInterfacesOrAccessAttachments(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessTopology(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	cases := []struct {
+		path string
+		body string
+	}{
+		{"/api/v1/access-interfaces/", validAccessInterfaceBody},
+		{"/api/v1/access-attachments/", validAccessAttachmentBody},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(http.MethodPost, c.path, strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("POST %s: status = %d, want %d; body: %s", c.path, rec.Code, http.StatusForbidden, rec.Body.String())
+		}
+	}
+}
+
+// TestRouterOperatorCanWriteAccessInterfacesAndAccessAttachments is
+// "apply the standard RBAC matrix", proven through the real, fully wired
+// router, for both resources at once.
+func TestRouterOperatorCanWriteAccessInterfacesAndAccessAttachments(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessTopology(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	cases := []struct {
+		path string
+		body string
+	}{
+		{"/api/v1/access-interfaces/", validAccessInterfaceBody},
+		{"/api/v1/access-attachments/", validAccessAttachmentBody},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(http.MethodPost, c.path, strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Errorf("POST %s: status = %d, want %d; body: %s", c.path, rec.Code, http.StatusCreated, rec.Body.String())
+		}
+	}
+}
+
+// TestRouterAdministratorCanWriteAccessInterfacesAndAccessAttachments is
+// "apply the standard RBAC matrix", proven through the real, fully wired
+// router, for both resources at once.
+func TestRouterAdministratorCanWriteAccessInterfacesAndAccessAttachments(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessTopology(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	cases := []struct {
+		path string
+		body string
+	}{
+		{"/api/v1/access-interfaces/", validAccessInterfaceBody},
+		{"/api/v1/access-attachments/", validAccessAttachmentBody},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(http.MethodPost, c.path, strings.NewReader(c.body))

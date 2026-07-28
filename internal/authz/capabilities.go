@@ -344,3 +344,56 @@ func CanWriteAccessNetwork(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadAccessTopology reports whether role may read Access Topology
+// data — AccessInterface and AccessAttachment records alike (see
+// internal/accessinterface, internal/accessattachment). All three
+// built-in roles can — identical to CanReadAccessNetwork's rule today.
+//
+// A single capability pair (CanReadAccessTopology/CanWriteAccessTopology)
+// guards both resources, the same reasoning authz.CanReadAccessNetwork's
+// doc comment gives for AccessNetwork/OLT/PONPort: an AccessAttachment
+// only exists nested inside an AccessInterface (see
+// accessattachment.AccessAttachment's required AccessInterfaceID), so
+// "who can see an interface" and "who can see what's attached to it" are
+// the same question asked at two levels of one domain, not two domains
+// that happen to share a rule today.
+//
+// This is a deliberately separate capability from
+// CanReadAccessNetwork/CanReadServiceEquipment, not a call to either,
+// even though AccessInterface references a PONPort (Access Network's
+// domain) and AccessAttachment references a ServiceEquipment record
+// (Service Equipment's domain) — the same reasoning
+// authz.CanReadServiceEquipment's own doc comment gives for not
+// deferring to the domains it merely references: "who can see the
+// physical access network topology and what's plugged into it" is its
+// own access question, not a restatement of "who can see an OLT" or "who
+// can see a piece of subscriber equipment." A future requirement scoped
+// specifically to access topology (e.g. a field-operations role that can
+// see interface-to-equipment mappings without full Access Network or
+// Service Equipment visibility) must never require touching either of
+// those domains' code, and vice versa.
+func CanReadAccessTopology(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteAccessTopology reports whether role may create, update, or
+// delete Access Topology data — AccessInterface and AccessAttachment
+// records alike. Administrator and Operator can; Viewer cannot. See
+// CanReadAccessTopology's doc comment for why one capability pair guards
+// both resources, and for why this is not implemented in terms of
+// CanWriteAccessNetwork/CanWriteServiceEquipment despite the identical
+// rule today.
+func CanWriteAccessTopology(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}
