@@ -12,6 +12,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
+	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
@@ -23,8 +25,12 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/olt"
+	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
+	"github.com/paladindigitalgh/palladium-oss/internal/ponport"
+	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/provisioning"
@@ -1087,6 +1093,221 @@ func TestRouterAdministratorCanDriveProvisioningStateTransitions(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("action %q: status = %d, want %d; body: %s", action, rec.Code, http.StatusOK, rec.Body.String())
+		}
+	}
+}
+
+// stubAccessNetworkService, stubOLTService, and stubPONPortService each
+// satisfy whatever interface their respective httpapi.*Handler needs
+// structurally, the same technique stubSiteService and every other stub
+// above uses.
+type stubAccessNetworkService struct{}
+
+func (stubAccessNetworkService) Get(context.Context, uuid.UUID) (accessnetwork.AccessNetwork, error) {
+	return accessnetwork.AccessNetwork{}, apperror.NotFound("access network not found")
+}
+func (stubAccessNetworkService) List(context.Context) ([]accessnetwork.AccessNetwork, error) {
+	return nil, nil
+}
+func (stubAccessNetworkService) Create(_ context.Context, a accessnetwork.AccessNetwork) (accessnetwork.AccessNetwork, error) {
+	return a, nil
+}
+func (stubAccessNetworkService) Update(_ context.Context, a accessnetwork.AccessNetwork) (accessnetwork.AccessNetwork, error) {
+	return a, nil
+}
+func (stubAccessNetworkService) Delete(context.Context, uuid.UUID) error { return nil }
+
+type stubOLTService struct{}
+
+func (stubOLTService) Get(context.Context, uuid.UUID) (olt.OLT, error) {
+	return olt.OLT{}, apperror.NotFound("olt not found")
+}
+func (stubOLTService) List(context.Context) ([]olt.OLT, error) { return nil, nil }
+func (stubOLTService) Create(_ context.Context, o olt.OLT) (olt.OLT, error) {
+	return o, nil
+}
+func (stubOLTService) Update(_ context.Context, o olt.OLT) (olt.OLT, error) {
+	return o, nil
+}
+func (stubOLTService) Delete(context.Context, uuid.UUID) error { return nil }
+
+type stubPONPortService struct{}
+
+func (stubPONPortService) Get(context.Context, uuid.UUID) (ponport.PONPort, error) {
+	return ponport.PONPort{}, apperror.NotFound("pon port not found")
+}
+func (stubPONPortService) List(context.Context) ([]ponport.PONPort, error) { return nil, nil }
+func (stubPONPortService) Create(_ context.Context, p ponport.PONPort) (ponport.PONPort, error) {
+	return p, nil
+}
+func (stubPONPortService) Update(_ context.Context, p ponport.PONPort) (ponport.PONPort, error) {
+	return p, nil
+}
+func (stubPONPortService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithAccessNetwork mirrors newRouterWithCatalog exactly, one
+// domain over: it proves /api/v1/access-networks, /api/v1/olts, and
+// /api/v1/pon-ports are all wired up behind auth.Middleware and
+// authz.Middleware in the real production router, sharing
+// RequireAccessNetworkRead/RequireAccessNetworkWrite (see
+// authz.CanReadAccessNetwork's doc comment for why one capability pair
+// guards all three resources). See each domain's own
+// httpapi/authenticated_test.go for far more thorough versions of the
+// same checks, scoped to that package.
+func newRouterWithAccessNetwork(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:               logger,
+		Version:              "test",
+		Commit:               "test",
+		AccessNetworkHandler: accessnetworkhttpapi.NewAccessNetworkHandler(stubAccessNetworkService{}),
+		OLTHandler:           olthttpapi.NewOLTHandler(stubOLTService{}),
+		PONPortHandler:       ponporthttpapi.NewPONPortHandler(stubPONPortService{}),
+		Tokens:               tokens,
+		Authz:                authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validAccessNetworkBody = `{"name":"Test Access Network","status":"Active"}`
+const validOLTBody = `{"access_network_id":"11111111-1111-1111-1111-111111111111","name":"Test OLT","vendor":"Kontron"}`
+const validPONPortBody = `{"olt_id":"11111111-1111-1111-1111-111111111111","port_number":1}`
+
+func TestRouterRejectsUnauthenticatedAccessNetworkRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/access-networks/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+func TestRouterRejectsUnauthenticatedOLTRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/olts/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+func TestRouterRejectsUnauthenticatedPONPortRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/pon-ports/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadAccessNetworkOLTsAndPONPorts is "apply the
+// standard RBAC matrix", proven through the real, fully wired router,
+// for all three resources at once.
+func TestRouterViewerCanReadAccessNetworkOLTsAndPONPorts(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessNetwork(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	for _, path := range []string{"/api/v1/access-networks/", "/api/v1/olts/", "/api/v1/pon-ports/"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s: status = %d, want %d; body: %s", path, rec.Code, http.StatusOK, rec.Body.String())
+		}
+	}
+}
+
+// TestRouterViewerCannotWriteAccessNetworkOLTsOrPONPorts is "apply the
+// standard RBAC matrix", proven through the real, fully wired router,
+// for all three resources at once.
+func TestRouterViewerCannotWriteAccessNetworkOLTsOrPONPorts(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessNetwork(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	cases := []struct {
+		path string
+		body string
+	}{
+		{"/api/v1/access-networks/", validAccessNetworkBody},
+		{"/api/v1/olts/", validOLTBody},
+		{"/api/v1/pon-ports/", validPONPortBody},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(http.MethodPost, c.path, strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("POST %s: status = %d, want %d; body: %s", c.path, rec.Code, http.StatusForbidden, rec.Body.String())
+		}
+	}
+}
+
+// TestRouterOperatorCanWriteAccessNetworkOLTsAndPONPorts is "apply the
+// standard RBAC matrix", proven through the real, fully wired router,
+// for all three resources at once.
+func TestRouterOperatorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessNetwork(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	cases := []struct {
+		path string
+		body string
+	}{
+		{"/api/v1/access-networks/", validAccessNetworkBody},
+		{"/api/v1/olts/", validOLTBody},
+		{"/api/v1/pon-ports/", validPONPortBody},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(http.MethodPost, c.path, strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Errorf("POST %s: status = %d, want %d; body: %s", c.path, rec.Code, http.StatusCreated, rec.Body.String())
+		}
+	}
+}
+
+// TestRouterAdministratorCanWriteAccessNetworkOLTsAndPONPorts is "apply
+// the standard RBAC matrix", proven through the real, fully wired
+// router, for all three resources at once.
+func TestRouterAdministratorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	cases := []struct {
+		path string
+		body string
+	}{
+		{"/api/v1/access-networks/", validAccessNetworkBody},
+		{"/api/v1/olts/", validOLTBody},
+		{"/api/v1/pon-ports/", validPONPortBody},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(http.MethodPost, c.path, strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Errorf("POST %s: status = %d, want %d; body: %s", c.path, rec.Code, http.StatusCreated, rec.Body.String())
 		}
 	}
 }

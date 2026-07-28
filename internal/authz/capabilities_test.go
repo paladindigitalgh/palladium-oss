@@ -275,13 +275,50 @@ func TestCanWriteProvisioning(t *testing.T) {
 	}
 }
 
+// TestCanReadAccessNetwork and TestCanWriteAccessNetwork are the same
+// direct proof as TestCanReadProvisioning/TestCanWriteProvisioning,
+// applied to the Access Network domain's access-control table ("apply
+// the standard RBAC matrix").
+func TestCanReadAccessNetwork(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadAccessNetwork(role); got != want {
+			t.Errorf("CanReadAccessNetwork(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanWriteAccessNetwork(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanWriteAccessNetwork(role); got != want {
+			t.Errorf("CanWriteAccessNetwork(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
 // TestNoAdministratorExclusiveCapabilityForSitesOrCustomers is the direct
 // check behind "no Site endpoint should require Administrator
 // exclusively" (goal 4) and its Customer, Location, Catalog, Service,
-// Service Equipment, and Provisioning equivalents: for every capability a
-// Site, Customer, Location, Catalog/Product, Service, Service Equipment,
-// or Provisioning endpoint actually uses, at least one non-Administrator
-// role must also satisfy it.
+// Service Equipment, Provisioning, and Access Network equivalents: for
+// every capability a Site, Customer, Location, Catalog/Product, Service,
+// Service Equipment, Provisioning, or Access Network/OLT/PONPort
+// endpoint actually uses, at least one non-Administrator role must also
+// satisfy it.
 func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 	capabilities := map[string]func(auth.Role) bool{
 		"CanReadInventory":         authz.CanReadInventory,
@@ -298,6 +335,8 @@ func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 		"CanWriteServiceEquipment": authz.CanWriteServiceEquipment,
 		"CanReadProvisioning":      authz.CanReadProvisioning,
 		"CanWriteProvisioning":     authz.CanWriteProvisioning,
+		"CanReadAccessNetwork":     authz.CanReadAccessNetwork,
+		"CanWriteAccessNetwork":    authz.CanWriteAccessNetwork,
 	}
 
 	nonAdminRoles := []auth.Role{auth.RoleOperator, auth.RoleViewer}

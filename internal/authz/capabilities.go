@@ -300,3 +300,47 @@ func CanWriteProvisioning(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadAccessNetwork reports whether role may read Access Network
+// data — AccessNetwork, OLT, and PONPort records alike (see
+// internal/accessnetwork, internal/olt, internal/ponport). All three
+// built-in roles can — identical to CanReadProvisioning's rule today.
+//
+// A single capability pair (CanReadAccessNetwork/CanWriteAccessNetwork)
+// guards all three resources, the same reasoning
+// authz.CanReadCatalog's doc comment gives for Catalog and Product: an
+// OLT only exists nested inside an AccessNetwork (see olt.OLT's required
+// AccessNetworkID), and a PONPort only exists nested inside an OLT (see
+// ponport.PONPort's required OLTID) — so "who can see the access
+// network," "who can see an OLT in it," and "who can see a port on that
+// OLT" are the same question asked at three levels of one domain, not
+// three domains that happen to share a rule today. This is a separate
+// function from CanReadServices/CanReadServiceEquipment/CanReadProvisioning,
+// not a call to any of them, for the same reason those are each separate
+// from one another — a future access requirement specific to the
+// physical access network (e.g. field technicians needing OLT
+// visibility without Service visibility) must never require touching
+// another domain's code.
+func CanReadAccessNetwork(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteAccessNetwork reports whether role may create, update, or
+// delete Access Network data — AccessNetwork, OLT, and PONPort records
+// alike. Administrator and Operator can; Viewer cannot. See
+// CanReadAccessNetwork's doc comment for why one capability pair guards
+// all three resources, and for why this is not implemented in terms of
+// any other domain's capability despite the identical rule today.
+func CanWriteAccessNetwork(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

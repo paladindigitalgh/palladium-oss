@@ -49,8 +49,8 @@
 
 ## Phase 4 — Network
 
-- [ ] OLTs
-- [ ] PON ports
+- [x] OLTs
+- [x] PON ports
 - [ ] Splitters
 - [ ] ONUs
 - [ ] VLANs

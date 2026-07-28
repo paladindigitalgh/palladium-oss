@@ -12,6 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
+	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
+	accessnetworkservice "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	authpostgres "github.com/paladindigitalgh/palladium-oss/internal/auth/postgres"
@@ -33,9 +36,15 @@ import (
 	locationpostgres "github.com/paladindigitalgh/palladium-oss/internal/location/postgres"
 	locationservice "github.com/paladindigitalgh/palladium-oss/internal/location/service"
 	logging "github.com/paladindigitalgh/palladium-oss/internal/log"
+	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
+	oltpostgres "github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
+	oltservice "github.com/paladindigitalgh/palladium-oss/internal/olt/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/retry"
+	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
+	ponportpostgres "github.com/paladindigitalgh/palladium-oss/internal/ponport/postgres"
+	ponportservice "github.com/paladindigitalgh/palladium-oss/internal/ponport/service"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
 	productservice "github.com/paladindigitalgh/palladium-oss/internal/product/service"
@@ -185,6 +194,24 @@ func run() error {
 	provisioningSvc := provisioningservice.NewProvisioningService(provisioningRepo, clock.New())
 	provisioningHandler := provisioninghttpapi.NewProvisioningHandler(provisioningSvc)
 
+	// Access Network, OLT, and PON Port follow the same repository ->
+	// service -> handler chain as every domain above, three packages
+	// over (internal/accessnetwork, internal/olt, and internal/ponport).
+	// OLT is constructed after AccessNetwork and PONPort after OLT,
+	// mirroring the FK chain between their tables, though as with every
+	// other pair above nothing here actually requires that ordering.
+	accessNetworkRepo := accessnetworkpostgres.NewAccessNetworkRepository(pool, clock.New(), id.New())
+	accessNetworkSvc := accessnetworkservice.NewAccessNetworkService(accessNetworkRepo)
+	accessNetworkHandler := accessnetworkhttpapi.NewAccessNetworkHandler(accessNetworkSvc)
+
+	oltRepo := oltpostgres.NewOLTRepository(pool, clock.New(), id.New())
+	oltSvc := oltservice.NewOLTService(oltRepo)
+	oltHandler := olthttpapi.NewOLTHandler(oltSvc)
+
+	ponPortRepo := ponportpostgres.NewPONPortRepository(pool, clock.New(), id.New())
+	ponPortSvc := ponportservice.NewPONPortService(ponPortRepo)
+	ponPortHandler := ponporthttpapi.NewPONPortHandler(ponPortSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -215,6 +242,9 @@ func run() error {
 		ServiceHandler:          serviceHandler,
 		ServiceEquipmentHandler: serviceEquipmentHandler,
 		ProvisioningHandler:     provisioningHandler,
+		AccessNetworkHandler:    accessNetworkHandler,
+		OLTHandler:              oltHandler,
+		PONPortHandler:          ponPortHandler,
 		Tokens:                  tokenIssuer,
 		LoginHandler:            loginHandler,
 		Authz:                   authzMiddleware,

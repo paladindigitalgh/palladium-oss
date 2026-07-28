@@ -189,3 +189,21 @@ func (m *Middleware) RequireProvisioningRead() func(http.Handler) http.Handler {
 func (m *Middleware) RequireProvisioningWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteProvisioning)
 }
+
+// RequireAccessNetworkRead returns middleware allowing any Role that
+// CanReadAccessNetwork (Administrator, Operator, Viewer). Applied to
+// the /access-networks, /olts, and /pon-ports routes — see
+// CanReadAccessNetwork's doc comment for why one capability guards all
+// three resources.
+func (m *Middleware) RequireAccessNetworkRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadAccessNetwork)
+}
+
+// RequireAccessNetworkWrite returns middleware allowing any Role that
+// CanWriteAccessNetwork (Administrator, Operator). Applied to the
+// /access-networks, /olts, and /pon-ports routes — see
+// CanReadAccessNetwork's doc comment for why one capability guards all
+// three resources.
+func (m *Middleware) RequireAccessNetworkWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteAccessNetwork)
+}

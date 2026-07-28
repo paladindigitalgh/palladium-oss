@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
@@ -20,6 +21,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
+	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
+	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
@@ -43,6 +46,9 @@ type Dependencies struct {
 	ServiceHandler          *servicehttpapi.ServiceHandler
 	ServiceEquipmentHandler *serviceequipmenthttpapi.ServiceEquipmentHandler
 	ProvisioningHandler     *provisioninghttpapi.ProvisioningHandler
+	AccessNetworkHandler    *accessnetworkhttpapi.AccessNetworkHandler
+	OLTHandler              *olthttpapi.OLTHandler
+	PONPortHandler          *ponporthttpapi.PONPortHandler
 	Tokens                  *auth.TokenIssuer
 	LoginHandler            *authhttpapi.LoginHandler
 	Authz                   *authz.Middleware
@@ -281,6 +287,66 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/{id}/fail", deps.ProvisioningHandler.Fail)
 				r.Post("/{id}/cancel", deps.ProvisioningHandler.Cancel)
 				r.Post("/{id}/retry", deps.ProvisioningHandler.Retry)
+			})
+		})
+
+		// /access-networks, /olts, and /pon-ports share one capability
+		// pair (RequireAccessNetworkRead/RequireAccessNetworkWrite),
+		// mirroring /catalogs and /products above: an OLT only exists
+		// nested inside an AccessNetwork, and a PONPort only exists
+		// nested inside an OLT (see authz.CanReadAccessNetwork's doc
+		// comment), so "who can read/write" each of the three is the same
+		// question asked at three levels of one domain, not three domains
+		// that happen to share a rule today. Each still gets its own
+		// route group — the capability is shared, the routing is not.
+		r.Route("/access-networks", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessNetworkRead())
+				r.Get("/", deps.AccessNetworkHandler.List)
+				r.Get("/{id}", deps.AccessNetworkHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessNetworkWrite())
+				r.Post("/", deps.AccessNetworkHandler.Create)
+				r.Put("/{id}", deps.AccessNetworkHandler.Update)
+				r.Delete("/{id}", deps.AccessNetworkHandler.Delete)
+			})
+		})
+
+		r.Route("/olts", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessNetworkRead())
+				r.Get("/", deps.OLTHandler.List)
+				r.Get("/{id}", deps.OLTHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessNetworkWrite())
+				r.Post("/", deps.OLTHandler.Create)
+				r.Put("/{id}", deps.OLTHandler.Update)
+				r.Delete("/{id}", deps.OLTHandler.Delete)
+			})
+		})
+
+		r.Route("/pon-ports", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessNetworkRead())
+				r.Get("/", deps.PONPortHandler.List)
+				r.Get("/{id}", deps.PONPortHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessNetworkWrite())
+				r.Post("/", deps.PONPortHandler.Create)
+				r.Put("/{id}", deps.PONPortHandler.Update)
+				r.Delete("/{id}", deps.PONPortHandler.Delete)
 			})
 		})
 	})
