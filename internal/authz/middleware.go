@@ -142,3 +142,18 @@ func (m *Middleware) RequireCatalogRead() func(http.Handler) http.Handler {
 func (m *Middleware) RequireCatalogWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteCatalog)
 }
+
+// RequireServiceRead returns middleware allowing any Role that
+// CanReadServices (Administrator, Operator, Viewer) — the same
+// authorization model as RequireCatalogRead, applied to the Service
+// domain.
+func (m *Middleware) RequireServiceRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadServices)
+}
+
+// RequireServiceWrite returns middleware allowing any Role that
+// CanWriteServices (Administrator, Operator) — the same authorization
+// model as RequireCatalogWrite, applied to the Service domain.
+func (m *Middleware) RequireServiceWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteServices)
+}

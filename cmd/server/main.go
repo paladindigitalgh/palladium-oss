@@ -40,6 +40,9 @@ import (
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
 	productservice "github.com/paladindigitalgh/palladium-oss/internal/product/service"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
+	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
+	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
+	serviceservice "github.com/paladindigitalgh/palladium-oss/internal/service/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/version"
 )
 
@@ -141,6 +144,16 @@ func run() error {
 	productSvc := productservice.NewProductService(productRepo)
 	productHandler := producthttpapi.NewProductHandler(productSvc)
 
+	// Service follows the exact same repository -> service -> handler
+	// chain as every domain above, one package over (internal/service
+	// instead of internal/product). It is constructed after Location,
+	// Catalog, and Product, mirroring the two foreign keys a Service row
+	// requires, though as with Product/Catalog above nothing here
+	// actually requires that ordering.
+	serviceRepo := servicepostgres.NewServiceRepository(pool, clock.New(), id.New())
+	serviceSvc := serviceservice.NewServiceService(serviceRepo)
+	serviceHandler := servicehttpapi.NewServiceHandler(serviceSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -168,6 +181,7 @@ func run() error {
 		LocationHandler: locationHandler,
 		CatalogHandler:  catalogHandler,
 		ProductHandler:  productHandler,
+		ServiceHandler:  serviceHandler,
 		Tokens:          tokenIssuer,
 		LoginHandler:    loginHandler,
 		Authz:           authzMiddleware,

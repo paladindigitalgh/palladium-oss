@@ -71,7 +71,7 @@
 
 - [x] Products
 - [ ] Packages
-- [ ] Service lifecycle
+- [x] Service lifecycle
 
 ---
 

@@ -168,12 +168,47 @@ func TestCanWriteCatalog(t *testing.T) {
 	}
 }
 
+// TestCanReadServices and TestCanWriteServices are the same direct proof
+// as TestCanReadCatalog/TestCanWriteCatalog, applied to the Service
+// domain's access-control table ("apply the standard RBAC matrix").
+func TestCanReadServices(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadServices(role); got != want {
+			t.Errorf("CanReadServices(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanWriteServices(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanWriteServices(role); got != want {
+			t.Errorf("CanWriteServices(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
 // TestNoAdministratorExclusiveCapabilityForSitesOrCustomers is the direct
 // check behind "no Site endpoint should require Administrator
-// exclusively" (goal 4) and its Customer, Location, and Catalog
-// equivalents: for every capability a Site, Customer, Location, or
-// Catalog/Product endpoint actually uses, at least one non-Administrator
-// role must also satisfy it.
+// exclusively" (goal 4) and its Customer, Location, Catalog, and Service
+// equivalents: for every capability a Site, Customer, Location,
+// Catalog/Product, or Service endpoint actually uses, at least one
+// non-Administrator role must also satisfy it.
 func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 	capabilities := map[string]func(auth.Role) bool{
 		"CanReadInventory":  authz.CanReadInventory,
@@ -184,6 +219,8 @@ func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 		"CanWriteLocations": authz.CanWriteLocations,
 		"CanReadCatalog":    authz.CanReadCatalog,
 		"CanWriteCatalog":   authz.CanWriteCatalog,
+		"CanReadServices":   authz.CanReadServices,
+		"CanWriteServices":  authz.CanWriteServices,
 	}
 
 	nonAdminRoles := []auth.Role{auth.RoleOperator, auth.RoleViewer}

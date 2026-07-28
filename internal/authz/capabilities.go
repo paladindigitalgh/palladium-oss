@@ -178,3 +178,45 @@ func CanWriteCatalog(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadServices reports whether role may read Service data — a
+// subscriber's purchased Service (see internal/service). All three
+// built-in roles can — identical to CanReadCatalog's rule today.
+//
+// This is a separate function from CanReadCatalog/CanReadLocations/
+// CanReadCustomers/CanReadInventory, not a call to any of them, per this
+// milestone's explicit instruction. Unlike Catalog and Product, which
+// share one capability because a Product only exists nested inside a
+// ProductCatalog (see CanReadCatalog's doc comment), a Service is not
+// "part of" a Location or a Product the way a Product is part of a
+// Catalog — a Service is its own resource that happens to reference both
+// (see internal/service's package doc comment on why it has no
+// CustomerID: the Customer relationship is a join through Location, not
+// ownership). "Who can see a subscriber's purchased Service" is
+// genuinely its own access question, not a restatement of "who can see a
+// Location" or "who can see a Product" — a future requirement (e.g.
+// restricting Service visibility for billing-sensitivity reasons) must
+// never require touching Location's, Product's, Customer's, or
+// Inventory's code.
+func CanReadServices(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteServices reports whether role may create, update, or delete
+// Service data. Administrator and Operator can; Viewer cannot. See
+// CanReadServices's doc comment for why this is not implemented in terms
+// of CanWriteCatalog/CanWriteLocations/CanWriteCustomers/CanWriteInventory
+// despite the identical rule today.
+func CanWriteServices(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

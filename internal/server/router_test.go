@@ -28,6 +28,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
+	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
+	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 )
 
 func TestRouterMountsInventorySchemaEndpoint(t *testing.T) {
@@ -651,6 +653,126 @@ func TestRouterAdministratorCanWriteProducts(t *testing.T) {
 	token := mustIssueToken(t, tokens)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/", strings.NewReader(validProductBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubServiceService satisfies whatever interface
+// servicehttpapi.ServiceHandler needs structurally, the same technique
+// stubSiteService, stubCustomerService, stubLocationService, and
+// stubCatalogService/stubProductService above use.
+type stubServiceService struct{}
+
+func (stubServiceService) Get(context.Context, uuid.UUID) (domainservice.Service, error) {
+	return domainservice.Service{}, apperror.NotFound("service not found")
+}
+func (stubServiceService) List(context.Context) ([]domainservice.Service, error) { return nil, nil }
+func (stubServiceService) Create(_ context.Context, s domainservice.Service) (domainservice.Service, error) {
+	return s, nil
+}
+func (stubServiceService) Update(_ context.Context, s domainservice.Service) (domainservice.Service, error) {
+	return s, nil
+}
+func (stubServiceService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithServices mirrors newRouterWithCatalog exactly, one
+// resource over: it proves /api/v1/services is wired up behind
+// auth.Middleware and authz.Middleware in the real production router,
+// using its own dedicated RequireServiceRead/RequireServiceWrite (see
+// authz.CanReadServices's doc comment for why Service does not share
+// Catalog's/Location's capability pair). See
+// internal/service/httpapi/authenticated_test.go for a far more thorough
+// version of the same checks, scoped to that package.
+func newRouterWithServices(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:         logger,
+		Version:        "test",
+		Commit:         "test",
+		ServiceHandler: servicehttpapi.NewServiceHandler(stubServiceService{}),
+		Tokens:         tokens,
+		Authz:          authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validServiceBody = `{"location_id":"11111111-1111-1111-1111-111111111111","product_id":"22222222-2222-2222-2222-222222222222","status":"Pending"}`
+
+func TestRouterRejectsUnauthenticatedServiceRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServices(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/services/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadServices is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterViewerCanReadServices(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServices(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/services/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteServices is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteServices(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServices(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/", strings.NewReader(validServiceBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteServices is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteServices(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServices(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/", strings.NewReader(validServiceBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteServices is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteServices(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServices(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/", strings.NewReader(validServiceBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

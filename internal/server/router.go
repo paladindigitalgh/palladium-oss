@@ -21,6 +21,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
+	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 )
 
 // Dependencies holds everything the router needs to wire up routes and
@@ -37,6 +38,7 @@ type Dependencies struct {
 	LocationHandler *locationhttpapi.LocationHandler
 	CatalogHandler  *cataloghttpapi.CatalogHandler
 	ProductHandler  *producthttpapi.ProductHandler
+	ServiceHandler  *servicehttpapi.ServiceHandler
 	Tokens          *auth.TokenIssuer
 	LoginHandler    *authhttpapi.LoginHandler
 	Authz           *authz.Middleware
@@ -198,6 +200,28 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.ProductHandler.Create)
 				r.Put("/{id}", deps.ProductHandler.Update)
 				r.Delete("/{id}", deps.ProductHandler.Delete)
+			})
+		})
+
+		// /services gets its own dedicated capability pair
+		// (RequireServiceRead/RequireServiceWrite), not a reuse of
+		// /catalogs' or /locations' — unlike Catalog and Product, a
+		// Service is not "part of" a Location or a Product, it merely
+		// references both (see authz.CanReadServices's doc comment).
+		r.Route("/services", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireServiceRead())
+				r.Get("/", deps.ServiceHandler.List)
+				r.Get("/{id}", deps.ServiceHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireServiceWrite())
+				r.Post("/", deps.ServiceHandler.Create)
+				r.Put("/{id}", deps.ServiceHandler.Update)
+				r.Delete("/{id}", deps.ServiceHandler.Delete)
 			})
 		})
 	})
