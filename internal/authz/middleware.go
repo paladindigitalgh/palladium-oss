@@ -239,3 +239,14 @@ func (m *Middleware) RequireServiceProfilesRead() func(http.Handler) http.Handle
 func (m *Middleware) RequireServiceProfilesWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteServiceProfiles)
 }
+
+// RequireDiagnostics returns middleware allowing any Role that
+// CanRunDiagnostics (Administrator, Operator). Applied to the
+// /diagnostics routes. Unlike every Require*Read/Require*Write pair
+// above, this is the only middleware guarding both reading and
+// "writing" a diagnostics endpoint — see CanRunDiagnostics's doc comment
+// for why running a diagnostic does not split into a Read/Write pair the
+// way every other capability in this file does.
+func (m *Middleware) RequireDiagnostics() func(http.Handler) http.Handler {
+	return m.Require(CanRunDiagnostics)
+}

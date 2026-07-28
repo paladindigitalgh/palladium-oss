@@ -19,6 +19,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
 	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
+	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
@@ -55,6 +56,7 @@ type Dependencies struct {
 	AccessInterfaceHandler  *accessinterfacehttpapi.AccessInterfaceHandler
 	AccessAttachmentHandler *accessattachmenthttpapi.AccessAttachmentHandler
 	ServiceProfileHandler   *serviceprofilehttpapi.ServiceProfileHandler
+	DiagnosticsHandler      *diagnosticshttpapi.DiagnosticsHandler
 	Tokens                  *auth.TokenIssuer
 	LoginHandler            *authhttpapi.LoginHandler
 	Authz                   *authz.Middleware
@@ -421,6 +423,20 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.ServiceProfileHandler.Create)
 				r.Put("/{id}", deps.ServiceProfileHandler.Update)
 				r.Delete("/{id}", deps.ServiceProfileHandler.Delete)
+			})
+		})
+
+		// /diagnostics has no read/write split — RequireDiagnostics is
+		// the one capability guarding this whole route (see
+		// authz.CanRunDiagnostics's doc comment for why running a
+		// diagnostic does not decompose into a Read/Write pair the way
+		// every other domain mounted above does).
+		r.Route("/diagnostics", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireDiagnostics())
+				r.Post("/basic-onu-check", deps.DiagnosticsHandler.BasicONUCheck)
 			})
 		})
 	})

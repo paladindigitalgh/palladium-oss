@@ -33,6 +33,9 @@ import (
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
 	customerservice "github.com/paladindigitalgh/palladium-oss/internal/customer/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
+	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
+	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
+	diagnosticsservice "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpserver"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
@@ -243,6 +246,19 @@ func run() error {
 	accessAttachmentSvc := accessattachmentservice.NewAccessAttachmentService(accessAttachmentRepo)
 	accessAttachmentHandler := accessattachmenthttpapi.NewAccessAttachmentHandler(accessAttachmentSvc)
 
+	// Diagnostics has no repository at all — see
+	// internal/diagnostics/service's doc comment on why: this milestone's
+	// framework performs no persistence, so there is nothing for a
+	// postgres package to do. The registry is built and populated with
+	// this milestone's one built-in diagnostic right here, at startup,
+	// the same "every Register call happens once, before the HTTP server
+	// starts" assumption internal/diagnostics.DefaultRegistry's own doc
+	// comment documents.
+	diagnosticsRegistry := diagnostics.NewDefaultRegistry()
+	diagnosticsRegistry.Register(diagnostics.NewBasicONUCheck())
+	diagnosticsSvc := diagnosticsservice.NewDiagnosticsService(diagnosticsRegistry)
+	diagnosticsHandler := diagnosticshttpapi.NewDiagnosticsHandler(diagnosticsSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -271,6 +287,7 @@ func run() error {
 		CatalogHandler:          catalogHandler,
 		ProductHandler:          productHandler,
 		ServiceProfileHandler:   serviceProfileHandler,
+		DiagnosticsHandler:      diagnosticsHandler,
 		ServiceHandler:          serviceHandler,
 		ServiceEquipmentHandler: serviceEquipmentHandler,
 		ProvisioningHandler:     provisioningHandler,

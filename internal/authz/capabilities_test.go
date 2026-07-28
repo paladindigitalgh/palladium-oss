@@ -383,15 +383,36 @@ func TestCanWriteServiceProfiles(t *testing.T) {
 	}
 }
 
+// TestCanRunDiagnostics is the same direct proof as every other
+// capability's own test, applied to the Diagnostics framework's
+// access-control rule ("apply the standard RBAC matrix"). Unlike the
+// Read/Write pairs above, there is only one capability to test here —
+// see CanRunDiagnostics's doc comment for why.
+func TestCanRunDiagnostics(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanRunDiagnostics(role); got != want {
+			t.Errorf("CanRunDiagnostics(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
 // TestNoAdministratorExclusiveCapabilityForSitesOrCustomers is the direct
 // check behind "no Site endpoint should require Administrator
 // exclusively" (goal 4) and its Customer, Location, Catalog, Service,
-// Service Equipment, Provisioning, Access Network, Access Topology, and
-// Service Profile equivalents: for every capability a Site, Customer,
-// Location, Catalog/Product, Service, Service Equipment, Provisioning,
-// Access Network/OLT/PONPort, Access Interface/Access Attachment, or
-// Service Profile endpoint actually uses, at least one non-Administrator
-// role must also satisfy it.
+// Service Equipment, Provisioning, Access Network, Access Topology,
+// Service Profile, and Diagnostics equivalents: for every capability a
+// Site, Customer, Location, Catalog/Product, Service, Service Equipment,
+// Provisioning, Access Network/OLT/PONPort, Access Interface/Access
+// Attachment, Service Profile, or Diagnostics endpoint actually uses, at
+// least one non-Administrator role must also satisfy it.
 func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 	capabilities := map[string]func(auth.Role) bool{
 		"CanReadInventory":         authz.CanReadInventory,
@@ -414,6 +435,7 @@ func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 		"CanWriteAccessTopology":   authz.CanWriteAccessTopology,
 		"CanReadServiceProfiles":   authz.CanReadServiceProfiles,
 		"CanWriteServiceProfiles":  authz.CanWriteServiceProfiles,
+		"CanRunDiagnostics":        authz.CanRunDiagnostics,
 	}
 
 	nonAdminRoles := []auth.Role{auth.RoleOperator, auth.RoleViewer}

@@ -439,3 +439,31 @@ func CanWriteServiceProfiles(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanRunDiagnostics reports whether role may execute a diagnostic (see
+// internal/diagnostics) — today, POST /api/v1/diagnostics/basic-onu-check,
+// and any future diagnostic endpoint built against the same framework.
+// Administrator and Operator can; Viewer cannot.
+//
+// This is a single capability, not a Read/Write pair like almost every
+// other capability in this file — deliberately, because running a
+// diagnostic is neither: it is not "read" in the sense of retrieving
+// stored data (this milestone's framework has no persistence at all —
+// see internal/diagnostics/service's doc comment), and it is not "write"
+// in the sense of creating, updating, or deleting a Palladium record.
+// It is an active operation that, once real diagnostics exist (SSH
+// sessions, CLI commands — explicitly out of scope for this milestone,
+// see internal/diagnostics's package doc comment), will reach out and
+// interact with live network equipment. That makes it categorically
+// closer to every "write" capability's Administrator-and-Operator rule
+// than to any "read" capability's three-role rule: a Viewer's defining
+// property throughout this codebase is that they can see but never act,
+// and running a diagnostic — even today's placeholder — is an action.
+func CanRunDiagnostics(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

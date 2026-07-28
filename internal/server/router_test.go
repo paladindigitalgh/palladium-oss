@@ -25,6 +25,8 @@ import (
 	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/customer"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
+	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/location"
@@ -1624,6 +1626,108 @@ func TestRouterAdministratorCanWriteServiceProfiles(t *testing.T) {
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubDiagnosticsService satisfies whatever interface
+// diagnosticshttpapi.DiagnosticsHandler needs structurally, the same
+// technique every other stub above uses. It always returns a fixed
+// placeholder Result, mirroring diagnostics.BasicONUCheck's own
+// behavior closely enough for a wiring test — this file proves the
+// route reaches a handler behind the right middleware, not what a real
+// diagnostic run produces (see
+// internal/diagnostics/httpapi/diagnostics_handler_test.go and
+// internal/diagnostics's own tests for that).
+type stubDiagnosticsService struct{}
+
+func (stubDiagnosticsService) Run(context.Context, string, diagnostics.Request) (*diagnostics.Result, error) {
+	return &diagnostics.Result{Name: diagnostics.BasicONUCheckName}, nil
+}
+
+// newRouterWithDiagnostics mirrors newRouterWithServiceProfiles exactly,
+// one domain over: it proves /api/v1/diagnostics/basic-onu-check is
+// wired up behind auth.Middleware and authz.Middleware in the real
+// production router, using RequireDiagnostics — the single capability
+// guarding this route (see authz.CanRunDiagnostics's doc comment for
+// why there is no separate read/write split here). See
+// internal/diagnostics/httpapi/authenticated_test.go for a far more
+// thorough version of the same checks, scoped to that package.
+func newRouterWithDiagnostics(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:             logger,
+		Version:            "test",
+		Commit:             "test",
+		DiagnosticsHandler: diagnosticshttpapi.NewDiagnosticsHandler(stubDiagnosticsService{}),
+		Tokens:             tokens,
+		Authz:              authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validDiagnosticsBody = `{"onuId":"11111111-1111-1111-1111-111111111111"}`
+
+func TestRouterRejectsUnauthenticatedDiagnosticsRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDiagnostics(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/diagnostics/basic-onu-check", strings.NewReader(validDiagnosticsBody)))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotRunDiagnostics is "apply the standard RBAC
+// matrix", proven through the real, fully wired router — Viewer cannot
+// run a diagnostic (see authz.CanRunDiagnostics's doc comment for why
+// this is treated as an action, not a read).
+func TestRouterViewerCannotRunDiagnostics(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDiagnostics(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/diagnostics/basic-onu-check", strings.NewReader(validDiagnosticsBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanRunDiagnostics is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterOperatorCanRunDiagnostics(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDiagnostics(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/diagnostics/basic-onu-check", strings.NewReader(validDiagnosticsBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanRunDiagnostics is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanRunDiagnostics(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDiagnostics(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/diagnostics/basic-onu-check", strings.NewReader(validDiagnosticsBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 }
 
