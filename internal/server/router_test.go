@@ -30,6 +30,8 @@ import (
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
+	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 )
 
 func TestRouterMountsInventorySchemaEndpoint(t *testing.T) {
@@ -773,6 +775,128 @@ func TestRouterAdministratorCanWriteServices(t *testing.T) {
 	token := mustIssueToken(t, tokens)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/", strings.NewReader(validServiceBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubServiceEquipmentService satisfies whatever interface
+// serviceequipmenthttpapi.ServiceEquipmentHandler needs structurally, the
+// same technique stubSiteService and every other stub above uses.
+type stubServiceEquipmentService struct{}
+
+func (stubServiceEquipmentService) Get(context.Context, uuid.UUID) (serviceequipment.ServiceEquipment, error) {
+	return serviceequipment.ServiceEquipment{}, apperror.NotFound("service equipment not found")
+}
+func (stubServiceEquipmentService) List(context.Context) ([]serviceequipment.ServiceEquipment, error) {
+	return nil, nil
+}
+func (stubServiceEquipmentService) Create(_ context.Context, e serviceequipment.ServiceEquipment) (serviceequipment.ServiceEquipment, error) {
+	return e, nil
+}
+func (stubServiceEquipmentService) Update(_ context.Context, e serviceequipment.ServiceEquipment) (serviceequipment.ServiceEquipment, error) {
+	return e, nil
+}
+func (stubServiceEquipmentService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithServiceEquipment mirrors newRouterWithServices exactly,
+// one resource over: it proves /api/v1/service-equipment is wired up
+// behind auth.Middleware and authz.Middleware in the real production
+// router, using its own dedicated
+// RequireServiceEquipmentRead/RequireServiceEquipmentWrite (see
+// authz.CanReadServiceEquipment's doc comment for why Service Equipment
+// does not share Service's capability pair). See
+// internal/serviceequipment/httpapi/authenticated_test.go for a far more
+// thorough version of the same checks, scoped to that package.
+func newRouterWithServiceEquipment(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:                  logger,
+		Version:                 "test",
+		Commit:                  "test",
+		ServiceEquipmentHandler: serviceequipmenthttpapi.NewServiceEquipmentHandler(stubServiceEquipmentService{}),
+		Tokens:                  tokens,
+		Authz:                   authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validServiceEquipmentBody = `{"service_id":"11111111-1111-1111-1111-111111111111","device_id":"22222222-2222-2222-2222-222222222222","role":"ONU"}`
+
+func TestRouterRejectsUnauthenticatedServiceEquipmentRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServiceEquipment(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/service-equipment/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadServiceEquipment is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCanReadServiceEquipment(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServiceEquipment(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/service-equipment/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteServiceEquipment is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteServiceEquipment(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServiceEquipment(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/service-equipment/", strings.NewReader(validServiceEquipmentBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteServiceEquipment is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteServiceEquipment(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServiceEquipment(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/service-equipment/", strings.NewReader(validServiceEquipmentBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteServiceEquipment is "apply the standard
+// RBAC matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteServiceEquipment(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithServiceEquipment(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/service-equipment/", strings.NewReader(validServiceEquipmentBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

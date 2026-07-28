@@ -203,24 +203,63 @@ func TestCanWriteServices(t *testing.T) {
 	}
 }
 
+// TestCanReadServiceEquipment and TestCanWriteServiceEquipment are the
+// same direct proof as TestCanReadServices/TestCanWriteServices, applied
+// to the Service Equipment domain's access-control table ("apply the
+// standard RBAC matrix").
+func TestCanReadServiceEquipment(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadServiceEquipment(role); got != want {
+			t.Errorf("CanReadServiceEquipment(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanWriteServiceEquipment(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanWriteServiceEquipment(role); got != want {
+			t.Errorf("CanWriteServiceEquipment(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
 // TestNoAdministratorExclusiveCapabilityForSitesOrCustomers is the direct
 // check behind "no Site endpoint should require Administrator
-// exclusively" (goal 4) and its Customer, Location, Catalog, and Service
-// equivalents: for every capability a Site, Customer, Location,
-// Catalog/Product, or Service endpoint actually uses, at least one
-// non-Administrator role must also satisfy it.
+// exclusively" (goal 4) and its Customer, Location, Catalog, Service, and
+// Service Equipment equivalents: for every capability a Site, Customer,
+// Location, Catalog/Product, Service, or Service Equipment endpoint
+// actually uses, at least one non-Administrator role must also satisfy
+// it.
 func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 	capabilities := map[string]func(auth.Role) bool{
-		"CanReadInventory":  authz.CanReadInventory,
-		"CanWriteInventory": authz.CanWriteInventory,
-		"CanReadCustomers":  authz.CanReadCustomers,
-		"CanWriteCustomers": authz.CanWriteCustomers,
-		"CanReadLocations":  authz.CanReadLocations,
-		"CanWriteLocations": authz.CanWriteLocations,
-		"CanReadCatalog":    authz.CanReadCatalog,
-		"CanWriteCatalog":   authz.CanWriteCatalog,
-		"CanReadServices":   authz.CanReadServices,
-		"CanWriteServices":  authz.CanWriteServices,
+		"CanReadInventory":         authz.CanReadInventory,
+		"CanWriteInventory":        authz.CanWriteInventory,
+		"CanReadCustomers":         authz.CanReadCustomers,
+		"CanWriteCustomers":        authz.CanWriteCustomers,
+		"CanReadLocations":         authz.CanReadLocations,
+		"CanWriteLocations":        authz.CanWriteLocations,
+		"CanReadCatalog":           authz.CanReadCatalog,
+		"CanWriteCatalog":          authz.CanWriteCatalog,
+		"CanReadServices":          authz.CanReadServices,
+		"CanWriteServices":         authz.CanWriteServices,
+		"CanReadServiceEquipment":  authz.CanReadServiceEquipment,
+		"CanWriteServiceEquipment": authz.CanWriteServiceEquipment,
 	}
 
 	nonAdminRoles := []auth.Role{auth.RoleOperator, auth.RoleViewer}

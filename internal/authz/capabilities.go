@@ -220,3 +220,42 @@ func CanWriteServices(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadServiceEquipment reports whether role may read Service
+// Equipment data — the link between a Service and the inventory.Device
+// delivering it (see internal/serviceequipment). All three built-in
+// roles can — identical to CanReadServices's rule today.
+//
+// This is a separate function from CanReadServices, not a call to it, per
+// this milestone's explicit instruction ("do not reuse Service
+// capabilities"). Service Equipment sits at the intersection of two
+// domains — Service and Inventory — and answering "who can see this link"
+// by deferring to either one's rule would wire Service Equipment's access
+// question to a domain it merely references, the same reasoning
+// CanReadServices's own doc comment gives for not deferring to Location's
+// or Product's rule. A future requirement specific to physical equipment
+// visibility (e.g. field technicians needing read access without full
+// Service visibility) must never require touching Service's code, and
+// vice versa.
+func CanReadServiceEquipment(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteServiceEquipment reports whether role may create, update, or
+// delete Service Equipment data. Administrator and Operator can; Viewer
+// cannot. See CanReadServiceEquipment's doc comment for why this is not
+// implemented in terms of CanWriteServices despite the identical rule
+// today.
+func CanWriteServiceEquipment(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

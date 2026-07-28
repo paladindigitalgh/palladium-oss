@@ -43,6 +43,9 @@ import (
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
 	serviceservice "github.com/paladindigitalgh/palladium-oss/internal/service/service"
+	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
+	serviceequipmentpostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/postgres"
+	serviceequipmentservice "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/version"
 )
 
@@ -154,6 +157,17 @@ func run() error {
 	serviceSvc := serviceservice.NewServiceService(serviceRepo)
 	serviceHandler := servicehttpapi.NewServiceHandler(serviceSvc)
 
+	// Service Equipment follows the exact same repository -> service ->
+	// handler chain as every domain above, one package over
+	// (internal/serviceequipment instead of internal/service). Its two
+	// foreign keys are Service and inventory.Device; Device has no
+	// repository constructed above (it has no HTTP surface — see this
+	// milestone's scope), so nothing here needs a prior devicepostgres
+	// variable the way Service needed locationRepo/productRepo.
+	serviceEquipmentRepo := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
+	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo)
+	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -172,19 +186,20 @@ func run() error {
 	authzMiddleware := authz.NewMiddleware(userRepo)
 
 	router := api.NewRouter(api.Dependencies{
-		Logger:          logger,
-		HealthCheckers:  healthCheckers,
-		Version:         version.Version,
-		Commit:          version.Commit,
-		SiteHandler:     siteHandler,
-		CustomerHandler: customerHandler,
-		LocationHandler: locationHandler,
-		CatalogHandler:  catalogHandler,
-		ProductHandler:  productHandler,
-		ServiceHandler:  serviceHandler,
-		Tokens:          tokenIssuer,
-		LoginHandler:    loginHandler,
-		Authz:           authzMiddleware,
+		Logger:                  logger,
+		HealthCheckers:          healthCheckers,
+		Version:                 version.Version,
+		Commit:                  version.Commit,
+		SiteHandler:             siteHandler,
+		CustomerHandler:         customerHandler,
+		LocationHandler:         locationHandler,
+		CatalogHandler:          catalogHandler,
+		ProductHandler:          productHandler,
+		ServiceHandler:          serviceHandler,
+		ServiceEquipmentHandler: serviceEquipmentHandler,
+		Tokens:                  tokenIssuer,
+		LoginHandler:            loginHandler,
+		Authz:                   authzMiddleware,
 	})
 
 	srv := httpserver.New(httpserver.Config{

@@ -22,6 +22,7 @@ import (
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
+	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 )
 
 // Dependencies holds everything the router needs to wire up routes and
@@ -29,19 +30,20 @@ import (
 // this package, keeping construction explicit rather than relying on
 // globals or a framework-managed container.
 type Dependencies struct {
-	Logger          *slog.Logger
-	HealthCheckers  []health.Checker
-	Version         string
-	Commit          string
-	SiteHandler     *httpapi.SiteHandler
-	CustomerHandler *customerhttpapi.CustomerHandler
-	LocationHandler *locationhttpapi.LocationHandler
-	CatalogHandler  *cataloghttpapi.CatalogHandler
-	ProductHandler  *producthttpapi.ProductHandler
-	ServiceHandler  *servicehttpapi.ServiceHandler
-	Tokens          *auth.TokenIssuer
-	LoginHandler    *authhttpapi.LoginHandler
-	Authz           *authz.Middleware
+	Logger                  *slog.Logger
+	HealthCheckers          []health.Checker
+	Version                 string
+	Commit                  string
+	SiteHandler             *httpapi.SiteHandler
+	CustomerHandler         *customerhttpapi.CustomerHandler
+	LocationHandler         *locationhttpapi.LocationHandler
+	CatalogHandler          *cataloghttpapi.CatalogHandler
+	ProductHandler          *producthttpapi.ProductHandler
+	ServiceHandler          *servicehttpapi.ServiceHandler
+	ServiceEquipmentHandler *serviceequipmenthttpapi.ServiceEquipmentHandler
+	Tokens                  *auth.TokenIssuer
+	LoginHandler            *authhttpapi.LoginHandler
+	Authz                   *authz.Middleware
 }
 
 // NewRouter builds the application's http.Handler.
@@ -222,6 +224,28 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.ServiceHandler.Create)
 				r.Put("/{id}", deps.ServiceHandler.Update)
 				r.Delete("/{id}", deps.ServiceHandler.Delete)
+			})
+		})
+
+		// /service-equipment gets its own dedicated capability pair
+		// (RequireServiceEquipmentRead/RequireServiceEquipmentWrite), not a
+		// reuse of /services' — per this milestone's explicit instruction
+		// ("do not reuse Service capabilities"; see
+		// authz.CanReadServiceEquipment's doc comment for why).
+		r.Route("/service-equipment", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireServiceEquipmentRead())
+				r.Get("/", deps.ServiceEquipmentHandler.List)
+				r.Get("/{id}", deps.ServiceEquipmentHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireServiceEquipmentWrite())
+				r.Post("/", deps.ServiceEquipmentHandler.Create)
+				r.Put("/{id}", deps.ServiceEquipmentHandler.Update)
+				r.Delete("/{id}", deps.ServiceEquipmentHandler.Delete)
 			})
 		})
 	})
