@@ -19,6 +19,8 @@ import (
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/location"
+	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
@@ -309,6 +311,124 @@ func TestRouterAdministratorCanWriteCustomers(t *testing.T) {
 	token := mustIssueToken(t, tokens)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/customers/", strings.NewReader(validCustomerBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubLocationService satisfies whatever interface
+// locationhttpapi.LocationHandler needs structurally, the same technique
+// stubSiteService and stubCustomerService above use.
+type stubLocationService struct{}
+
+func (stubLocationService) Get(context.Context, uuid.UUID) (location.Location, error) {
+	return location.Location{}, apperror.NotFound("location not found")
+}
+func (stubLocationService) List(context.Context) ([]location.Location, error) { return nil, nil }
+func (stubLocationService) Create(_ context.Context, l location.Location) (location.Location, error) {
+	return l, nil
+}
+func (stubLocationService) Update(_ context.Context, l location.Location) (location.Location, error) {
+	return l, nil
+}
+func (stubLocationService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithLocations mirrors newRouterWithCustomers exactly, one
+// resource over: it proves /api/v1/locations is wired up behind both
+// auth.Middleware and authz.Middleware in the real production router, with
+// RequireLocationRead/RequireLocationWrite applied to the right HTTP
+// methods ("match Customer permissions"). See
+// internal/location/httpapi/authenticated_test.go for a far more thorough
+// version of the same checks, scoped to that package.
+func newRouterWithLocations(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:          logger,
+		Version:         "test",
+		Commit:          "test",
+		LocationHandler: locationhttpapi.NewLocationHandler(stubLocationService{}),
+		Tokens:          tokens,
+		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validLocationBody = `{"customer_id":"11111111-1111-1111-1111-111111111111","name":"Test Location","type":"Service","status":"Active"}`
+
+func TestRouterRejectsUnauthenticatedLocationRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithLocations(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/locations/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadLocations is "match Customer permissions",
+// proven through the real, fully wired router.
+func TestRouterViewerCanReadLocations(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithLocations(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/locations/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteLocations is "match Customer permissions",
+// proven through the real, fully wired router.
+func TestRouterViewerCannotWriteLocations(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithLocations(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/locations/", strings.NewReader(validLocationBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteLocations is "match Customer permissions",
+// proven through the real, fully wired router.
+func TestRouterOperatorCanWriteLocations(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithLocations(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/locations/", strings.NewReader(validLocationBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteLocations is "match Customer
+// permissions", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteLocations(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithLocations(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/locations/", strings.NewReader(validLocationBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

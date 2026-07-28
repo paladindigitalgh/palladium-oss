@@ -18,6 +18,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
+	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 )
 
 // Dependencies holds everything the router needs to wire up routes and
@@ -31,6 +32,7 @@ type Dependencies struct {
 	Commit          string
 	SiteHandler     *httpapi.SiteHandler
 	CustomerHandler *customerhttpapi.CustomerHandler
+	LocationHandler *locationhttpapi.LocationHandler
 	Tokens          *auth.TokenIssuer
 	LoginHandler    *authhttpapi.LoginHandler
 	Authz           *authz.Middleware
@@ -124,6 +126,31 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.CustomerHandler.Create)
 				r.Put("/{id}", deps.CustomerHandler.Update)
 				r.Delete("/{id}", deps.CustomerHandler.Delete)
+			})
+		})
+
+		// /locations uses the exact same shape as /customers above, with
+		// the exact same authorization model ("match Customer permissions")
+		// applied via its own named capabilities
+		// (RequireLocationRead/RequireLocationWrite, not a reuse of
+		// RequireCustomerRead/RequireCustomerWrite — see
+		// authz.CanReadLocations's doc comment for why Locations and
+		// Customers each get their own capability even though the role
+		// rules are identical today).
+		r.Route("/locations", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireLocationRead())
+				r.Get("/", deps.LocationHandler.List)
+				r.Get("/{id}", deps.LocationHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireLocationWrite())
+				r.Post("/", deps.LocationHandler.Create)
+				r.Put("/{id}", deps.LocationHandler.Update)
+				r.Delete("/{id}", deps.LocationHandler.Delete)
 			})
 		})
 	})

@@ -111,3 +111,18 @@ func (m *Middleware) RequireCustomerRead() func(http.Handler) http.Handler {
 func (m *Middleware) RequireCustomerWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteCustomers)
 }
+
+// RequireLocationRead returns middleware allowing any Role that
+// CanReadLocations (Administrator, Operator, Viewer) — the same
+// authorization model as RequireCustomerRead, applied to the Location
+// domain.
+func (m *Middleware) RequireLocationRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadLocations)
+}
+
+// RequireLocationWrite returns middleware allowing any Role that
+// CanWriteLocations (Administrator, Operator) — the same authorization
+// model as RequireCustomerWrite, applied to the Location domain.
+func (m *Middleware) RequireLocationWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteLocations)
+}

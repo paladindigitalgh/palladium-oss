@@ -25,15 +25,20 @@ const (
 // PostgreSQL- and pgx-specific error types never leak past this package.
 // op names the operation that failed, for context in the wrapped message.
 //
-// The foreign-key-violation branch was added alongside the Location
-// domain (internal/location/postgres/errors.go): locations.customer_id
-// references customers(id) ON DELETE RESTRICT, so deleting a Customer
-// that still has Locations is now a real, reachable outcome against this
-// schema, not the dead code it would have been when this package was
-// first written (when nothing yet referenced a Customer). It maps to
-// apperror.KindConflict for the same reasoning as every other foreign key
-// violation in this codebase: the request conflicts with the current
-// relational state of the data.
+// This mirrors internal/inventory/postgres/errors.go's translateError —
+// including the foreign-key-violation branch, unlike
+// internal/customer/postgres/errors.go and internal/auth/postgres/errors.go,
+// which both omit it because their tables have no foreign keys. locations
+// does: customer_id references customers(id) ON DELETE RESTRICT, so a
+// foreign key violation is a real, reachable outcome here in both
+// directions — creating/updating a Location with a CustomerID that does
+// not exist, and deleting a Customer that still has Locations — and both
+// map to apperror.KindConflict for the same reasoning
+// internal/inventory/postgres/errors.go's translateError already gives:
+// they are, at heart, the same kind of problem (the request conflicts
+// with the current relational state of the data), and distinguishing them
+// would require guessing intent for no practical benefit since callers
+// already know whether they just called Create or Delete.
 //
 // Callers check for pgx.ErrNoRows themselves before calling this
 // function, for the same reason as every other repository in this

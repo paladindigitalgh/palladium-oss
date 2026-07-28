@@ -99,3 +99,39 @@ func CanWriteCustomers(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadLocations reports whether role may read Location data. All three
+// built-in roles can — identical to CanReadCustomers's rule today.
+//
+// This is a separate function from CanReadCustomers, not a call to it,
+// even though the two currently return the same answer for every Role —
+// the Location milestone's explicit instruction, matching the reasoning
+// CanReadCustomers's own doc comment already gives for not being
+// implemented in terms of CanReadInventory: Locations and Customers are
+// different resources answering different questions ("who can see where
+// a Customer's equipment lives" is not the same question as "who can see
+// a Customer's own record"), and today's identical answer is a
+// coincidence of this being RBAC v1, not a reason to wire the two
+// together. A future requirement affecting one must never have to touch
+// the other's code to stay correct.
+func CanReadLocations(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteLocations reports whether role may create, update, or delete
+// Location data. Administrator and Operator can; Viewer cannot. See
+// CanReadLocations's doc comment for why this is not implemented in terms
+// of CanWriteCustomers despite the identical rule today.
+func CanWriteLocations(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

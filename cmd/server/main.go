@@ -26,6 +26,9 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	inventorypostgres "github.com/paladindigitalgh/palladium-oss/internal/inventory/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/service"
+	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
+	locationpostgres "github.com/paladindigitalgh/palladium-oss/internal/location/postgres"
+	locationservice "github.com/paladindigitalgh/palladium-oss/internal/location/service"
 	logging "github.com/paladindigitalgh/palladium-oss/internal/log"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
@@ -111,6 +114,13 @@ func run() error {
 	customerSvc := customerservice.NewCustomerService(customerRepo)
 	customerHandler := customerhttpapi.NewCustomerHandler(customerSvc)
 
+	// Location follows the exact same repository -> service -> handler
+	// chain as Site and Customer, one domain package over
+	// (internal/location instead of internal/customer).
+	locationRepo := locationpostgres.NewLocationRepository(pool, clock.New(), id.New())
+	locationSvc := locationservice.NewLocationService(locationRepo)
+	locationHandler := locationhttpapi.NewLocationHandler(locationSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -135,6 +145,7 @@ func run() error {
 		Commit:          version.Commit,
 		SiteHandler:     siteHandler,
 		CustomerHandler: customerHandler,
+		LocationHandler: locationHandler,
 		Tokens:          tokenIssuer,
 		LoginHandler:    loginHandler,
 		Authz:           authzMiddleware,
