@@ -173,3 +173,19 @@ func (m *Middleware) RequireServiceEquipmentRead() func(http.Handler) http.Handl
 func (m *Middleware) RequireServiceEquipmentWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteServiceEquipment)
 }
+
+// RequireProvisioningRead returns middleware allowing any Role that
+// CanReadProvisioning (Administrator, Operator, Viewer) — the same
+// authorization model as RequireServiceEquipmentRead, applied to the
+// Provisioning domain.
+func (m *Middleware) RequireProvisioningRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadProvisioning)
+}
+
+// RequireProvisioningWrite returns middleware allowing any Role that
+// CanWriteProvisioning (Administrator, Operator) — the same
+// authorization model as RequireServiceEquipmentWrite, applied to the
+// Provisioning domain.
+func (m *Middleware) RequireProvisioningWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteProvisioning)
+}

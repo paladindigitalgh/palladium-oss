@@ -259,3 +259,44 @@ func CanWriteServiceEquipment(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadProvisioning reports whether role may read Provisioning Job
+// data — the orchestration record for a request to provision, modify,
+// suspend, resume, disconnect, or synchronize a Service (see
+// internal/provisioning). All three built-in roles can — identical to
+// CanReadServiceEquipment's rule today.
+//
+// This is a separate function from CanReadServices, not a call to it, per
+// this milestone's explicit instruction ("do not reuse Service
+// permissions"). Provisioning is called out explicitly as "an
+// operational concern [that] deserves its own authorization boundary":
+// a ProvisioningJob references a Service, but "who can see a Service"
+// and "who can see the operational history of attempts to provision
+// it" are different questions that happen to share an answer today for
+// the same reason every other capability pair in this file does — a
+// future requirement scoped specifically to provisioning (e.g. a
+// field-operations role that can drive provisioning without general
+// Service visibility) must never require touching Service's code, and
+// vice versa.
+func CanReadProvisioning(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteProvisioning reports whether role may create, update
+// (including driving state transitions), or delete Provisioning Job
+// data. Administrator and Operator can; Viewer cannot. See
+// CanReadProvisioning's doc comment for why this is not implemented in
+// terms of CanWriteServices despite the identical rule today.
+func CanWriteProvisioning(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

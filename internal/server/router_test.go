@@ -27,6 +27,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/provisioning"
+	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
@@ -903,6 +905,189 @@ func TestRouterAdministratorCanWriteServiceEquipment(t *testing.T) {
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubProvisioningService satisfies whatever interface
+// provisioninghttpapi.ProvisioningHandler needs structurally, the same
+// technique stubSiteService and every other stub above uses.
+type stubProvisioningService struct{}
+
+func (stubProvisioningService) Get(context.Context, uuid.UUID) (provisioning.ProvisioningJob, error) {
+	return provisioning.ProvisioningJob{}, apperror.NotFound("provisioning job not found")
+}
+func (stubProvisioningService) List(context.Context) ([]provisioning.ProvisioningJob, error) {
+	return nil, nil
+}
+func (stubProvisioningService) ListByServiceID(context.Context, uuid.UUID) ([]provisioning.ProvisioningJob, error) {
+	return nil, nil
+}
+func (stubProvisioningService) Create(_ context.Context, j provisioning.ProvisioningJob) (provisioning.ProvisioningJob, error) {
+	return j, nil
+}
+func (stubProvisioningService) Delete(context.Context, uuid.UUID) error { return nil }
+func (stubProvisioningService) Start(_ context.Context, id uuid.UUID) (provisioning.ProvisioningJob, error) {
+	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusRunning}, nil
+}
+func (stubProvisioningService) Succeed(_ context.Context, id uuid.UUID) (provisioning.ProvisioningJob, error) {
+	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusSucceeded}, nil
+}
+func (stubProvisioningService) Fail(_ context.Context, id uuid.UUID, _ string) (provisioning.ProvisioningJob, error) {
+	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusFailed}, nil
+}
+func (stubProvisioningService) Cancel(_ context.Context, id uuid.UUID) (provisioning.ProvisioningJob, error) {
+	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusCancelled}, nil
+}
+func (stubProvisioningService) Retry(_ context.Context, id uuid.UUID) (provisioning.ProvisioningJob, error) {
+	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusPending}, nil
+}
+
+// newRouterWithProvisioning mirrors newRouterWithServiceEquipment
+// exactly, one resource over: it proves /api/v1/provisioning-jobs
+// (including its action sub-routes) is wired up behind auth.Middleware
+// and authz.Middleware in the real production router, using its own
+// dedicated RequireProvisioningRead/RequireProvisioningWrite (see
+// authz.CanReadProvisioning's doc comment for why Provisioning does not
+// share Service's capability pair). See
+// internal/provisioning/httpapi/authenticated_test.go for a far more
+// thorough version of the same checks, scoped to that package.
+func newRouterWithProvisioning(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:              logger,
+		Version:             "test",
+		Commit:              "test",
+		ProvisioningHandler: provisioninghttpapi.NewProvisioningHandler(stubProvisioningService{}),
+		Tokens:              tokens,
+		Authz:               authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validProvisioningBody = `{"service_id":"11111111-1111-1111-1111-111111111111","operation":"Provision"}`
+
+func TestRouterRejectsUnauthenticatedProvisioningRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProvisioning(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/provisioning-jobs/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadProvisioning is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCanReadProvisioning(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProvisioning(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/provisioning-jobs/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteProvisioning is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteProvisioning(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProvisioning(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/", strings.NewReader(validProvisioningBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotDriveProvisioningStateTransitions proves the
+// action sub-routes (start/succeed/fail/cancel/retry) are covered by the
+// same write capability as create/delete, not left unguarded.
+func TestRouterViewerCannotDriveProvisioningStateTransitions(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProvisioning(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	jobID := uuid.New()
+	for _, action := range []string{"start", "succeed", "fail", "cancel", "retry"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/"+jobID.String()+"/"+action, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("action %q: status = %d, want %d; body: %s", action, rec.Code, http.StatusForbidden, rec.Body.String())
+		}
+	}
+}
+
+// TestRouterOperatorCanWriteProvisioning is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteProvisioning(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProvisioning(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/", strings.NewReader(validProvisioningBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteProvisioning is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteProvisioning(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProvisioning(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/", strings.NewReader(validProvisioningBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanDriveProvisioningStateTransitions proves the
+// action sub-routes are reachable at all through the real router for a
+// role that has the write capability.
+func TestRouterAdministratorCanDriveProvisioningStateTransitions(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProvisioning(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	jobID := uuid.New()
+	for _, action := range []string{"start", "succeed", "fail", "cancel", "retry"} {
+		var body io.Reader
+		if action == "fail" {
+			body = strings.NewReader(`{"error_message":"device unreachable"}`)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/"+jobID.String()+"/"+action, body)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("action %q: status = %d, want %d; body: %s", action, rec.Code, http.StatusOK, rec.Body.String())
+		}
 	}
 }
 

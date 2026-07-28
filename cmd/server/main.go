@@ -39,6 +39,9 @@ import (
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
 	productservice "github.com/paladindigitalgh/palladium-oss/internal/product/service"
+	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
+	provisioningpostgres "github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
+	provisioningservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/service"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
@@ -168,6 +171,20 @@ func run() error {
 	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo)
 	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
 
+	// Provisioning follows the same repository -> service -> handler
+	// chain as every domain above, but ProvisioningService additionally
+	// takes a clock.Clock — the one business logic layer in this codebase
+	// that needs one, since it stamps StartedAt/CompletedAt itself as
+	// part of enforcing state transitions (see
+	// internal/provisioning/service's package doc comment). A separate
+	// clock.New() is passed here rather than reusing one of the instances
+	// above only because each repository already gets its own by
+	// convention (see the comment on siteRepo above); there is no
+	// shared-state reason it has to be this specific instance.
+	provisioningRepo := provisioningpostgres.NewProvisioningRepository(pool, clock.New(), id.New())
+	provisioningSvc := provisioningservice.NewProvisioningService(provisioningRepo, clock.New())
+	provisioningHandler := provisioninghttpapi.NewProvisioningHandler(provisioningSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -197,6 +214,7 @@ func run() error {
 		ProductHandler:          productHandler,
 		ServiceHandler:          serviceHandler,
 		ServiceEquipmentHandler: serviceEquipmentHandler,
+		ProvisioningHandler:     provisioningHandler,
 		Tokens:                  tokenIssuer,
 		LoginHandler:            loginHandler,
 		Authz:                   authzMiddleware,

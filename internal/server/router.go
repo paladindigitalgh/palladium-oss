@@ -21,6 +21,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
+	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 )
@@ -41,6 +42,7 @@ type Dependencies struct {
 	ProductHandler          *producthttpapi.ProductHandler
 	ServiceHandler          *servicehttpapi.ServiceHandler
 	ServiceEquipmentHandler *serviceequipmenthttpapi.ServiceEquipmentHandler
+	ProvisioningHandler     *provisioninghttpapi.ProvisioningHandler
 	Tokens                  *auth.TokenIssuer
 	LoginHandler            *authhttpapi.LoginHandler
 	Authz                   *authz.Middleware
@@ -246,6 +248,39 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.ServiceEquipmentHandler.Create)
 				r.Put("/{id}", deps.ServiceEquipmentHandler.Update)
 				r.Delete("/{id}", deps.ServiceEquipmentHandler.Delete)
+			})
+		})
+
+		// /provisioning-jobs gets its own dedicated capability pair
+		// (RequireProvisioningRead/RequireProvisioningWrite), not a reuse
+		// of /services' — per this milestone's explicit instruction ("do
+		// not reuse Service permissions"; see
+		// authz.CanReadProvisioning's doc comment for why). The write
+		// group also covers the state-machine action sub-routes
+		// (start/succeed/fail/cancel/retry): driving a transition is a
+		// write, the same as create/delete, and every one of those
+		// actions requires exactly the same capability — there is no
+		// narrower permission this milestone asks for (e.g. "can cancel
+		// but not start"), so splitting them into further sub-groups
+		// would add structure with no corresponding rule to justify it.
+		r.Route("/provisioning-jobs", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireProvisioningRead())
+				r.Get("/", deps.ProvisioningHandler.List)
+				r.Get("/{id}", deps.ProvisioningHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireProvisioningWrite())
+				r.Post("/", deps.ProvisioningHandler.Create)
+				r.Delete("/{id}", deps.ProvisioningHandler.Delete)
+				r.Post("/{id}/start", deps.ProvisioningHandler.Start)
+				r.Post("/{id}/succeed", deps.ProvisioningHandler.Succeed)
+				r.Post("/{id}/fail", deps.ProvisioningHandler.Fail)
+				r.Post("/{id}/cancel", deps.ProvisioningHandler.Cancel)
+				r.Post("/{id}/retry", deps.ProvisioningHandler.Retry)
 			})
 		})
 	})
