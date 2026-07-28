@@ -28,6 +28,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
+	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
 )
 
 // newTestQuerier opens a transaction against the real test database,
@@ -115,11 +117,21 @@ func createTestService(t *testing.T, ctx context.Context, q database.Querier) do
 		t.Fatalf("fixture: create product: %v", err)
 	}
 
+	profileRepo := serviceprofilepostgres.NewServiceProfileRepository(q, clock.New(), id.New())
+	sp, err := profileRepo.Create(ctx, serviceprofile.ServiceProfile{
+		Name:   "Fixture Service Profile " + uuid.NewString(),
+		Status: serviceprofile.StatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create service profile: %v", err)
+	}
+
 	serviceRepo := servicepostgres.NewServiceRepository(q, clock.New(), id.New())
 	s, err := serviceRepo.Create(ctx, domainservice.Service{
-		LocationID: l.ID,
-		ProductID:  p.ID,
-		Status:     domainservice.ServiceStatusActive,
+		LocationID:       l.ID,
+		ProductID:        p.ID,
+		ServiceProfileID: sp.ID,
+		Status:           domainservice.ServiceStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create service: %v", err)

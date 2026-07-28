@@ -64,6 +64,9 @@ import (
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 	serviceequipmentpostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/postgres"
 	serviceequipmentservice "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/service"
+	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
+	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
+	serviceprofileservice "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/version"
 )
 
@@ -165,12 +168,19 @@ func run() error {
 	productSvc := productservice.NewProductService(productRepo)
 	productHandler := producthttpapi.NewProductHandler(productSvc)
 
+	// Service Profile follows the exact same repository -> service ->
+	// handler chain as every domain above, mirroring internal/catalog's
+	// own standalone (non-nested) shape.
+	serviceProfileRepo := serviceprofilepostgres.NewServiceProfileRepository(pool, clock.New(), id.New())
+	serviceProfileSvc := serviceprofileservice.NewServiceProfileService(serviceProfileRepo)
+	serviceProfileHandler := serviceprofilehttpapi.NewServiceProfileHandler(serviceProfileSvc)
+
 	// Service follows the exact same repository -> service -> handler
 	// chain as every domain above, one package over (internal/service
 	// instead of internal/product). It is constructed after Location,
-	// Catalog, and Product, mirroring the two foreign keys a Service row
-	// requires, though as with Product/Catalog above nothing here
-	// actually requires that ordering.
+	// Catalog, Product, and Service Profile, mirroring the three foreign
+	// keys a Service row requires, though as with Product/Catalog above
+	// nothing here actually requires that ordering.
 	serviceRepo := servicepostgres.NewServiceRepository(pool, clock.New(), id.New())
 	serviceSvc := serviceservice.NewServiceService(serviceRepo)
 	serviceHandler := servicehttpapi.NewServiceHandler(serviceSvc)
@@ -260,6 +270,7 @@ func run() error {
 		LocationHandler:         locationHandler,
 		CatalogHandler:          catalogHandler,
 		ProductHandler:          productHandler,
+		ServiceProfileHandler:   serviceProfileHandler,
 		ServiceHandler:          serviceHandler,
 		ServiceEquipmentHandler: serviceEquipmentHandler,
 		ProvisioningHandler:     provisioningHandler,

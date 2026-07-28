@@ -2,9 +2,10 @@
 // against PostgreSQL using pgx directly — no ORM — following the exact
 // pattern established by internal/location/postgres.LocationRepository
 // (the closest precedent: required foreign keys to sibling domains).
-// Service is the first entity in this codebase with two required foreign
-// keys rather than one; both are handled identically to Location's single
-// CustomerID, just doubled.
+// Service was originally the first entity in this codebase with two
+// required foreign keys rather than one; the Service Profile milestone
+// added a third (ServiceProfileID), handled identically to LocationID
+// and ProductID.
 package postgres
 
 import (
@@ -43,7 +44,7 @@ func NewServiceRepository(db database.Querier, clock clock.Clock, ids id.Generat
 // none exists.
 func (r *ServiceRepository) Get(ctx context.Context, serviceID uuid.UUID) (service.Service, error) {
 	const query = `
-		SELECT id, location_id, product_id, status, description,
+		SELECT id, location_id, product_id, service_profile_id, status, description,
 		       activated_at, suspended_at, disconnected_at, created_at, updated_at
 		FROM services
 		WHERE id = $1
@@ -66,7 +67,7 @@ func (r *ServiceRepository) Get(ctx context.Context, serviceID uuid.UUID) (servi
 // how such lists are typically reviewed operationally.
 func (r *ServiceRepository) List(ctx context.Context) ([]service.Service, error) {
 	const query = `
-		SELECT id, location_id, product_id, status, description,
+		SELECT id, location_id, product_id, service_profile_id, status, description,
 		       activated_at, suspended_at, disconnected_at, created_at, updated_at
 		FROM services
 		ORDER BY created_at
@@ -97,23 +98,23 @@ func (r *ServiceRepository) List(ctx context.Context) ([]service.Service, error)
 //
 // As with LocationRepository.Create, the repository assigns ID, CreatedAt,
 // and UpdatedAt itself — any values already set on the input Service for
-// those fields are ignored. A LocationID or ProductID that does not
-// reference an existing row fails with an apperror.KindConflict error
-// (see translateError).
+// those fields are ignored. A LocationID, ProductID, or ServiceProfileID
+// that does not reference an existing row fails with an
+// apperror.KindConflict error (see translateError).
 func (r *ServiceRepository) Create(ctx context.Context, s service.Service) (service.Service, error) {
 	const query = `
 		INSERT INTO services (
-			id, location_id, product_id, status, description,
+			id, location_id, product_id, service_profile_id, status, description,
 			activated_at, suspended_at, disconnected_at, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-		RETURNING id, location_id, product_id, status, description,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+		RETURNING id, location_id, product_id, service_profile_id, status, description,
 		          activated_at, suspended_at, disconnected_at, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanService(r.db.QueryRow(ctx, query,
-		r.ids.New(), s.LocationID, s.ProductID, string(s.Status), s.Description,
+		r.ids.New(), s.LocationID, s.ProductID, s.ServiceProfileID, string(s.Status), s.Description,
 		s.ActivatedAt, s.SuspendedAt, s.DisconnectedAt, now))
 	if err != nil {
 		return service.Service{}, translateError("create service", err)
@@ -131,15 +132,15 @@ func (r *ServiceRepository) Create(ctx context.Context, s service.Service) (serv
 func (r *ServiceRepository) Update(ctx context.Context, s service.Service) (service.Service, error) {
 	const query = `
 		UPDATE services
-		SET location_id = $1, product_id = $2, status = $3, description = $4,
-		    activated_at = $5, suspended_at = $6, disconnected_at = $7, updated_at = $8
-		WHERE id = $9
-		RETURNING id, location_id, product_id, status, description,
+		SET location_id = $1, product_id = $2, service_profile_id = $3, status = $4, description = $5,
+		    activated_at = $6, suspended_at = $7, disconnected_at = $8, updated_at = $9
+		WHERE id = $10
+		RETURNING id, location_id, product_id, service_profile_id, status, description,
 		          activated_at, suspended_at, disconnected_at, created_at, updated_at
 	`
 
 	updated, err := scanService(r.db.QueryRow(ctx, query,
-		s.LocationID, s.ProductID, string(s.Status), s.Description,
+		s.LocationID, s.ProductID, s.ServiceProfileID, string(s.Status), s.Description,
 		s.ActivatedAt, s.SuspendedAt, s.DisconnectedAt, r.clock.Now(), s.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -182,7 +183,7 @@ func scanService(row rowScanner) (service.Service, error) {
 		status string
 	)
 	err := row.Scan(
-		&s.ID, &s.LocationID, &s.ProductID, &status, &s.Description,
+		&s.ID, &s.LocationID, &s.ProductID, &s.ServiceProfileID, &status, &s.Description,
 		&s.ActivatedAt, &s.SuspendedAt, &s.DisconnectedAt, &s.CreatedAt, &s.UpdatedAt,
 	)
 	s.Status = service.ServiceStatus(status)

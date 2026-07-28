@@ -80,9 +80,10 @@ var _ domainservice.ServiceRepository = (*fakeServiceRepository)(nil)
 
 func validService() domainservice.Service {
 	return domainservice.Service{
-		LocationID: uuid.New(),
-		ProductID:  uuid.New(),
-		Status:     domainservice.ServiceStatusPending,
+		LocationID:       uuid.New(),
+		ProductID:        uuid.New(),
+		ServiceProfileID: uuid.New(),
+		Status:           domainservice.ServiceStatusPending,
 	}
 }
 

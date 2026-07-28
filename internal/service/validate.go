@@ -9,9 +9,10 @@ import (
 )
 
 // Validate reports whether s has every required field set: a present
-// LocationID, a present ProductID, and a Status that is one of its
-// defined values (see status.go). Description is optional and is never
-// checked for presence, consistent with location.Location.Validate.
+// LocationID, a present ProductID, a present ServiceProfileID, and a
+// Status that is one of its defined values (see status.go). Description
+// is optional and is never checked for presence, consistent with
+// location.Location.Validate.
 //
 // ActivatedAt, SuspendedAt, and DisconnectedAt are never validated
 // against Status here (e.g. requiring ActivatedAt once Status is Active).
@@ -27,6 +28,9 @@ func (s Service) Validate() error {
 	}
 	if s.ProductID == uuid.Nil {
 		errs.Add("product_id", "is required")
+	}
+	if s.ServiceProfileID == uuid.Nil {
+		errs.Add("service_profile_id", "is required")
 	}
 	if !s.Status.Valid() {
 		errs.Add("status", fmt.Sprintf("must be one of: %s", serviceStatusNames()))

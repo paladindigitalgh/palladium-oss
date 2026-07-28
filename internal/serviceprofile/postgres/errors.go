@@ -25,19 +25,18 @@ const (
 // PostgreSQL- and pgx-specific error types never leak past this package.
 // op names the operation that failed, for context in the wrapped message.
 //
-// This mirrors internal/product/postgres/errors.go's translateError —
-// including the foreign-key-violation branch: services.location_id,
-// services.product_id, and services.service_profile_id all reference
-// their parent tables ON DELETE RESTRICT, so a foreign key violation is
-// a real, reachable outcome here in five directions — creating/updating
-// a Service with a LocationID, ProductID, or ServiceProfileID that does
-// not exist, and deleting a Location, Product, or ServiceProfile that
-// still has a Service. It maps to apperror.KindConflict for the same
-// reasoning given there: the request conflicts with the current
-// relational state of the data. This package was written with that
-// branch present from the start, learning the lesson
-// internal/customer/postgres/errors.go had to be corrected for after the
-// fact once internal/location introduced a foreign key into it.
+// This includes the foreign-key-violation branch even though nothing in
+// the service_profiles table itself references another table:
+// services.service_profile_id references service_profiles(id) ON DELETE
+// RESTRICT (see internal/service/postgres and
+// database/migrations/00022_service_add_service_profile_id.sql), so
+// deleting a ServiceProfile that still has Services is a real, reachable
+// outcome against this schema. This is the same lesson applied
+// proactively throughout this codebase since
+// internal/customer/postgres/errors.go originally omitted it and had to
+// be corrected after the fact — service_profile's errors.go is written
+// with that FK from the start rather than waiting to be caught by a
+// failing test.
 //
 // Callers check for pgx.ErrNoRows themselves before calling this
 // function, for the same reason as every other repository in this

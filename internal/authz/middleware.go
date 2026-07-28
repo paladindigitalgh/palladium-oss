@@ -225,3 +225,17 @@ func (m *Middleware) RequireAccessTopologyRead() func(http.Handler) http.Handler
 func (m *Middleware) RequireAccessTopologyWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteAccessTopology)
 }
+
+// RequireServiceProfilesRead returns middleware allowing any Role that
+// CanReadServiceProfiles (Administrator, Operator, Viewer). Applied to
+// the /service-profiles route.
+func (m *Middleware) RequireServiceProfilesRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadServiceProfiles)
+}
+
+// RequireServiceProfilesWrite returns middleware allowing any Role that
+// CanWriteServiceProfiles (Administrator, Operator). Applied to the
+// /service-profiles route.
+func (m *Middleware) RequireServiceProfilesWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteServiceProfiles)
+}

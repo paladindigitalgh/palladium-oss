@@ -31,9 +31,10 @@ func assertInvalid(t *testing.T, err error) {
 
 func validService() service.Service {
 	return service.Service{
-		LocationID: uuid.New(),
-		ProductID:  uuid.New(),
-		Status:     service.ServiceStatusPending,
+		LocationID:       uuid.New(),
+		ProductID:        uuid.New(),
+		ServiceProfileID: uuid.New(),
+		Status:           service.ServiceStatusPending,
 	}
 }
 
@@ -55,6 +56,13 @@ func TestServiceValidateRequiresLocationID(t *testing.T) {
 func TestServiceValidateRequiresProductID(t *testing.T) {
 	s := validService()
 	s.ProductID = uuid.Nil
+
+	assertInvalid(t, s.Validate())
+}
+
+func TestServiceValidateRequiresServiceProfileID(t *testing.T) {
+	s := validService()
+	s.ServiceProfileID = uuid.Nil
 
 	assertInvalid(t, s.Validate())
 }

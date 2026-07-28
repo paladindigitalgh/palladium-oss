@@ -29,6 +29,7 @@ import (
 	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
+	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
 )
 
 // Dependencies holds everything the router needs to wire up routes and
@@ -53,6 +54,7 @@ type Dependencies struct {
 	PONPortHandler          *ponporthttpapi.PONPortHandler
 	AccessInterfaceHandler  *accessinterfacehttpapi.AccessInterfaceHandler
 	AccessAttachmentHandler *accessattachmenthttpapi.AccessAttachmentHandler
+	ServiceProfileHandler   *serviceprofilehttpapi.ServiceProfileHandler
 	Tokens                  *auth.TokenIssuer
 	LoginHandler            *authhttpapi.LoginHandler
 	Authz                   *authz.Middleware
@@ -394,6 +396,31 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.AccessAttachmentHandler.Create)
 				r.Put("/{id}", deps.AccessAttachmentHandler.Update)
 				r.Delete("/{id}", deps.AccessAttachmentHandler.Delete)
+			})
+		})
+
+		// /service-profiles gets its own dedicated capability pair
+		// (RequireServiceProfilesRead/RequireServiceProfilesWrite), not a
+		// reuse of /catalogs' or /products' — per this milestone's
+		// explicit instruction ("do not reuse Product permissions"). A
+		// Service references both a Product and a ServiceProfile, but
+		// they represent different business concepts that may diverge in
+		// authorization requirements later (see
+		// authz.CanReadServiceProfiles's doc comment).
+		r.Route("/service-profiles", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireServiceProfilesRead())
+				r.Get("/", deps.ServiceProfileHandler.List)
+				r.Get("/{id}", deps.ServiceProfileHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireServiceProfilesWrite())
+				r.Post("/", deps.ServiceProfileHandler.Create)
+				r.Put("/{id}", deps.ServiceProfileHandler.Update)
+				r.Delete("/{id}", deps.ServiceProfileHandler.Delete)
 			})
 		})
 	})
