@@ -467,3 +467,86 @@ func CanRunDiagnostics(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadAuthentication reports whether role may read Authentication data
+// — the reusable credential records future infrastructure components
+// (Connection Profiles today; SSH-driven vendor adapters later) resolve
+// by ID (see internal/authentication). All three built-in roles can —
+// identical to CanReadServiceProfiles's rule today.
+//
+// This is a separate function from every other capability in this file,
+// not a call to any of them, for the same reason CanReadServiceProfiles's
+// own doc comment gives: a Connection Profile references an Authentication
+// record (see connectionprofile.ConnectionProfile's AuthenticationID), but
+// "who can see a stored credential" and "who can see a connection's
+// non-secret settings" are different questions that merely happen to
+// share an answer today — see CanReadConnectionProfiles's doc comment for
+// the same reasoning applied in the other direction. A future requirement
+// specific to credential visibility (e.g. restricting who can even see
+// that a credential exists, independent of Connection Profile access)
+// must never require touching Connection Profile's code, and vice versa.
+//
+// Note this governs only whether the Authentication record itself (Name,
+// AuthenticationType, Username, HasPassword/HasPrivateKey — see
+// internal/authentication/httpapi's response DTO) can be read, never the
+// plaintext Password or PrivateKey: those are never returned over HTTP to
+// any role, by design (see internal/authentication/httpapi/dto.go).
+func CanReadAuthentication(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteAuthentication reports whether role may create, update, or
+// delete Authentication data. Administrator and Operator can; Viewer
+// cannot. See CanReadAuthentication's doc comment for why this is not
+// implemented in terms of any other domain's write capability despite the
+// identical rule today.
+func CanWriteAuthentication(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanReadConnectionProfiles reports whether role may read Connection
+// Profile data — the reusable, non-secret connection settings (protocol,
+// port, timeout, host key policy) future infrastructure components will
+// use, together with an optional reference to an Authentication record
+// (see internal/connectionprofile). All three built-in roles can —
+// identical to CanReadAuthentication's rule today.
+//
+// This is a separate function from CanReadAuthentication, not a call to
+// it, even though a ConnectionProfile references an Authentication record
+// by ID — see CanReadAuthentication's doc comment for the reasoning in
+// the other direction. A future requirement specific to Connection
+// Profile visibility (e.g. a network-engineering role that manages
+// connection settings without being able to see which credentials exist)
+// must never require touching Authentication's code, and vice versa.
+func CanReadConnectionProfiles(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteConnectionProfiles reports whether role may create, update, or
+// delete Connection Profile data. Administrator and Operator can; Viewer
+// cannot. See CanReadConnectionProfiles's doc comment for why this is not
+// implemented in terms of CanWriteAuthentication despite the identical
+// rule today.
+func CanWriteConnectionProfiles(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

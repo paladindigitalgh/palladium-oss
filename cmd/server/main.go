@@ -24,11 +24,17 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	authpostgres "github.com/paladindigitalgh/palladium-oss/internal/auth/postgres"
+	authenticationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/authentication/httpapi"
+	authenticationpostgres "github.com/paladindigitalgh/palladium-oss/internal/authentication/postgres"
+	authenticationservice "github.com/paladindigitalgh/palladium-oss/internal/authentication/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
 	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
 	catalogpostgres "github.com/paladindigitalgh/palladium-oss/internal/catalog/postgres"
 	catalogservice "github.com/paladindigitalgh/palladium-oss/internal/catalog/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/config"
+	connectionprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/httpapi"
+	connectionprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/postgres"
+	connectionprofileservice "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/service"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
 	customerservice "github.com/paladindigitalgh/palladium-oss/internal/customer/service"
@@ -49,6 +55,7 @@ import (
 	oltpostgres "github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
 	oltservice "github.com/paladindigitalgh/palladium-oss/internal/olt/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
+	"github.com/paladindigitalgh/palladium-oss/internal/platform/encryption"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/retry"
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
@@ -259,6 +266,40 @@ func run() error {
 	diagnosticsSvc := diagnosticsservice.NewDiagnosticsService(diagnosticsRegistry)
 	diagnosticsHandler := diagnosticshttpapi.NewDiagnosticsHandler(diagnosticsSvc)
 
+	// encryptor is shared by every repository that stores an encrypted
+	// secret — only internal/authentication/postgres today, but any
+	// future infrastructure package that needs its own encrypted field
+	// (rather than referencing an Authentication record by ID) would take
+	// the same instance rather than parsing PALLADIUM_MASTER_KEY again.
+	// cfg.Validate (see internal/config/config.go) already guarantees
+	// MasterKey is non-empty and, in production, not the insecure
+	// checked-in default, so the only remaining failure mode here is a
+	// malformed base64 value — a startup-time configuration error, not a
+	// runtime condition to recover from.
+	encryptor, err := encryption.NewAESGCMEncryptorFromBase64Key(cfg.Encryption.MasterKey)
+	if err != nil {
+		return fmt.Errorf("build encryptor: %w", err)
+	}
+
+	// Authentication follows the same repository -> service -> handler
+	// chain as every domain above, but the repository additionally takes
+	// encryptor: it encrypts Password/PrivateKey before every write and
+	// decrypts them after every read, so the plaintext never crosses the
+	// service or HTTP layers on the way in or out of PostgreSQL (see
+	// internal/authentication/postgres's package doc comment).
+	authenticationRepo := authenticationpostgres.NewAuthenticationRepository(pool, clock.New(), id.New(), encryptor)
+	authenticationSvc := authenticationservice.NewAuthenticationService(authenticationRepo)
+	authenticationHandler := authenticationhttpapi.NewAuthenticationHandler(authenticationSvc)
+
+	// Connection Profile follows the same repository -> service -> handler
+	// chain as every domain above, constructed after Authentication,
+	// mirroring the FK from connection_profiles into
+	// authentication_methods, though as with every other pair in this
+	// file nothing here actually requires that ordering.
+	connectionProfileRepo := connectionprofilepostgres.NewConnectionProfileRepository(pool, clock.New(), id.New())
+	connectionProfileSvc := connectionprofileservice.NewConnectionProfileService(connectionProfileRepo)
+	connectionProfileHandler := connectionprofilehttpapi.NewConnectionProfileHandler(connectionProfileSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -277,28 +318,30 @@ func run() error {
 	authzMiddleware := authz.NewMiddleware(userRepo)
 
 	router := api.NewRouter(api.Dependencies{
-		Logger:                  logger,
-		HealthCheckers:          healthCheckers,
-		Version:                 version.Version,
-		Commit:                  version.Commit,
-		SiteHandler:             siteHandler,
-		CustomerHandler:         customerHandler,
-		LocationHandler:         locationHandler,
-		CatalogHandler:          catalogHandler,
-		ProductHandler:          productHandler,
-		ServiceProfileHandler:   serviceProfileHandler,
-		DiagnosticsHandler:      diagnosticsHandler,
-		ServiceHandler:          serviceHandler,
-		ServiceEquipmentHandler: serviceEquipmentHandler,
-		ProvisioningHandler:     provisioningHandler,
-		AccessNetworkHandler:    accessNetworkHandler,
-		OLTHandler:              oltHandler,
-		PONPortHandler:          ponPortHandler,
-		AccessInterfaceHandler:  accessInterfaceHandler,
-		AccessAttachmentHandler: accessAttachmentHandler,
-		Tokens:                  tokenIssuer,
-		LoginHandler:            loginHandler,
-		Authz:                   authzMiddleware,
+		Logger:                   logger,
+		HealthCheckers:           healthCheckers,
+		Version:                  version.Version,
+		Commit:                   version.Commit,
+		SiteHandler:              siteHandler,
+		CustomerHandler:          customerHandler,
+		LocationHandler:          locationHandler,
+		CatalogHandler:           catalogHandler,
+		ProductHandler:           productHandler,
+		ServiceProfileHandler:    serviceProfileHandler,
+		DiagnosticsHandler:       diagnosticsHandler,
+		ServiceHandler:           serviceHandler,
+		ServiceEquipmentHandler:  serviceEquipmentHandler,
+		ProvisioningHandler:      provisioningHandler,
+		AccessNetworkHandler:     accessNetworkHandler,
+		OLTHandler:               oltHandler,
+		PONPortHandler:           ponPortHandler,
+		AccessInterfaceHandler:   accessInterfaceHandler,
+		AccessAttachmentHandler:  accessAttachmentHandler,
+		AuthenticationHandler:    authenticationHandler,
+		ConnectionProfileHandler: connectionProfileHandler,
+		Tokens:                   tokenIssuer,
+		LoginHandler:             loginHandler,
+		Authz:                    authzMiddleware,
 	})
 
 	srv := httpserver.New(httpserver.Config{

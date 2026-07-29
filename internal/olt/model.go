@@ -33,6 +33,20 @@
 //
 // Everything above is a real feature some future milestone will add. None
 // of it is implied by what exists today.
+//
+// # Connection Profile
+//
+// A later milestone (Authentication and Connection Profile
+// infrastructure) added ConnectionProfileID, replacing what would
+// otherwise have been direct authentication fields on OLT itself
+// (username, password, and the like) with a reference to a reusable
+// internal/connectionprofile.ConnectionProfile — which in turn
+// references a reusable internal/authentication.Authentication. That
+// milestone's own instruction was explicit: "Remove any direct
+// authentication fields if present." None existed on OLT before this —
+// ManagementIPAddress records where to reach an OLT, never how to log
+// in to it — so there was nothing to remove; ConnectionProfileID is a
+// pure addition.
 package olt
 
 import (
@@ -42,6 +56,18 @@ import (
 )
 
 // OLT is a single Optical Line Terminal within an AccessNetwork.
+//
+// ConnectionProfileID is nullable (*uuid.UUID), for the same reason
+// connectionprofile.ConnectionProfile.AuthenticationID is: this
+// milestone does not require every OLT to already have a connection
+// profile bound to it — an OLT recorded before its management
+// credentials are configured is a legitimate, ordinary state, the same
+// way a Rack can exist before it is installed in a Room (see
+// inventory.Rack.RoomID). The foreign key to connection_profiles(id) is
+// a database concept, enforced by internal/olt/postgres and its
+// migration, not a Go package dependency — this package does not import
+// internal/connectionprofile, the same reasoning it already documents
+// above for not importing internal/accessnetwork.
 type OLT struct {
 	ID                  uuid.UUID
 	AccessNetworkID     uuid.UUID
@@ -49,6 +75,7 @@ type OLT struct {
 	Vendor              Vendor
 	Model               string
 	ManagementIPAddress string
+	ConnectionProfileID *uuid.UUID
 	Description         string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time

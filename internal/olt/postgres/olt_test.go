@@ -12,6 +12,8 @@ import (
 
 	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
 	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/connectionprofile"
+	connectionprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/olt"
 	"github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
@@ -80,6 +82,29 @@ func testOLT(accessNetworkID uuid.UUID, name string) olt.OLT {
 		Name:            name,
 		Vendor:          olt.VendorKontron,
 	}
+}
+
+// createTestConnectionProfile creates a real ConnectionProfile row
+// through internal/connectionprofile/postgres — not
+// internal/olt/postgres — so an OLT fixture failure surfaces as a clear
+// failure of ConnectionProfile's own Create, not a confusing failure
+// somewhere else. This is the one place this package imports
+// internal/connectionprofile at all: the domain model (internal/olt)
+// never does (see its package doc comment, "Connection Profile"), only
+// this test, which genuinely needs a real connection_profiles row for
+// the foreign key to reference.
+func createTestConnectionProfile(t *testing.T, ctx context.Context, q database.Querier) connectionprofile.ConnectionProfile {
+	t.Helper()
+
+	repo := connectionprofilepostgres.NewConnectionProfileRepository(q, clock.New(), id.New())
+	p, err := repo.Create(ctx, connectionprofile.ConnectionProfile{
+		Name:          "Fixture Connection Profile " + uuid.NewString(),
+		HostKeyPolicy: connectionprofile.HostKeyPolicyStrict,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create connection profile: %v", err)
+	}
+	return p
 }
 
 func TestOLTRepositoryCreate(t *testing.T) {
@@ -384,6 +409,94 @@ func TestAccessNetworkRepositoryDeleteBlockedByExistingOLT(t *testing.T) {
 	accessNetworkRepo := accessnetworkpostgres.NewAccessNetworkRepository(q, clock.New(), id.New())
 
 	err := accessNetworkRepo.Delete(ctx, a.ID)
+
+	assertConflict(t, err)
+}
+
+// TestOLTRepositoryCreateWithConnectionProfileID proves an OLT can be
+// created with a ConnectionProfileID bound, and that it round-trips
+// through Get.
+func TestOLTRepositoryCreateWithConnectionProfileID(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	a := createTestAccessNetwork(t, ctx, q)
+	profile := createTestConnectionProfile(t, ctx, q)
+	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
+
+	o := testOLT(a.ID, "Bound OLT")
+	o.ConnectionProfileID = &profile.ID
+
+	created, err := repo.Create(ctx, o)
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if created.ConnectionProfileID == nil || *created.ConnectionProfileID != profile.ID {
+		t.Errorf("ConnectionProfileID = %v, want %v", created.ConnectionProfileID, profile.ID)
+	}
+
+	got, err := repo.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("Get() = %v", err)
+	}
+	if got.ConnectionProfileID == nil || *got.ConnectionProfileID != profile.ID {
+		t.Errorf("Get() ConnectionProfileID = %v, want %v", got.ConnectionProfileID, profile.ID)
+	}
+}
+
+// TestOLTRepositoryCreateWithoutConnectionProfileID proves an OLT
+// created with no ConnectionProfileID stores and round-trips a nil
+// value — this milestone does not require every OLT to already have one
+// bound (see olt.OLT's own doc comment).
+func TestOLTRepositoryCreateWithoutConnectionProfileID(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	a := createTestAccessNetwork(t, ctx, q)
+	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
+
+	created, err := repo.Create(ctx, testOLT(a.ID, "Unbound OLT"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if created.ConnectionProfileID != nil {
+		t.Errorf("ConnectionProfileID = %v, want nil", created.ConnectionProfileID)
+	}
+}
+
+func TestOLTRepositoryCreateFailsWhenConnectionProfileDoesNotExist(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	a := createTestAccessNetwork(t, ctx, q)
+	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
+
+	nonexistent := uuid.New()
+	o := testOLT(a.ID, "Orphan Reference OLT")
+	o.ConnectionProfileID = &nonexistent
+
+	_, err := repo.Create(ctx, o)
+
+	assertConflict(t, err)
+}
+
+// TestConnectionProfileRepositoryDeleteBlockedByExistingOLT lives here,
+// not in internal/connectionprofile/postgres, so that package's
+// existing test files stay untouched — the same reasoning
+// internal/olt/postgres/olt_test.go's own
+// TestAccessNetworkRepositoryDeleteBlockedByExistingOLT already
+// documents for why its equivalent test lives with the child, not the
+// parent. It exercises ConnectionProfileRepository.Delete against the
+// foreign key this milestone's migration adds.
+func TestConnectionProfileRepositoryDeleteBlockedByExistingOLT(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	a := createTestAccessNetwork(t, ctx, q)
+	profile := createTestConnectionProfile(t, ctx, q)
+	oltRepo := postgres.NewOLTRepository(q, clock.New(), id.New())
+
+	o := testOLT(a.ID, "Blocking OLT For Connection Profile")
+	o.ConnectionProfileID = &profile.ID
+	if _, err := oltRepo.Create(ctx, o); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	connectionProfileRepo := connectionprofilepostgres.NewConnectionProfileRepository(q, clock.New(), id.New())
+
+	err := connectionProfileRepo.Delete(ctx, profile.ID)
 
 	assertConflict(t, err)
 }

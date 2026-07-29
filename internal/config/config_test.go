@@ -35,6 +35,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.JWT.Expiration <= 0 {
 		t.Errorf("JWT.Expiration = %v, want > 0", cfg.JWT.Expiration)
 	}
+	if cfg.Encryption.MasterKey == "" {
+		t.Error("Encryption.MasterKey = \"\", want a non-empty dev default")
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
@@ -134,9 +137,51 @@ func TestValidateAllowsDefaultJWTSecretOutsideProduction(t *testing.T) {
 		Log:         LogConfig{Level: "info", Format: "json"},
 		Database:    DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
 		JWT:         JWTConfig{Secret: defaultJWTSecret, Expiration: time.Hour},
+		Encryption:  EncryptionConfig{MasterKey: defaultMasterKey},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil for the dev-default JWT_SECRET outside production", err)
+	}
+}
+
+func TestValidateRejectsEmptyMasterKey(t *testing.T) {
+	cfg := Config{
+		HTTP:       HTTPConfig{Port: 8080},
+		Log:        LogConfig{Level: "info", Format: "json"},
+		Database:   DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:        JWTConfig{Secret: "s", Expiration: time.Hour},
+		Encryption: EncryptionConfig{MasterKey: ""},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for empty PALLADIUM_MASTER_KEY")
+	}
+}
+
+func TestValidateRejectsDefaultMasterKeyInProduction(t *testing.T) {
+	cfg := Config{
+		Environment: "production",
+		HTTP:        HTTPConfig{Port: 8080},
+		Log:         LogConfig{Level: "info", Format: "json"},
+		Database:    DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:         JWTConfig{Secret: "s", Expiration: time.Hour},
+		Encryption:  EncryptionConfig{MasterKey: defaultMasterKey},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for the dev-default PALLADIUM_MASTER_KEY in production")
+	}
+}
+
+func TestValidateAllowsDefaultMasterKeyOutsideProduction(t *testing.T) {
+	cfg := Config{
+		Environment: "development",
+		HTTP:        HTTPConfig{Port: 8080},
+		Log:         LogConfig{Level: "info", Format: "json"},
+		Database:    DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:         JWTConfig{Secret: "s", Expiration: time.Hour},
+		Encryption:  EncryptionConfig{MasterKey: defaultMasterKey},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil for the dev-default PALLADIUM_MASTER_KEY outside production", err)
 	}
 }
 

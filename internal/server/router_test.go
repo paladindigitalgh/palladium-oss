@@ -20,9 +20,13 @@ import (
 	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/authentication"
+	authenticationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/authentication/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
 	"github.com/paladindigitalgh/palladium-oss/internal/catalog"
 	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/connectionprofile"
+	connectionprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/customer"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
@@ -1728,6 +1732,279 @@ func TestRouterAdministratorCanRunDiagnostics(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// stubAuthenticationService satisfies whatever interface
+// authenticationhttpapi.AuthenticationHandler needs structurally, the
+// same technique every other stub above uses.
+type stubAuthenticationService struct{}
+
+func (stubAuthenticationService) Get(context.Context, uuid.UUID) (authentication.Authentication, error) {
+	return authentication.Authentication{}, apperror.NotFound("authentication method not found")
+}
+func (stubAuthenticationService) List(context.Context) ([]authentication.Authentication, error) {
+	return nil, nil
+}
+func (stubAuthenticationService) Create(_ context.Context, a authentication.Authentication) (authentication.Authentication, error) {
+	return a, nil
+}
+func (stubAuthenticationService) Update(_ context.Context, a authentication.Authentication) (authentication.Authentication, error) {
+	return a, nil
+}
+func (stubAuthenticationService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithAuthentication mirrors newRouterWithServiceProfiles
+// exactly, one domain over: it proves /api/v1/authentication-methods is
+// wired up behind auth.Middleware and authz.Middleware in the real
+// production router, using its own dedicated
+// RequireAuthenticationRead/RequireAuthenticationWrite (see
+// authz.CanReadAuthentication's doc comment for why Authentication does
+// not share any other domain's capability pair, per goal 5's explicit
+// naming). See internal/authentication/httpapi/authenticated_test.go for
+// a far more thorough version of the same checks, scoped to that
+// package.
+func newRouterWithAuthentication(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:                logger,
+		Version:               "test",
+		Commit:                "test",
+		AuthenticationHandler: authenticationhttpapi.NewAuthenticationHandler(stubAuthenticationService{}),
+		Tokens:                tokens,
+		Authz:                 authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validAuthenticationBody = `{"name":"OLT Admin Credentials","authentication_type":"Password","username":"admin","password":"hunter2"}`
+
+func TestRouterRejectsUnauthenticatedAuthenticationRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAuthentication(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/authentication-methods/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadAuthentication is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCanReadAuthentication(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAuthentication(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/authentication-methods/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteAuthentication is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteAuthentication(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAuthentication(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/authentication-methods/", strings.NewReader(validAuthenticationBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteAuthentication is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteAuthentication(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAuthentication(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/authentication-methods/", strings.NewReader(validAuthenticationBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteAuthentication is "apply the standard
+// RBAC matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteAuthentication(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAuthentication(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/authentication-methods/", strings.NewReader(validAuthenticationBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAuthenticationResponseNeverEchoesSecrets proves the real,
+// fully wired router applies internal/authentication/httpapi's
+// never-echo-secrets response shape, not just the handler tested in
+// isolation (see
+// internal/authentication/httpapi/authentication_handler_test.go's
+// TestAuthenticationHandlerCreateNeverEchoesSecrets for that narrower
+// check) — a plaintext password submitted in the request body must never
+// appear anywhere in the response body reachable through the production
+// router.
+func TestRouterAuthenticationResponseNeverEchoesSecrets(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAuthentication(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/authentication-methods/", strings.NewReader(validAuthenticationBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "hunter2") {
+		t.Fatalf("response body contains the plaintext password: %s", rec.Body.String())
+	}
+}
+
+// stubConnectionProfileService satisfies whatever interface
+// connectionprofilehttpapi.ConnectionProfileHandler needs structurally,
+// the same technique every other stub above uses.
+type stubConnectionProfileService struct{}
+
+func (stubConnectionProfileService) Get(context.Context, uuid.UUID) (connectionprofile.ConnectionProfile, error) {
+	return connectionprofile.ConnectionProfile{}, apperror.NotFound("connection profile not found")
+}
+func (stubConnectionProfileService) List(context.Context) ([]connectionprofile.ConnectionProfile, error) {
+	return nil, nil
+}
+func (stubConnectionProfileService) Create(_ context.Context, p connectionprofile.ConnectionProfile) (connectionprofile.ConnectionProfile, error) {
+	return p, nil
+}
+func (stubConnectionProfileService) Update(_ context.Context, p connectionprofile.ConnectionProfile) (connectionprofile.ConnectionProfile, error) {
+	return p, nil
+}
+func (stubConnectionProfileService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithConnectionProfiles mirrors newRouterWithAuthentication
+// exactly, one domain over: it proves /api/v1/connection-profiles is
+// wired up behind auth.Middleware and authz.Middleware in the real
+// production router, using its own dedicated
+// RequireConnectionProfilesRead/RequireConnectionProfilesWrite (see
+// authz.CanReadConnectionProfiles's doc comment for why Connection
+// Profile does not share Authentication's capability pair, per goal 5's
+// explicit naming). See
+// internal/connectionprofile/httpapi/authenticated_test.go for a far
+// more thorough version of the same checks, scoped to that package.
+func newRouterWithConnectionProfiles(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:                   logger,
+		Version:                  "test",
+		Commit:                   "test",
+		ConnectionProfileHandler: connectionprofilehttpapi.NewConnectionProfileHandler(stubConnectionProfileService{}),
+		Tokens:                   tokens,
+		Authz:                    authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validConnectionProfileBody = `{"name":"Default SSH Profile","protocol":"SSH","port":22,"timeout":"30s","host_key_policy":"Strict"}`
+
+func TestRouterRejectsUnauthenticatedConnectionProfileRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithConnectionProfiles(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/connection-profiles/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadConnectionProfiles is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCanReadConnectionProfiles(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithConnectionProfiles(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/connection-profiles/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteConnectionProfiles is "apply the standard
+// RBAC matrix", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteConnectionProfiles(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithConnectionProfiles(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/connection-profiles/", strings.NewReader(validConnectionProfileBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteConnectionProfiles is "apply the standard
+// RBAC matrix", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteConnectionProfiles(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithConnectionProfiles(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/connection-profiles/", strings.NewReader(validConnectionProfileBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteConnectionProfiles is "apply the
+// standard RBAC matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteConnectionProfiles(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithConnectionProfiles(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/connection-profiles/", strings.NewReader(validConnectionProfileBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
 	}
 }
 

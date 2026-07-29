@@ -16,8 +16,10 @@ import (
 	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
+	authenticationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/authentication/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
 	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
+	connectionprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/httpapi"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
@@ -38,28 +40,30 @@ import (
 // this package, keeping construction explicit rather than relying on
 // globals or a framework-managed container.
 type Dependencies struct {
-	Logger                  *slog.Logger
-	HealthCheckers          []health.Checker
-	Version                 string
-	Commit                  string
-	SiteHandler             *httpapi.SiteHandler
-	CustomerHandler         *customerhttpapi.CustomerHandler
-	LocationHandler         *locationhttpapi.LocationHandler
-	CatalogHandler          *cataloghttpapi.CatalogHandler
-	ProductHandler          *producthttpapi.ProductHandler
-	ServiceHandler          *servicehttpapi.ServiceHandler
-	ServiceEquipmentHandler *serviceequipmenthttpapi.ServiceEquipmentHandler
-	ProvisioningHandler     *provisioninghttpapi.ProvisioningHandler
-	AccessNetworkHandler    *accessnetworkhttpapi.AccessNetworkHandler
-	OLTHandler              *olthttpapi.OLTHandler
-	PONPortHandler          *ponporthttpapi.PONPortHandler
-	AccessInterfaceHandler  *accessinterfacehttpapi.AccessInterfaceHandler
-	AccessAttachmentHandler *accessattachmenthttpapi.AccessAttachmentHandler
-	ServiceProfileHandler   *serviceprofilehttpapi.ServiceProfileHandler
-	DiagnosticsHandler      *diagnosticshttpapi.DiagnosticsHandler
-	Tokens                  *auth.TokenIssuer
-	LoginHandler            *authhttpapi.LoginHandler
-	Authz                   *authz.Middleware
+	Logger                   *slog.Logger
+	HealthCheckers           []health.Checker
+	Version                  string
+	Commit                   string
+	SiteHandler              *httpapi.SiteHandler
+	CustomerHandler          *customerhttpapi.CustomerHandler
+	LocationHandler          *locationhttpapi.LocationHandler
+	CatalogHandler           *cataloghttpapi.CatalogHandler
+	ProductHandler           *producthttpapi.ProductHandler
+	ServiceHandler           *servicehttpapi.ServiceHandler
+	ServiceEquipmentHandler  *serviceequipmenthttpapi.ServiceEquipmentHandler
+	ProvisioningHandler      *provisioninghttpapi.ProvisioningHandler
+	AccessNetworkHandler     *accessnetworkhttpapi.AccessNetworkHandler
+	OLTHandler               *olthttpapi.OLTHandler
+	PONPortHandler           *ponporthttpapi.PONPortHandler
+	AccessInterfaceHandler   *accessinterfacehttpapi.AccessInterfaceHandler
+	AccessAttachmentHandler  *accessattachmenthttpapi.AccessAttachmentHandler
+	ServiceProfileHandler    *serviceprofilehttpapi.ServiceProfileHandler
+	DiagnosticsHandler       *diagnosticshttpapi.DiagnosticsHandler
+	AuthenticationHandler    *authenticationhttpapi.AuthenticationHandler
+	ConnectionProfileHandler *connectionprofilehttpapi.ConnectionProfileHandler
+	Tokens                   *auth.TokenIssuer
+	LoginHandler             *authhttpapi.LoginHandler
+	Authz                    *authz.Middleware
 }
 
 // NewRouter builds the application's http.Handler.
@@ -437,6 +441,52 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(deps.Authz.RequireDiagnostics())
 				r.Post("/basic-onu-check", deps.DiagnosticsHandler.BasicONUCheck)
+			})
+		})
+
+		// /authentication-methods gets its own dedicated capability pair
+		// (RequireAuthenticationRead/RequireAuthenticationWrite), not a
+		// reuse of any other domain's — per this milestone's explicit
+		// goal 5, naming these two functions independently of Connection
+		// Profile's own pair below (see authz.CanReadAuthentication's doc
+		// comment for why, even though a ConnectionProfile references an
+		// Authentication record by ID).
+		r.Route("/authentication-methods", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAuthenticationRead())
+				r.Get("/", deps.AuthenticationHandler.List)
+				r.Get("/{id}", deps.AuthenticationHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAuthenticationWrite())
+				r.Post("/", deps.AuthenticationHandler.Create)
+				r.Put("/{id}", deps.AuthenticationHandler.Update)
+				r.Delete("/{id}", deps.AuthenticationHandler.Delete)
+			})
+		})
+
+		// /connection-profiles gets its own dedicated capability pair
+		// (RequireConnectionProfilesRead/RequireConnectionProfilesWrite),
+		// not a reuse of /authentication-methods' — per this milestone's
+		// explicit goal 5 (see authz.CanReadConnectionProfiles's doc
+		// comment for why).
+		r.Route("/connection-profiles", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireConnectionProfilesRead())
+				r.Get("/", deps.ConnectionProfileHandler.List)
+				r.Get("/{id}", deps.ConnectionProfileHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireConnectionProfilesWrite())
+				r.Post("/", deps.ConnectionProfileHandler.Create)
+				r.Put("/{id}", deps.ConnectionProfileHandler.Update)
+				r.Delete("/{id}", deps.ConnectionProfileHandler.Delete)
 			})
 		})
 	})

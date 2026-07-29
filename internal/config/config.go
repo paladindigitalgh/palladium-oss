@@ -39,6 +39,23 @@ type JWTConfig struct {
 	Expiration time.Duration
 }
 
+// defaultMasterKey is used when PALLADIUM_MASTER_KEY is unset — a
+// pre-generated, valid base64-encoded 32-byte key, existing purely for
+// local development convenience, exactly mirroring defaultJWTSecret's
+// own reasoning and the same production-override enforcement in
+// Validate. A leaked default encryption key is arguably worse than a
+// leaked default JWT secret: it does not just let an attacker forge
+// tokens, it lets them decrypt every Authentication record's Password
+// and PrivateKey ever encrypted under it (see internal/authentication
+// and internal/platform/encryption).
+const defaultMasterKey = "80azDk64Qom7+ANSVtnDef+mNNinbm98+Da6TsIucH8="
+
+// EncryptionConfig holds settings for encrypting secrets at rest (see
+// internal/platform/encryption).
+type EncryptionConfig struct {
+	MasterKey string
+}
+
 // DatabaseConfig holds settings for the PostgreSQL connection pool.
 type DatabaseConfig struct {
 	Host            string
@@ -61,6 +78,7 @@ type Config struct {
 	Log         LogConfig
 	Database    DatabaseConfig
 	JWT         JWTConfig
+	Encryption  EncryptionConfig
 }
 
 // Load builds a Config from environment variables, applying defaults for
@@ -102,6 +120,9 @@ func Load() (Config, error) {
 			// requirement — operators should tune JWT_EXPIRATION to their
 			// own posture.
 			Expiration: getEnvDuration("JWT_EXPIRATION", 24*time.Hour),
+		},
+		Encryption: EncryptionConfig{
+			MasterKey: getEnvString("PALLADIUM_MASTER_KEY", defaultMasterKey),
 		},
 	}
 
@@ -156,6 +177,13 @@ func (c Config) Validate() error {
 	}
 	if c.JWT.Expiration <= 0 {
 		return fmt.Errorf("config: JWT_EXPIRATION must be positive")
+	}
+
+	if c.Encryption.MasterKey == "" {
+		return fmt.Errorf("config: PALLADIUM_MASTER_KEY must not be empty")
+	}
+	if c.Environment == "production" && c.Encryption.MasterKey == defaultMasterKey {
+		return fmt.Errorf("config: PALLADIUM_MASTER_KEY must be overridden in production")
 	}
 
 	return nil

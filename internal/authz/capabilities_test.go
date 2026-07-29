@@ -404,38 +404,108 @@ func TestCanRunDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCanReadAuthentication(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadAuthentication(role); got != want {
+			t.Errorf("CanReadAuthentication(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanWriteAuthentication(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanWriteAuthentication(role); got != want {
+			t.Errorf("CanWriteAuthentication(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanReadConnectionProfiles(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadConnectionProfiles(role); got != want {
+			t.Errorf("CanReadConnectionProfiles(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanWriteConnectionProfiles(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanWriteConnectionProfiles(role); got != want {
+			t.Errorf("CanWriteConnectionProfiles(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
 // TestNoAdministratorExclusiveCapabilityForSitesOrCustomers is the direct
 // check behind "no Site endpoint should require Administrator
 // exclusively" (goal 4) and its Customer, Location, Catalog, Service,
 // Service Equipment, Provisioning, Access Network, Access Topology,
-// Service Profile, and Diagnostics equivalents: for every capability a
-// Site, Customer, Location, Catalog/Product, Service, Service Equipment,
-// Provisioning, Access Network/OLT/PONPort, Access Interface/Access
-// Attachment, Service Profile, or Diagnostics endpoint actually uses, at
-// least one non-Administrator role must also satisfy it.
+// Service Profile, Diagnostics, Authentication, and Connection Profile
+// equivalents: for every capability a Site, Customer, Location,
+// Catalog/Product, Service, Service Equipment, Provisioning, Access
+// Network/OLT/PONPort, Access Interface/Access Attachment, Service
+// Profile, Diagnostics, Authentication, or Connection Profile endpoint
+// actually uses, at least one non-Administrator role must also satisfy
+// it.
 func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 	capabilities := map[string]func(auth.Role) bool{
-		"CanReadInventory":         authz.CanReadInventory,
-		"CanWriteInventory":        authz.CanWriteInventory,
-		"CanReadCustomers":         authz.CanReadCustomers,
-		"CanWriteCustomers":        authz.CanWriteCustomers,
-		"CanReadLocations":         authz.CanReadLocations,
-		"CanWriteLocations":        authz.CanWriteLocations,
-		"CanReadCatalog":           authz.CanReadCatalog,
-		"CanWriteCatalog":          authz.CanWriteCatalog,
-		"CanReadServices":          authz.CanReadServices,
-		"CanWriteServices":         authz.CanWriteServices,
-		"CanReadServiceEquipment":  authz.CanReadServiceEquipment,
-		"CanWriteServiceEquipment": authz.CanWriteServiceEquipment,
-		"CanReadProvisioning":      authz.CanReadProvisioning,
-		"CanWriteProvisioning":     authz.CanWriteProvisioning,
-		"CanReadAccessNetwork":     authz.CanReadAccessNetwork,
-		"CanWriteAccessNetwork":    authz.CanWriteAccessNetwork,
-		"CanReadAccessTopology":    authz.CanReadAccessTopology,
-		"CanWriteAccessTopology":   authz.CanWriteAccessTopology,
-		"CanReadServiceProfiles":   authz.CanReadServiceProfiles,
-		"CanWriteServiceProfiles":  authz.CanWriteServiceProfiles,
-		"CanRunDiagnostics":        authz.CanRunDiagnostics,
+		"CanReadInventory":           authz.CanReadInventory,
+		"CanWriteInventory":          authz.CanWriteInventory,
+		"CanReadCustomers":           authz.CanReadCustomers,
+		"CanWriteCustomers":          authz.CanWriteCustomers,
+		"CanReadLocations":           authz.CanReadLocations,
+		"CanWriteLocations":          authz.CanWriteLocations,
+		"CanReadCatalog":             authz.CanReadCatalog,
+		"CanWriteCatalog":            authz.CanWriteCatalog,
+		"CanReadServices":            authz.CanReadServices,
+		"CanWriteServices":           authz.CanWriteServices,
+		"CanReadServiceEquipment":    authz.CanReadServiceEquipment,
+		"CanWriteServiceEquipment":   authz.CanWriteServiceEquipment,
+		"CanReadProvisioning":        authz.CanReadProvisioning,
+		"CanWriteProvisioning":       authz.CanWriteProvisioning,
+		"CanReadAccessNetwork":       authz.CanReadAccessNetwork,
+		"CanWriteAccessNetwork":      authz.CanWriteAccessNetwork,
+		"CanReadAccessTopology":      authz.CanReadAccessTopology,
+		"CanWriteAccessTopology":     authz.CanWriteAccessTopology,
+		"CanReadServiceProfiles":     authz.CanReadServiceProfiles,
+		"CanWriteServiceProfiles":    authz.CanWriteServiceProfiles,
+		"CanRunDiagnostics":          authz.CanRunDiagnostics,
+		"CanReadAuthentication":      authz.CanReadAuthentication,
+		"CanWriteAuthentication":     authz.CanWriteAuthentication,
+		"CanReadConnectionProfiles":  authz.CanReadConnectionProfiles,
+		"CanWriteConnectionProfiles": authz.CanWriteConnectionProfiles,
 	}
 
 	nonAdminRoles := []auth.Role{auth.RoleOperator, auth.RoleViewer}

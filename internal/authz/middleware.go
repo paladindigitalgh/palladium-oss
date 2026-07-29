@@ -250,3 +250,31 @@ func (m *Middleware) RequireServiceProfilesWrite() func(http.Handler) http.Handl
 func (m *Middleware) RequireDiagnostics() func(http.Handler) http.Handler {
 	return m.Require(CanRunDiagnostics)
 }
+
+// RequireAuthenticationRead returns middleware allowing any Role that
+// CanReadAuthentication (Administrator, Operator, Viewer). Applied to the
+// /authentication-methods route.
+func (m *Middleware) RequireAuthenticationRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadAuthentication)
+}
+
+// RequireAuthenticationWrite returns middleware allowing any Role that
+// CanWriteAuthentication (Administrator, Operator). Applied to the
+// /authentication-methods route.
+func (m *Middleware) RequireAuthenticationWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteAuthentication)
+}
+
+// RequireConnectionProfilesRead returns middleware allowing any Role that
+// CanReadConnectionProfiles (Administrator, Operator, Viewer). Applied to
+// the /connection-profiles route.
+func (m *Middleware) RequireConnectionProfilesRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadConnectionProfiles)
+}
+
+// RequireConnectionProfilesWrite returns middleware allowing any Role
+// that CanWriteConnectionProfiles (Administrator, Operator). Applied to
+// the /connection-profiles route.
+func (m *Middleware) RequireConnectionProfilesWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteConnectionProfiles)
+}

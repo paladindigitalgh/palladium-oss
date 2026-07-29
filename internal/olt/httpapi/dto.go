@@ -34,12 +34,13 @@ import (
 // server-assigned (POST) or comes from the URL path (PUT); CreatedAt and
 // UpdatedAt are metadata the repository owns and a caller cannot set.
 type oltRequest struct {
-	AccessNetworkID     uuid.UUID `json:"access_network_id"`
-	Name                string    `json:"name"`
-	Vendor              string    `json:"vendor"`
-	Model               string    `json:"model"`
-	ManagementIPAddress string    `json:"management_ip_address"`
-	Description         string    `json:"description"`
+	AccessNetworkID     uuid.UUID  `json:"access_network_id"`
+	Name                string     `json:"name"`
+	Vendor              string     `json:"vendor"`
+	Model               string     `json:"model"`
+	ManagementIPAddress string     `json:"management_ip_address"`
+	ConnectionProfileID *uuid.UUID `json:"connection_profile_id"`
+	Description         string     `json:"description"`
 }
 
 // toOLT converts a request into a domain olt.OLT. id is supplied by the
@@ -53,6 +54,7 @@ func (req oltRequest) toOLT(id uuid.UUID) olt.OLT {
 		Vendor:              olt.Vendor(req.Vendor),
 		Model:               req.Model,
 		ManagementIPAddress: req.ManagementIPAddress,
+		ConnectionProfileID: req.ConnectionProfileID,
 		Description:         req.Description,
 	}
 }
@@ -62,15 +64,16 @@ func (req oltRequest) toOLT(id uuid.UUID) olt.OLT {
 // means a change to how the domain model is composed internally can
 // never silently change the API's JSON shape.
 type oltResponse struct {
-	ID                  uuid.UUID `json:"id"`
-	AccessNetworkID     uuid.UUID `json:"access_network_id"`
-	Name                string    `json:"name"`
-	Vendor              string    `json:"vendor"`
-	Model               string    `json:"model"`
-	ManagementIPAddress string    `json:"management_ip_address"`
-	Description         string    `json:"description"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID                  uuid.UUID  `json:"id"`
+	AccessNetworkID     uuid.UUID  `json:"access_network_id"`
+	Name                string     `json:"name"`
+	Vendor              string     `json:"vendor"`
+	Model               string     `json:"model"`
+	ManagementIPAddress string     `json:"management_ip_address"`
+	ConnectionProfileID *uuid.UUID `json:"connection_profile_id"`
+	Description         string     `json:"description"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 func newOLTResponse(o olt.OLT) oltResponse {
@@ -81,6 +84,7 @@ func newOLTResponse(o olt.OLT) oltResponse {
 		Vendor:              string(o.Vendor),
 		Model:               o.Model,
 		ManagementIPAddress: o.ManagementIPAddress,
+		ConnectionProfileID: o.ConnectionProfileID,
 		Description:         o.Description,
 		CreatedAt:           o.CreatedAt,
 		UpdatedAt:           o.UpdatedAt,
