@@ -294,8 +294,26 @@ Examples:
 
 -   BaseButton
 -   BaseCard
+-   BaseIcon
 -   BaseInput
 -   BaseModal
+
+### BaseIcon and the Icon Library
+
+Lucide is the official icon library for Palladium OSS
+(docs/08-DESIGN-SYSTEM.md section 9), but no component may import it
+directly except `BaseIcon` itself.
+
+-   `BaseIcon` accepts a stable, application-defined icon name (plus
+    size, color via CSS, and an optional stroke width) and maps that
+    name to the matching Lucide icon internally.
+-   Every other component -- base, app, navigation, workspace, domain,
+    or plugin -- renders icons exclusively through `BaseIcon`.
+-   `BaseIcon` never exposes a Lucide type, component, or prop shape to
+    its callers.
+
+This isolates the icon library behind one API: replacing Lucide with a
+different library should only ever require changes inside `BaseIcon`.
 
 ## App Components
 
@@ -372,6 +390,8 @@ src/
 6.  Tables are for collections; cards are for individual objects.
 7.  Relationship navigation should be available wherever practical.
 8.  Favor composition over duplication.
+9.  Third-party icon libraries are isolated behind BaseIcon; no other
+    component may import one directly.
 
 ------------------------------------------------------------------------
 

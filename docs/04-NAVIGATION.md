@@ -123,12 +123,11 @@ tools.
 The primary navigation consists of:
 
 -   Dashboard
--   Search
 -   Customers
 -   Services
--   Assets
--   OLTs
--   Workflows
+-   Devices
+-   Network
+-   Inventory
 -   Explorer
 -   Administration
 

@@ -2,7 +2,7 @@
 document: 08-DESIGN-SYSTEM
 status: Draft
 title: Design System
-version: 1.0-draft
+version: 1.1-draft
 ---
 
 # Design System
@@ -187,6 +187,22 @@ Guidelines:
 -   Avoid ambiguous symbolism.
 
 Consistency is more important than icon variety.
+
+## Icon Library
+
+**Lucide is the official icon library for Palladium OSS.**
+
+No other icon library may be added.
+
+The rest of the application must never depend on Lucide directly.
+Instead, every component renders icons exclusively through the shared
+`BaseIcon` component (see docs/11-COMPONENT-ARCHITECTURE.md, "Base
+Components"), which is the only component permitted to import Lucide.
+`BaseIcon` maps a stable, application-defined icon name to the matching
+Lucide icon internally.
+
+This keeps the icon library implementation isolated behind one API: if
+the icon library ever changes, only `BaseIcon` should require changes.
 
 ------------------------------------------------------------------------
 
@@ -499,6 +515,7 @@ approachable, maintainable, and efficient as it grows.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-07-30   Finalized Lucide as the official icon library, isolated behind BaseIcon
 
 ------------------------------------------------------------------------
 

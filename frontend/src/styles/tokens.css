@@ -1,0 +1,170 @@
+/*
+ * Design tokens (docs/08-DESIGN-SYSTEM.md, section 4 & 11).
+ *
+ * Components must reference these custom properties instead of hardcoded
+ * colors, spacing, or type sizes. Light and dark themes are produced by
+ * swapping token *values* only -- no component should branch on theme.
+ *
+ * Theme resolution order (highest priority last):
+ *   1. :root            -- light values (default)
+ *   2. prefers-color-scheme: dark, when the operator has not chosen
+ *   3. [data-theme="dark"] / [data-theme="light"], set explicitly by
+ *      useTheme() once the operator picks a theme (see composables/useTheme.ts)
+ */
+
+:root {
+  --color-brand: #205ce5;
+  --color-brand-strong: #1a49ba;
+  --color-brand-contrast: #ffffff;
+
+  --color-bg: #f4f6fb;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: #dde2ec;
+  --color-border-strong: #c3cbdb;
+
+  --color-text-primary: #16192b;
+  --color-text-secondary: #4b5468;
+  /* #666e80, not the lighter #7c8598 it was before: that value read
+     3.71:1 against --color-surface and 3.43:1 against --color-bg, both
+     below WCAG AA's 4.5:1 for normal text, and --color-text-muted is
+     used for real reading text (breadcrumbs, timestamps, panel eyebrow
+     labels), not just decorative icons. This clears 5.11:1 / 4.73:1. */
+  --color-text-muted: #666e80;
+  --color-text-inverse: #ffffff;
+
+  --color-success: #157a4a;
+  --color-success-bg: #e3f5ec;
+  --color-warning: #8a5a00;
+  --color-warning-bg: #fbf0da;
+  --color-error: #b3261e;
+  --color-error-bg: #fbe7e6;
+  --color-info: #205ce5;
+  --color-info-bg: #e8eefd;
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.14);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-brand: #4c85ff;
+    --color-brand-strong: #6d9cff;
+    --color-brand-contrast: #0b1220;
+
+    --color-bg: #0f1320;
+    --color-surface: #171c2c;
+    --color-surface-raised: #1f2536;
+    --color-border: #2a3146;
+    --color-border-strong: #3a4260;
+
+    --color-text-primary: #eef1fa;
+    --color-text-secondary: #b7bfd6;
+    --color-text-muted: #838da8;
+    --color-text-inverse: #16192b;
+
+    --color-success: #4fd18b;
+    --color-success-bg: #113124;
+    --color-warning: #e6b455;
+    --color-warning-bg: #382a0d;
+    --color-error: #f28b84;
+    --color-error-bg: #3a1614;
+    --color-info: #6d9cff;
+    --color-info-bg: #16233f;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-brand: #4c85ff;
+  --color-brand-strong: #6d9cff;
+  --color-brand-contrast: #0b1220;
+
+  --color-bg: #0f1320;
+  --color-surface: #171c2c;
+  --color-surface-raised: #1f2536;
+  --color-border: #2a3146;
+  --color-border-strong: #3a4260;
+
+  --color-text-primary: #eef1fa;
+  --color-text-secondary: #b7bfd6;
+  --color-text-muted: #838da8;
+  --color-text-inverse: #16192b;
+
+  --color-success: #4fd18b;
+  --color-success-bg: #113124;
+  --color-warning: #e6b455;
+  --color-warning-bg: #382a0d;
+  --color-error: #f28b84;
+  --color-error-bg: #3a1614;
+  --color-info: #6d9cff;
+  --color-info-bg: #16233f;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+}
+
+:root {
+  /* Typography (docs/08-DESIGN-SYSTEM.md section 6) */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-md: 0.9375rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.5rem;
+  --font-size-2xl: 1.875rem;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* Spacing (docs/08-DESIGN-SYSTEM.md section 7), 4px base grid */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 2.5rem;
+  --space-8: 3rem;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* Motion (docs/08-DESIGN-SYSTEM.md section 22) */
+  --motion-fast: 100ms;
+  --motion-normal: 180ms;
+  --motion-slow: 260ms;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Icon sizing */
+  --icon-size-sm: 16px;
+  --icon-size-md: 20px;
+  --icon-size-lg: 24px;
+
+  /* Shell layout (derived, kept as tokens so shell components share one
+     source of truth instead of repeating magic numbers) */
+  --shell-sidebar-width: 232px;
+  --shell-sidebar-width-collapsed: 64px;
+  --shell-topnav-height: 56px;
+}

@@ -89,7 +89,7 @@ Version 1 focuses on:
 -   Workflow engine
 -   Diagnostics engine
 -   Provisioning engine
--   Explorer
+-   Explorer (ad hoc query and reporting engine)
 -   Authentication and RBAC
 
 ### Deferred

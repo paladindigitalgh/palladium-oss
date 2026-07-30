@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.0-draft
+version: 1.1-draft
 ---
 
 # Workspace Specifications
@@ -16,7 +16,7 @@ While the UI Architecture describes *how* the interface is structured,
 this document specifies *what each workspace contains*, *what operators
 can do there*, and *how related information is organized*.
 
-These specifications serve as the implementation blueprint for the React
+These specifications serve as the implementation blueprint for the Vue
 frontend.
 
 ------------------------------------------------------------------------
@@ -439,7 +439,66 @@ Infrastructure workspaces should expose relationships between resources
 so operators can move naturally from high-level health to detailed
 investigation.
 
-# 12. Administration Workspace
+# 12. Explorer Workspace
+
+## Purpose
+
+Explorer is Palladium's ad hoc query and reporting engine. It lets
+operators explore relationships within the OSS database, review results
+directly in the interface, and export them for further use.
+
+It should answer:
+
+**"Which records match a specific operational condition, right now?"**
+
+Explorer is not a topology viewer, map, or visualization tool. It has no
+notion of physical or logical network diagrams; its subject is data, not
+diagrams. Network topology is addressed by dedicated workspaces (see
+Site Workspace, section 9, and the future Network Topology workspace,
+section 17).
+
+## Primary Audience
+
+-   Network Operations
+-   Customer Support
+-   Provisioning
+-   System Administrators
+
+## Primary Actions
+
+-   Build or select a query
+-   Run a query across one or more domains
+-   Filter and sort results
+-   Open a result directly into its own Workspace
+-   Export results to CSV
+-   Save a query for reuse (future)
+
+## Primary Panels
+
+-   Query Builder
+-   Result Table
+-   Saved Queries (future)
+-   Export Options
+
+## Example Queries
+
+-   Show all customers on a specific OLT
+-   Show all customers without a service
+-   Show all ONUs that have never informed
+-   Show all devices with outdated firmware
+-   Show all inventory assigned to a specific site
+-   Show all subscribers on a VLAN
+
+------------------------------------------------------------------------
+
+# Design Principle
+
+Explorer trades the fixed structure of a traditional reporting page for
+the flexibility of a direct question. Every result should open into its
+subject's own Workspace, keeping Explorer consistent with the rest of
+Palladium rather than a separate reporting silo.
+
+# 13. Administration Workspace
 
 ## Purpose
 
@@ -478,7 +537,7 @@ attention?"**
 
 ------------------------------------------------------------------------
 
-# 13. Global Workspace Behaviors
+# 14. Global Workspace Behaviors
 
 All workspaces should behave consistently.
 
@@ -497,7 +556,7 @@ workspaces.
 
 ------------------------------------------------------------------------
 
-# 14. Cross-Workspace Navigation
+# 15. Cross-Workspace Navigation
 
 Relationships are first-class navigation elements.
 
@@ -515,7 +574,7 @@ follow relationships.
 
 ------------------------------------------------------------------------
 
-# 15. Workspace Permissions
+# 16. Workspace Permissions
 
 Visibility and actions are permission-aware.
 
@@ -532,7 +591,7 @@ unusable controls.
 
 ------------------------------------------------------------------------
 
-# 16. Future Workspaces
+# 17. Future Workspaces
 
 Future versions may introduce dedicated workspaces for:
 
@@ -541,8 +600,10 @@ Future versions may introduce dedicated workspaces for:
 -   Network Topology
 -   Maintenance Windows
 -   Capacity Planning
--   Reporting
 -   AI Operations
+
+Ad hoc querying and reporting is not on this list: Explorer (section 12)
+already provides it as a Version 1 workspace, not a future one.
 
 These should follow the same structural standards defined in this
 document.
@@ -564,6 +625,7 @@ understanding, investigating, and acting on the network.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-07-30   Added Explorer Workspace (section 12) as the OSS query and reporting engine; removed Reporting from Future Workspaces
 
 ------------------------------------------------------------------------
 

@@ -62,16 +62,16 @@ Every design decision should improve long-term maintainability.
 
 ## Frontend
 
-- React
+- Vue
 - TypeScript
 - Vite
-- React Router
+- Vue Router
 - TanStack Query
 - Zustand
 - Tailwind CSS
 - shadcn/ui
 - TanStack Table
-- React Hook Form
+- Vue Hook Form
 - Zod
 - Monaco Editor
 
@@ -197,7 +197,7 @@ Reasons:
 - Easy debugging
 - Excellent tooling
 - Familiar ecosystem
-- Works well with React
+- Works well with Vue
 - Easy plugin integration
 
 Future versions may expose:
@@ -368,7 +368,7 @@ Integration Tests
 End-to-End Tests
 
 - Complete operator workflows
-- React UI
+- Vue UI
 - Backend API
 - Database
 
@@ -468,7 +468,7 @@ Deliverables:
 - Docker development environment
 - PostgreSQL
 - Go backend skeleton
-- React frontend skeleton
+- Vue frontend skeleton
 - Authentication
 - Dashboard Workspace
 - Application Shell
