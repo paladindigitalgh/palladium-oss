@@ -1,31 +1,27 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import WorkspaceLayout from '@/components/workspace/WorkspaceLayout.vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
-import WorkspaceContent from '@/components/workspace/WorkspaceContent.vue'
-import RelationshipPanel from '@/components/workspace/RelationshipPanel.vue'
-import TimelinePanel from '@/components/workspace/TimelinePanel.vue'
+import BaseCard from '@/components/base/BaseCard.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import { NAV_ITEMS } from '@/router/navigation'
 import type { IconName } from '@/components/base/BaseIcon.vue'
 
 /**
- * The one workspace view Milestone 1 ships. Every NAV_ITEMS route
- * renders this single component, driven entirely by its route's `meta`
- * (see src/router/index.ts) -- eight near-identical files would violate
- * "do not duplicate layout code."
+ * The placeholder shown for every NAV_ITEMS route without a real
+ * implementation yet, driven entirely by its route's `meta` (see
+ * src/router/index.ts) -- one shared file rather than one near-identical
+ * file per still-unbuilt workspace.
  *
- * Content is deliberately an honest empty state, not fabricated example
- * data: Milestone 1 asks for "page title, short placeholder description,
- * empty-state layout appropriate for future development," not a
- * populated-looking mockup. An earlier version of this component filled
- * the summary/relationships/timeline regions with labelled "example"
- * rows to demonstrate the primitives render correctly; that was useful
- * for reviewing the layout once, but reads as noise in a shell meant to
- * feel production-quality, so this version leans on RelationshipPanel's
- * and TimelinePanel's own built-in empty states instead of feeding them
- * fake rows.
+ * This intentionally does NOT use DetailWorkspace
+ * (components/workspace/DetailWorkspace.vue): most of these routes
+ * (Search Results-adjacent Explorer, Administration) are documented as
+ * not being Detail Workspaces at all
+ * (docs/09-WORKSPACE-SPECIFICATIONS.md, sections 14-16), and the ones
+ * that will be (Customers, Services, Devices, Network, Inventory) have
+ * no sections to show yet -- there is nothing here for Contents
+ * navigation to list. A plain header plus an honest empty state avoids
+ * implying structure ahead of the content that will justify it.
  */
 const route = useRoute()
 
@@ -41,27 +37,22 @@ const icon = computed<IconName>(
 </script>
 
 <template>
-  <WorkspaceLayout>
-    <template #header>
-      <WorkspaceHeader :title="title" :subtitle="description" />
-    </template>
-
-    <template #content>
-      <WorkspaceContent>
-        <BaseEmptyState
-          :icon="icon"
-          title="Nothing here yet"
-          description="This workspace will be built in a future milestone."
-        />
-      </WorkspaceContent>
-    </template>
-
-    <template #relationships>
-      <RelationshipPanel />
-    </template>
-
-    <template #timeline>
-      <TimelinePanel />
-    </template>
-  </WorkspaceLayout>
+  <div class="placeholder-workspace-view">
+    <WorkspaceHeader :title="title" :subtitle="description" />
+    <BaseCard>
+      <BaseEmptyState
+        :icon="icon"
+        title="Nothing here yet"
+        description="This workspace will be built in a future milestone."
+      />
+    </BaseCard>
+  </div>
 </template>
+
+<style scoped>
+.placeholder-workspace-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+</style>

@@ -1,7 +1,7 @@
 ---
 title: Palladium Vision
 document: 01-VISION
-version: 1.0-draft
+version: 1.1-draft
 status: Draft
 
 author: The Palladium Project
@@ -342,7 +342,7 @@ Navigation supports discovery. Search supports operations.
 
 Palladium is organized around workspaces rather than isolated pages.
 
-A workspace combines:
+An Entity Workspace's Detail View combines:
 
 -   Information
 -   History
@@ -616,6 +616,7 @@ If it does not, it should be reconsidered.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-07-30   Clarified that History and Relationships belong to an Entity Workspace's Detail View
 
 ------------------------------------------------------------------------
 
@@ -624,6 +625,7 @@ If it does not, it should be reconsidered.
 -   00-INTRODUCTION.md
 -   02-DESIGN-PRINCIPLES.md
 -   03-DOMAIN-MODEL.md
+-   09-WORKSPACE-SPECIFICATIONS.md
 
 ------------------------------------------------------------------------
 

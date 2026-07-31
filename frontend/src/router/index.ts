@@ -1,3 +1,4 @@
+import type { Component } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { NAV_ITEMS } from './navigation'
 
@@ -8,15 +9,21 @@ import { NAV_ITEMS } from './navigation'
  * /views/customer-list), generated from NAV_ITEMS so the route list and
  * the sidebar can never disagree.
  *
- * Every route renders the same PlaceholderWorkspaceView component (see
- * that file's own doc comment) -- this milestone builds no business
- * functionality, so there is nothing yet to differentiate one route's
- * component from another's.
+ * Routes default to the shared PlaceholderWorkspaceView (see that file's
+ * own doc comment) until a workspace has a real implementation, at which
+ * point its nav id is added to VIEW_COMPONENTS below. Dashboard
+ * (Milestone 2) is the first entry; Customers (Milestone 3) and the
+ * others will follow the same pattern rather than each needing its own
+ * routing logic.
  */
+const VIEW_COMPONENTS: Record<string, () => Promise<{ default: Component }>> = {
+  dashboard: () => import('@/views/DashboardView.vue'),
+}
+
 const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.map((item) => ({
   path: item.path,
   name: item.id,
-  component: () => import('@/views/PlaceholderWorkspaceView.vue'),
+  component: VIEW_COMPONENTS[item.id] ?? (() => import('@/views/PlaceholderWorkspaceView.vue')),
   meta: {
     navId: item.id,
     title: item.label,
@@ -27,6 +34,15 @@ const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.map((item) => ({
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/dashboard' },
   ...workspaceRoutes,
+  {
+    // TEMPORARY, not in NAV_ITEMS and not linked from anywhere in the
+    // app: validates the Detail Workspace framework in isolation with
+    // placeholder content. See that view's own doc comment. Delete once
+    // a real Detail Workspace (starting with Customers) exists.
+    path: '/_demo/detail-workspace',
+    name: 'detail-workspace-demo',
+    component: () => import('@/views/DetailWorkspaceDemoView.vue'),
+  },
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',

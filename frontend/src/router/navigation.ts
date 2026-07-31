@@ -35,7 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Dashboard',
     path: '/dashboard',
     icon: 'dashboard',
-    description: 'An operational overview will appear here.',
+    description: 'An overview of what needs your attention right now.',
   },
   {
     id: 'customers',

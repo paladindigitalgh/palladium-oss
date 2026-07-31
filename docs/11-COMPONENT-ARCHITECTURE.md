@@ -47,7 +47,10 @@ events.
 ## Consistent workspace experience
 
 Every major object (Customer, Device, OLT, ONU, Service, Workflow,
-Plugin, Site, etc.) should feel structurally identical.
+Plugin, Site, etc.) should feel structurally identical. Concretely: each
+has one canonical Detail View that opens the same way regardless of
+where it was reached from (docs/09-WORKSPACE-SPECIFICATIONS.md,
+"Canonical Detail Views").
 
 Operators should learn one interface rather than dozens.
 
@@ -82,81 +85,150 @@ application. Only the WorkspaceHost changes as users navigate.
 
 ------------------------------------------------------------------------
 
+# Workspace Archetypes
+
+Not every Workspace manages an entity. Palladium OSS distinguishes two
+Workspace archetypes, and every Workspace is exactly one of them.
+
+## Landing Workspaces
+
+**Purpose:** provide a high-level operational overview rather than
+managing a specific entity.
+
+**Characteristics:**
+
+-   Dashboard-oriented
+-   Metric cards
+-   Operational widgets
+-   Status summaries
+-   No selected entity
+-   No Relationship Panel
+-   No Timeline Panel
+-   Do not use WorkspaceLayout
+
+Version 1 has exactly one Landing Workspace: **Dashboard**.
+
+## Entity Workspaces
+
+**Purpose:** manage and interact with one or more OSS entities.
+
+**Characteristics:**
+
+-   Lists
+-   Filters
+-   Detail views
+-   Actions
+-   Relationships
+-   Timeline
+-   Consistent workspace structure (see "Workspace Architecture" below)
+-   Use WorkspaceLayout
+
+Version 1's primary-navigation Entity Workspaces are: **Customers,
+Services, Devices, Network, Inventory, Explorer, Administration**.
+
+Every other workspace specified in
+docs/09-WORKSPACE-SPECIFICATIONS.md -- for example Customer, Service,
+Device, OLT, Site, Workflow, and Search Results -- is also an Entity
+Workspace, whether it is reached from primary navigation, by drilling
+into a related resource, or from search. "Landing Workspace" describes
+Dashboard's purpose, not simply "not in the sidebar": a workspace reached
+by drilling into an entity is still managing an entity, so it is an
+Entity Workspace regardless of how it was opened.
+
+Every Entity Workspace is composed of two primary views: a **Collection
+View** and a **Detail View** (docs/09-WORKSPACE-SPECIFICATIONS.md,
+"Collection View & Detail View"). This is not a third Workspace
+archetype -- Landing Workspace and Entity Workspace remain the only two
+-- it is how an Entity Workspace is internally structured: Primary
+Navigation opens the Collection View; selecting an object opens its
+Detail View.
+
+------------------------------------------------------------------------
+
 # Workspace Architecture
 
-Every domain workspace should follow the same layout.
+Every **Entity Workspace** (see "Workspace Archetypes" above) should
+follow the same structure for its **Detail Workspace**
+(docs/09-WORKSPACE-SPECIFICATIONS.md, "Detail Workspace Structure").
+**Landing Workspaces are deliberately exempt** from this structure: with
+no selected entity, they have no sections to show, and Dashboard's own
+layout (summary cards plus operational widgets) does not fit this shape
+at all.
+
+The tree below is the Detail Workspace's structure specifically. An
+Entity Workspace's Collection View is a different, simpler shape --
+typically a DataTable plus search/filter/sort controls (see "Shared
+Components," Data Display) -- not this tree; see
+docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection View & Detail View,"
+for what a Collection View should and should not contain.
 
 ``` text
-Workspace
+DetailWorkspace
 ├── WorkspaceHeader
-├── WorkspaceActions
-├── WorkspaceSummary
-├── WorkspaceContent
-├── RelationshipPanel
-├── TimelinePanel
-└── InspectorPanel (optional)
+├── ContentsNavigation
+└── SectionContainer
+    ├── SummarySection
+    ├── ServicesSection
+    ├── DevicesSection
+    ├── TimelineSection
+    └── ... (additional Section components, one per operational
+            category; the exact set varies by workspace)
 ```
+
+This tree is a **single continuous page**, not a page-plus-sidebar
+layout: `ContentsNavigation` is in-page navigation for jumping between
+sections, not a second content region running alongside
+`SectionContainer` (docs/09-WORKSPACE-SPECIFICATIONS.md, "Detail
+Workspace Structure," section 6, "Contents Navigation" -- "This is
+in-page navigation only. It is not another layer of application
+navigation"). Every section under `SectionContainer` is built from the
+same `SectionCard` component (docs/08-DESIGN-SYSTEM.md), independently
+collapsible and expanded by default.
 
 ## Workspace Header
 
-Contains:
+Displays:
 
--   Object name
--   Status
--   Health indicators
--   Breadcrumbs
+-   Object identity
+-   Operational status
+-   Primary identifying information
 -   Primary actions
 
-## Workspace Summary
+## Contents Navigation
 
-Displays high-value information first.
+A persistent in-page navigation listing every section: jumps to a
+section, highlights the currently visible one, supports smooth
+scrolling, and remains visible while scrolling when practical. See
+docs/09-WORKSPACE-SPECIFICATIONS.md, "Detail Workspace Structure," for
+the full specification.
 
-Examples:
+## Section Container and Sections
 
--   Customer contact details
--   ONU serial number
--   OLT model
--   Service package
+Each section under `SectionContainer` represents one operational
+category (docs/02-DESIGN-PRINCIPLES.md, principle 6, "Single-Workspace
+Operations") -- for example, on a Customer Workspace: Summary, Services,
+Devices, Contacts, Alerts, Activity, Timeline, Notes.
 
-## Workspace Content
+What earlier revisions of this document called `WorkspaceSummary`,
+`WorkspaceContent`, `RelationshipPanel`, and `TimelinePanel` are now
+understood as **Sections**, not separate panel types in a sidebar:
+`WorkspaceSummary` becomes a `SummarySection`; `WorkspaceContent`'s
+domain-specific information becomes one or more named sections (e.g.
+`ProvisioningDetailsSection`); what `RelationshipPanel` displayed is now
+shown by the specific relationship a section names (a Customer
+Workspace's `ServicesSection` and `DevicesSection` *are* its
+relationships, rather than one generic relationship panel); and
+`TimelinePanel` becomes `TimelineSection`. Relationships remain always
+navigable -- a row within `ServicesSection` or `DevicesSection` still
+opens that object's own Detail Workspace
+(docs/09-WORKSPACE-SPECIFICATIONS.md, "Canonical Detail Views").
 
-The primary domain-specific information.
+`InspectorPanel (optional)`, previously listed as a sibling of
+`RelationshipPanel`/`TimelinePanel`, has no equivalent in this structure;
+an inspector-style need is expected to be met by a Section like any
+other.
 
-## Relationship Panel
-
-Displays related entities.
-
-Example:
-
-Customer
-
-↓
-
-Service
-
-↓
-
-ONU
-
-↓
-
-PON
-
-↓
-
-OLT
-
-↓
-
-Cabinet
-
-↓
-
-Site
-
-Relationships should always be navigable.
-
-## Timeline Panel
+## Timeline Section
 
 Chronological history including:
 
@@ -182,11 +254,15 @@ Chronological history including:
 
 -   BaseCard
 -   PropertyGrid
--   DataTable
+-   DataTable -- the primary building block of a Collection View
+    (docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection View & Detail
+    View"), paired with search/filter/sort controls
 -   Timeline
 -   StatusBadge
 -   StatisticCard
 -   RelationshipGraph
+-   SectionCard (docs/08-DESIGN-SYSTEM.md) -- the standard building block
+    for every Detail Workspace section
 
 ## Forms
 
@@ -241,6 +317,14 @@ WizardLayout
 EmptyStateLayout
 ```
 
+`DetailsLayout` is the generic layout primitive underlying a Detail
+Workspace; `DetailWorkspace` (see "Workspace Architecture") is the
+specific workspace-level composition built from it -- header, Contents
+navigation, and a single continuous column of collapsible sections, not
+a page-plus-sidebar arrangement. A Collection View is typically assembled
+from `CardGrid` or a `DataTable` (see "Shared Components," Data Display)
+plus filter/sort controls, not `DetailsLayout`.
+
 Pages should be assembled from these layouts instead of inventing new
 structures.
 
@@ -256,6 +340,7 @@ structures.
   Current Workspace   Router
   Server Data         Query Layer
   Selected Entity     Workspace
+  Section Collapse    User preference (persisted, per docs/02-DESIGN-PRINCIPLES.md principle 6)
   Dialog Visibility   Component
   Form State          Component / Composable
 
@@ -268,16 +353,22 @@ Avoid duplicating server state.
 Plugins may contribute to:
 
 -   Workspace Header
--   Workspace Summary
--   Workspace Tabs
--   Relationship Panel
--   Timeline
+-   Sections (a plugin may contribute an additional Section to a Detail
+    Workspace's SectionContainer)
+-   Contents Navigation
 -   Action Bar
 -   Dashboard Widgets
 -   Navigation
 -   Search Providers
 -   Property Editors
 -   Diagnostics Panels
+
+"Workspace Tabs" was previously listed here; Detail Workspaces do not
+use tabs (docs/09-WORKSPACE-SPECIFICATIONS.md, "Tabs," under "Detail
+Workspace Structure"), so contributing a Section is the extension point
+a plugin uses instead. "Workspace Summary," "Relationship Panel," and
+"Timeline" are consolidated into "Sections" for the same reason (see
+"Workspace Architecture" above).
 
 Plugins should register contributions through extension points rather
 than modifying existing components.
@@ -331,9 +422,10 @@ Shared workspace primitives.
 
 Examples:
 
+-   DetailWorkspace
 -   WorkspaceHeader
--   WorkspaceSummary
--   WorkspaceTimeline
+-   ContentsNavigation
+-   SectionContainer
 
 ## Domain Components
 
@@ -382,12 +474,19 @@ src/
 
 # Architectural Rules
 
-1.  Every workspace uses the shared Workspace layout.
+1.  Every Entity Workspace's Detail Workspace uses the shared
+    `DetailWorkspace` structure (header, Contents navigation, a single
+    continuous column of sections -- see "Workspace Architecture").
+    Landing Workspaces (Dashboard in Version 1) do not -- see "Workspace
+    Archetypes."
 2.  New reusable patterns should become shared components.
 3.  Business logic must not live inside presentation components.
 4.  Components should remain small and focused.
 5.  Plugins must use extension points.
-6.  Tables are for collections; cards are for individual objects.
+6.  Tables are for collections; cards are for individual objects --
+    concretely, a Collection View is built from tables, a Detail View
+    from cards (docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection View &
+    Detail View").
 7.  Relationship navigation should be available wherever practical.
 8.  Favor composition over duplication.
 9.  Third-party icon libraries are isolated behind BaseIcon; no other

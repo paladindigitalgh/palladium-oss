@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.1-draft
+version: 1.4-draft
 ---
 
 # Workspace Specifications
@@ -26,7 +26,10 @@ frontend.
 1.  Purpose
 2.  Design Goals
 3.  Workspace Standards
-4.  Dashboard Workspace
+4.  Workspace Archetypes
+5.  Collection View & Detail View
+6.  Detail Workspace Structure
+7.  Dashboard Workspace
 
 ------------------------------------------------------------------------
 
@@ -39,7 +42,8 @@ Operators should rarely need to leave a workspace to complete common
 activities.
 
 This document establishes a consistent structure for every workspace in
-the application.
+the application, appropriate to its archetype (see section 4, "Workspace
+Archetypes").
 
 ------------------------------------------------------------------------
 
@@ -53,6 +57,10 @@ Every workspace should:
 -   Preserve operator context
 -   Support keyboard-first navigation
 -   Integrate seamlessly with the Workflow Engine
+
+"Surface related resources naturally" applies where a workspace has
+related resources to surface -- the Landing Workspace has none (see
+section 4, "Workspace Archetypes").
 
 ------------------------------------------------------------------------
 
@@ -72,9 +80,260 @@ Every workspace should define:
 
 These standards ensure a consistent operator experience.
 
+"Related resources" and "Available workflows" apply to Entity
+Workspaces (see section 4, "Workspace Archetypes"). The Landing
+Workspace has no selected entity, so it has neither. For a Detail
+Workspace, "Panels" means its **sections** (section 6, "Detail
+Workspace Structure").
+
 ------------------------------------------------------------------------
 
-# 4. Dashboard Workspace
+# 4. Workspace Archetypes
+
+Not every Workspace manages an entity. Palladium OSS distinguishes two
+Workspace archetypes, and every Workspace is exactly one of them.
+
+## Landing Workspaces
+
+**Purpose:** provide a high-level operational overview rather than
+managing a specific entity.
+
+**Characteristics:**
+
+-   Dashboard-oriented
+-   Metric cards
+-   Operational widgets
+-   Status summaries
+-   No selected entity
+-   No Relationship Panel
+-   No Timeline Panel
+-   Do not use WorkspaceLayout (docs/11-COMPONENT-ARCHITECTURE.md)
+
+Version 1 has exactly one Landing Workspace: **Dashboard** (section 7).
+
+## Entity Workspaces
+
+**Purpose:** manage and interact with one or more OSS entities.
+
+**Characteristics:**
+
+-   Lists
+-   Filters
+-   Detail views
+-   Actions
+-   Relationships
+-   Timeline
+-   Consistent workspace structure (docs/11-COMPONENT-ARCHITECTURE.md,
+    "Workspace Architecture")
+-   Use WorkspaceLayout
+
+Version 1's primary-navigation Entity Workspaces are **Customers,
+Services, Devices, Network, Inventory, Explorer, Administration**.
+
+Every other workspace specified later in this document -- Customer,
+Service, Device, OLT, Site, Workflow, and Search Results -- is also an
+Entity Workspace, whether it is reached from primary navigation, by
+drilling into a related resource, or from search. Being reachable from
+primary navigation is not what makes a workspace an Entity Workspace;
+managing an entity is. Dashboard is the only workspace that does not.
+
+Every Entity Workspace is composed of two primary views: a **Collection
+View** and a **Detail View**. These are not additional Workspace
+archetypes -- Landing Workspace and Entity Workspace remain the only two
+-- they are how an Entity Workspace is internally structured. See section
+5, "Collection View & Detail View."
+
+------------------------------------------------------------------------
+
+# 5. Collection View & Detail View
+
+Primary Navigation leads to a Collection View, which leads to a Detail
+View:
+
+``` text
+Primary Navigation
+        |
+        v
+Collection View
+        |
+        v
+Detail View
+```
+
+This is a navigation *flow* within a single Entity Workspace, not three
+different kinds of Workspace. Discovery Before Detail
+(docs/02-DESIGN-PRINCIPLES.md, principle 5) is the design principle this
+section specifies in functional detail.
+
+## Collection View
+
+**Purpose:**
+
+-   Browse objects
+-   Search
+-   Filter
+-   Sort
+-   Select an object
+
+Collection Views should:
+
+-   Display only identifying information
+-   Support search
+-   Support filtering
+-   Support sorting
+-   Navigate to the object's Detail View
+
+Collection Views should **not**:
+
+-   Become dashboards
+-   Display operational metrics
+-   Duplicate Detail View functionality
+-   Present large amounts of object-specific information
+
+The exact columns vary by entity, but every Collection View should
+remain intentionally minimal. For example:
+
+**Customers:** Customer, Location, Primary Service
+
+**Devices:** Hostname, Device Type, Status
+
+**Inventory:** Asset, Model, Location
+
+## Detail View
+
+The Detail View is the canonical operational interface for an object --
+where technicians perform work. Typical responsibilities include:
+
+-   Complete object information
+-   Relationships
+-   Timeline
+-   Activity
+-   Operational actions
+-   Configuration
+-   Related resources
+
+The Detail View is realized as a **Detail Workspace**: a single
+continuous page composed of collapsible sections, not multiple pages,
+tabs, or nested navigation. See section 6, "Detail Workspace Structure,"
+for the full specification, and docs/02-DESIGN-PRINCIPLES.md, principle
+6, "Single-Workspace Operations," for the design principle it
+implements. "Detail View" describes *where navigation leads*; "Detail
+Workspace" describes *what is there once you arrive* -- the same
+concept, named precisely for each concern.
+
+## Navigation Flow
+
+Clicking a primary navigation item opens that Entity Workspace's
+Collection View.
+
+-   Customers -> Customer Collection View -> Customer Detail View
+-   Devices -> Device Collection View -> Device Detail View
+-   Services -> Service Collection View -> Service Detail View
+-   Inventory -> Inventory Collection View -> Inventory Asset Detail View
+-   Network -> Network Collection View -> appropriate operational Detail
+    View (OLT, Site, etc.)
+
+Explorer remains a special case: it is a query engine that links into
+existing Detail Views rather than owning its own operational entities,
+so it has no Collection View of its own in the same sense.
+
+## Canonical Detail Views
+
+A primary operational object should have exactly one canonical Detail
+View, and it should open into that same Detail View regardless of how it
+was reached.
+
+For example, a Customer opened from Search, Explorer, a Device, a
+Service, or an Alert should always open the same Customer Detail View.
+
+This creates a predictable user experience: an object's Detail View is
+never reimplemented per entry point.
+
+This does not mean every object requires a Detail View. Configuration
+objects and simple reference data may continue to use inline editing
+where appropriate.
+
+------------------------------------------------------------------------
+
+# 6. Detail Workspace Structure
+
+A Detail Workspace is not divided into multiple pages, tabs, or nested
+navigation. It is a single continuous operational workspace composed of
+sections, each containing one category of information related to the
+current object. The entire workspace is visible by default: technicians
+scroll naturally through the page, or jump directly to a section using
+the Contents navigation.
+
+This is docs/02-DESIGN-PRINCIPLES.md principle 6, "Single-Workspace
+Operations," specified in functional detail. This pattern is reused
+consistently across the Customer, Device, Service, Inventory, Network,
+and future Detail Workspaces (see section 4, "Workspace Archetypes," for
+which workspaces those are).
+
+Example (Customer Workspace): Summary, Services, Devices, Contacts,
+Alerts, Activity, Timeline, Notes.
+
+## Workspace Header
+
+Displays:
+
+-   Object identity
+-   Operational status
+-   Primary identifying information
+-   Primary actions
+
+## Contents Navigation
+
+A persistent in-page navigation listing every section.
+
+Responsibilities:
+
+-   Jump to sections
+-   Highlight the currently visible section
+-   Support smooth scrolling
+-   Remain visible while scrolling when practical
+
+This is in-page navigation only. It is **not** another layer of
+application navigation -- it does not change the URL's Detail Workspace,
+only the scroll position within it.
+
+## Sections
+
+Each section should:
+
+-   Represent one operational category
+-   Be independently collapsible
+-   Be expanded by default
+-   Remain part of one continuous page
+-   Avoid nested navigation
+
+Examples: Summary, Services, Devices, Timeline, Notes. The exact
+sections vary by workspace.
+
+Collapse state may be remembered as a user preference (see
+docs/02-DESIGN-PRINCIPLES.md, principle 6).
+
+## Tabs
+
+Detail Workspaces intentionally avoid tabs and nested sub-pages.
+
+Operators should not have to search multiple tabs to understand the
+current object. Scrolling is preferred over navigation.
+
+## Component Architecture
+
+See docs/11-COMPONENT-ARCHITECTURE.md, "Workspace Architecture," for the
+reusable component hierarchy (DetailWorkspace, WorkspaceHeader,
+ContentsNavigation, SectionContainer, and per-entity Section components)
+and docs/08-DESIGN-SYSTEM.md for the `SectionCard` component every
+section is built from.
+
+------------------------------------------------------------------------
+
+# 7. Dashboard Workspace
+
+**Archetype:** Landing Workspace (section 4). Dashboard does not use
+WorkspaceLayout.
 
 ## Purpose
 
@@ -126,7 +385,7 @@ The header should include:
 The Dashboard should summarize operations, not replace dedicated
 workspaces.
 
-# 5. Customer Workspace
+# 8. Customer Workspace
 
 ## Purpose
 
@@ -165,7 +424,7 @@ Display:
 -   View invoices (future)
 -   Open related workflows
 
-## Primary Panels
+## Sections
 
 -   Customer Summary
 -   Active Services
@@ -182,7 +441,7 @@ while preserving the Customer Workspace.
 
 ------------------------------------------------------------------------
 
-# 6. Service Workspace
+# 9. Service Workspace
 
 ## Purpose
 
@@ -213,7 +472,7 @@ Include:
 -   Replace ONU
 -   View configuration
 
-## Primary Panels
+## Sections
 
 -   Service Summary
 -   Assigned Equipment
@@ -225,7 +484,7 @@ Include:
 
 ------------------------------------------------------------------------
 
-# 7. Device Workspace
+# 10. Device Workspace
 
 ## Purpose
 
@@ -260,7 +519,7 @@ Display:
 -   Run diagnostics
 -   Open console (where supported)
 
-## Primary Panels
+## Sections
 
 -   Inventory
 -   Interfaces
@@ -277,7 +536,7 @@ Display:
 Customer, Service, and Device Workspaces should feel related while
 presenting information appropriate to their specific purpose.
 
-# 8. OLT Workspace
+# 11. OLT Workspace
 
 ## Purpose
 
@@ -309,7 +568,7 @@ Display:
 -   Run diagnostics
 -   Open related workflows
 
-## Primary Panels
+## Sections
 
 -   OLT Summary
 -   PON Port Overview
@@ -321,7 +580,7 @@ Display:
 
 ------------------------------------------------------------------------
 
-# 9. Site Workspace
+# 12. Site Workspace
 
 ## Purpose
 
@@ -349,7 +608,7 @@ Display:
 -   Run site diagnostics
 -   View maintenance history
 
-## Primary Panels
+## Sections
 
 -   Site Summary
 -   Installed Equipment
@@ -360,7 +619,7 @@ Display:
 
 ------------------------------------------------------------------------
 
-# 10. Workflow Workspace
+# 13. Workflow Workspace
 
 ## Purpose
 
@@ -390,7 +649,7 @@ Display:
 -   View generated events
 -   Open related resources
 
-## Primary Panels
+## Sections
 
 -   Workflow Summary
 -   Step Progress
@@ -401,7 +660,7 @@ Display:
 
 ------------------------------------------------------------------------
 
-# 11. Search Results Workspace
+# 14. Search Results Workspace
 
 ## Purpose
 
@@ -426,6 +685,10 @@ Results may include:
 
 ## Primary Panels
 
+Search Results has no single object, so it is not a Detail Workspace and
+does not use section 6, "Detail Workspace Structure" -- selecting a
+result opens that object's own Detail Workspace instead.
+
 -   Result List
 -   Filters
 -   Recent Searches
@@ -439,7 +702,7 @@ Infrastructure workspaces should expose relationships between resources
 so operators can move naturally from high-level health to detailed
 investigation.
 
-# 12. Explorer Workspace
+# 15. Explorer Workspace
 
 ## Purpose
 
@@ -454,8 +717,8 @@ It should answer:
 Explorer is not a topology viewer, map, or visualization tool. It has no
 notion of physical or logical network diagrams; its subject is data, not
 diagrams. Network topology is addressed by dedicated workspaces (see
-Site Workspace, section 9, and the future Network Topology workspace,
-section 17).
+Site Workspace, section 12, and the future Network Topology workspace,
+section 20).
 
 ## Primary Audience
 
@@ -474,6 +737,11 @@ section 17).
 -   Save a query for reuse (future)
 
 ## Primary Panels
+
+Explorer is a query engine, not a single-object workspace, so it is not
+a Detail Workspace and does not use section 6, "Detail Workspace
+Structure" -- opening a result leads to that object's own Detail
+Workspace instead.
 
 -   Query Builder
 -   Result Table
@@ -498,7 +766,7 @@ the flexibility of a direct question. Every result should open into its
 subject's own Workspace, keeping Explorer consistent with the rest of
 Palladium rather than a separate reporting silo.
 
-# 13. Administration Workspace
+# 16. Administration Workspace
 
 ## Purpose
 
@@ -527,6 +795,10 @@ attention?"**
 
 ## Primary Panels
 
+Administration centralizes independent platform-configuration concerns
+rather than managing one object, so it is not a Detail Workspace and
+does not use section 6, "Detail Workspace Structure."
+
 -   System Health
 -   User Management
 -   Roles & Permissions
@@ -537,7 +809,7 @@ attention?"**
 
 ------------------------------------------------------------------------
 
-# 14. Global Workspace Behaviors
+# 17. Global Workspace Behaviors
 
 All workspaces should behave consistently.
 
@@ -556,7 +828,7 @@ workspaces.
 
 ------------------------------------------------------------------------
 
-# 15. Cross-Workspace Navigation
+# 18. Cross-Workspace Navigation
 
 Relationships are first-class navigation elements.
 
@@ -574,7 +846,7 @@ follow relationships.
 
 ------------------------------------------------------------------------
 
-# 16. Workspace Permissions
+# 19. Workspace Permissions
 
 Visibility and actions are permission-aware.
 
@@ -591,7 +863,7 @@ unusable controls.
 
 ------------------------------------------------------------------------
 
-# 17. Future Workspaces
+# 20. Future Workspaces
 
 Future versions may introduce dedicated workspaces for:
 
@@ -602,7 +874,7 @@ Future versions may introduce dedicated workspaces for:
 -   Capacity Planning
 -   AI Operations
 
-Ad hoc querying and reporting is not on this list: Explorer (section 12)
+Ad hoc querying and reporting is not on this list: Explorer (section 15)
 already provides it as a Version 1 workspace, not a future one.
 
 These should follow the same structural standards defined in this
@@ -626,14 +898,19 @@ understanding, investigating, and acting on the network.
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
   1.1 Draft   2026-07-30   Added Explorer Workspace (section 12) as the OSS query and reporting engine; removed Reporting from Future Workspaces
+  1.2 Draft   2026-07-30   Documented the Landing/Entity Workspace archetype distinction (section 4); clarified WorkspaceLayout applies to Entity Workspaces only
+  1.3 Draft   2026-07-30   Added Collection View & Detail View specification (section 5): Collection View discovery scope, Detail View responsibilities, navigation flow, and canonical Detail Views
+  1.4 Draft   2026-07-30   Added Detail Workspace Structure (section 6): header, Contents navigation, collapsible sections, no tabs; renamed "Primary Panels" to "Sections" for single-object Detail Workspaces
 
 ------------------------------------------------------------------------
 
 # Related Documents
 
+-   02-DESIGN-PRINCIPLES.md
 -   04-NAVIGATION.md
 -   05-WORKFLOW-ENGINE.md
 -   07-UI-ARCHITECTURE.md
 -   08-DESIGN-SYSTEM.md
+-   11-COMPONENT-ARCHITECTURE.md
 
 **End of Document**

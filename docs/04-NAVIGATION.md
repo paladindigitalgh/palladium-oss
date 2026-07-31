@@ -2,7 +2,7 @@
 document: 04-NAVIGATION
 status: Draft
 title: Navigation
-version: 1.0-draft
+version: 1.2-draft
 ---
 
 # Navigation
@@ -134,6 +134,13 @@ The primary navigation consists of:
 Each destination represents a major operational workspace rather than a
 collection of unrelated pages.
 
+Clicking a primary navigation item opens that Entity Workspace's
+Collection View (docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection View &
+Detail View"). Selecting an object within it opens that object's Detail
+View. This Primary Navigation -> Collection View -> Detail View flow is
+not three different kinds of workspace; it is how a single Entity
+Workspace is navigated.
+
 ## Persistent Navigation
 
 Global navigation should remain available regardless of the current
@@ -172,7 +179,11 @@ Search should support:
 Results should be grouped by entity type and display enough context to
 identify the correct object immediately.
 
-Selecting a result should always open the appropriate workspace.
+Selecting a result should always open the object's canonical Detail View
+(docs/09-WORKSPACE-SPECIFICATIONS.md, "Canonical Detail Views") -- the
+same Detail View that object opens into no matter how it was reached.
+Search is for finding an object, not for reading its details
+(docs/02-DESIGN-PRINCIPLES.md, principle 5, "Discovery Before Detail").
 
 ## Search Principles
 
@@ -186,9 +197,17 @@ Selecting a result should always open the appropriate workspace.
 
 # 6. Workspace Navigation
 
-Every workspace follows the same high-level layout.
+Every Entity Workspace follows the same high-level layout
+(docs/11-COMPONENT-ARCHITECTURE.md, "Workspace Archetypes"). Dashboard,
+the sole Landing Workspace, does not: it has no single entity, so it has
+no relationships or activity timeline to navigate.
 
-A typical workspace contains:
+Within an Entity Workspace, navigation moves from its Collection View to
+an object's Detail View (docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection
+View & Detail View"). The list below describes the Detail View, where an
+object's full context lives.
+
+A typical Entity Workspace contains:
 
 -   Summary
 -   Activity Timeline
@@ -199,7 +218,7 @@ A typical workspace contains:
 -   Configuration (where applicable)
 
 Operators should not need to learn a different navigation pattern for
-each workspace.
+each Entity Workspace.
 
 Consistency reduces cognitive load and training time.
 
@@ -218,13 +237,17 @@ The layout should prioritize those answers before secondary information.
 URLs should identify operational resources rather than user interface
 layouts.
 
+A collection path is that Entity Workspace's Collection View; an `{id}`
+beneath it is that object's Detail View
+(docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection View & Detail View").
+
 Examples:
 
--   `/customers/{id}`
--   `/services/{id}`
--   `/assets/{id}`
--   `/olts/{id}`
--   `/workflows/{id}`
+-   `/customers` (Collection View) and `/customers/{id}` (Detail View)
+-   `/services` (Collection View) and `/services/{id}` (Detail View)
+-   `/assets` (Collection View) and `/assets/{id}` (Detail View)
+-   `/olts` (Collection View) and `/olts/{id}` (Detail View)
+-   `/workflows` (Collection View) and `/workflows/{id}` (Detail View)
 
 A bookmarked URL should always restore the same workspace and context
 whenever practical.
@@ -383,6 +406,8 @@ When navigation becomes invisible, operators become more effective.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-07-30   Scoped "every workspace follows the same layout" (section 6) to Entity Workspaces
+  1.2 Draft   2026-07-30   Documented the Collection View -> Detail View navigation flow (sections 4, 5, 6, 7)
 
 ------------------------------------------------------------------------
 
@@ -392,6 +417,7 @@ When navigation becomes invisible, operators become more effective.
 -   02-DESIGN-PRINCIPLES.md
 -   03-DOMAIN-MODEL.md
 -   05-WORKFLOW-ENGINE.md
+-   09-WORKSPACE-SPECIFICATIONS.md
 
 ------------------------------------------------------------------------
 

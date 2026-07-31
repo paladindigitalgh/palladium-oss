@@ -2,7 +2,7 @@
 document: 08-DESIGN-SYSTEM
 status: Draft
 title: Design System
-version: 1.1-draft
+version: 1.3-draft
 ---
 
 # Design System
@@ -293,6 +293,28 @@ Typical uses include:
 Panels should be composable so the same component can appear across
 multiple workspaces.
 
+## SectionCard
+
+`SectionCard` is the standard building block for every Detail Workspace
+section (docs/09-WORKSPACE-SPECIFICATIONS.md, "Detail Workspace
+Structure"; docs/11-COMPONENT-ARCHITECTURE.md, "Workspace Architecture").
+Every named section on a Detail Workspace -- Summary, Services, Devices,
+Timeline, Notes, and so on -- is a `SectionCard`, not a bespoke
+container.
+
+Responsibilities:
+
+-   Section title
+-   Optional icon
+-   Optional badge/count
+-   Collapsible
+-   Expanded by default
+
+A `SectionCard` is expanded by default and may be collapsed individually;
+collapse state may be remembered as a user preference
+(docs/02-DESIGN-PRINCIPLES.md, principle 6, "Single-Workspace
+Operations"). It does not introduce nested navigation or tabs of its own.
+
 ------------------------------------------------------------------------
 
 # 15. Tables
@@ -307,7 +329,9 @@ Every table should support:
 -   Pagination or virtualization
 -   Bulk selection
 -   Keyboard navigation
--   Opening a Workspace from a row
+-   Opening a row's Detail View
+    (docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection View & Detail
+    View")
 
 Tables should prioritize rapid scanning over decorative styling.
 
@@ -516,14 +540,18 @@ approachable, maintainable, and efficient as it grows.
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
   1.1 Draft   2026-07-30   Finalized Lucide as the official icon library, isolated behind BaseIcon
+  1.2 Draft   2026-07-30   Clarified table row selection opens a Detail View (section 15)
+  1.3 Draft   2026-07-30   Documented SectionCard (section 14), the standard building block for Detail Workspace sections
 
 ------------------------------------------------------------------------
 
 # Related Documents
 
+-   02-DESIGN-PRINCIPLES.md
 -   04-NAVIGATION.md
 -   05-WORKFLOW-ENGINE.md
 -   06-PLUGIN-ARCHITECTURE.md
 -   07-UI-ARCHITECTURE.md
+-   09-WORKSPACE-SPECIFICATIONS.md
 
 **End of Document**

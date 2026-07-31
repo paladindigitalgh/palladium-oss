@@ -22,6 +22,9 @@ import {
   Clock,
   ArrowRight,
   TriangleAlert,
+  Activity,
+  ListTodo,
+  CircleCheck,
 } from '@lucide/vue'
 
 /**
@@ -66,6 +69,9 @@ export type IconName =
   | 'clock'
   | 'arrow-right'
   | 'alert'
+  | 'health'
+  | 'tasks'
+  | 'check'
 
 // Typed as Vue's generic `Component`, not Lucide's own icon type -- even
 // this internal map stays library-agnostic, so nothing here nudges a
@@ -92,6 +98,9 @@ const ICONS: Record<IconName, Component> = {
   clock: Clock,
   'arrow-right': ArrowRight,
   alert: TriangleAlert,
+  health: Activity,
+  tasks: ListTodo,
+  check: CircleCheck,
 }
 
 defineOptions({ inheritAttrs: false })

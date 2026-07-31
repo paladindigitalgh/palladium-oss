@@ -2,7 +2,7 @@
 document: 07-UI-ARCHITECTURE
 status: Draft
 title: UI Architecture
-version: 1.0-draft
+version: 1.2-draft
 ---
 
 # UI Architecture
@@ -168,7 +168,11 @@ Examples:
 -   Workflow Workspace
 
 A workspace aggregates everything relevant to its subject without
-forcing operators to navigate elsewhere.
+forcing operators to navigate elsewhere. Concretely, an Entity
+Workspace's Detail Workspace is a single continuous, section-based page,
+not tabs or nested pages (docs/02-DESIGN-PRINCIPLES.md, principle 6,
+"Single-Workspace Operations"; docs/09-WORKSPACE-SPECIFICATIONS.md,
+"Detail Workspace Structure").
 
 ------------------------------------------------------------------------
 
@@ -189,9 +193,12 @@ repetitive navigation.
 
 # 9. Panel System
 
-Panels are reusable UI regions within a workspace.
+On a Detail Workspace, these are **sections** -- each built from
+`SectionCard` (docs/08-DESIGN-SYSTEM.md), independently collapsible and
+expanded by default (docs/09-WORKSPACE-SPECIFICATIONS.md, "Detail
+Workspace Structure").
 
-Typical panels include:
+Typical sections include:
 
 -   Summary
 -   Timeline
@@ -201,8 +208,8 @@ Typical panels include:
 -   Running Workflows
 -   Recent Activity
 
-Panels should be independently refreshable and reusable across multiple
-workspace types.
+Sections should be independently refreshable and reusable across
+multiple workspace types.
 
 ------------------------------------------------------------------------
 
@@ -214,10 +221,14 @@ The UI should preserve:
 
 -   Filters
 -   Sort order
--   Selected tabs
 -   Scroll position
--   Expanded sections
+-   Expanded/collapsed sections
 -   Workspace history
+
+Detail Workspaces have no tabs to preserve selection for
+(docs/09-WORKSPACE-SPECIFICATIONS.md, "Tabs," under "Detail Workspace
+Structure") -- scroll position and each section's collapse state serve
+the same "return to where I was" purpose instead.
 
 Preserving context reduces cognitive load and improves efficiency.
 
@@ -246,13 +257,14 @@ Workspaces preserve context.
 Each Workspace is composed of one or more Views arranged into
 predictable layout regions.
 
-Typical regions include:
+A Detail Workspace's regions are a single continuous column, not a
+page-plus-sidebar arrangement (docs/09-WORKSPACE-SPECIFICATIONS.md,
+"Detail Workspace Structure"):
 
 -   Header
--   Primary Content
--   Secondary Information
--   Right Sidebar
--   Timeline
+-   Contents Navigation (in-page only, not a content sidebar)
+-   Sections (Primary Content, Secondary Information, Timeline, and so
+    on are all sections within the same column)
 -   Footer Actions
 
 Layouts should remain consistent across workspace types to reduce
@@ -260,7 +272,31 @@ cognitive load.
 
 ------------------------------------------------------------------------
 
-# 13. Dialogs & Drawers
+# 13. Detail Workspace Interaction Model
+
+Every Detail Workspace uses the same interaction model
+(docs/09-WORKSPACE-SPECIFICATIONS.md, "Detail Workspace Structure";
+docs/02-DESIGN-PRINCIPLES.md, principle 6, "Single-Workspace
+Operations"):
+
+-   Sticky Contents navigation -- remains visible while scrolling when
+    practical.
+-   Active section highlighting -- Contents navigation highlights
+    whichever section is currently in view.
+-   Smooth scrolling -- selecting an item in Contents navigation scrolls
+    to that section rather than jumping or navigating away.
+-   Collapsible sections -- an operator may collapse a section
+    individually; collapse state may be remembered as a user preference.
+-   All sections expanded by default -- an operator should see the whole
+    object without acting first.
+
+This pattern is reused consistently across the Customer, Device,
+Service, Inventory, Network, and future Detail Workspaces. It is not
+reinvented per workspace.
+
+------------------------------------------------------------------------
+
+# 14. Dialogs & Drawers
 
 Dialogs are used for focused, interruptive tasks requiring explicit
 confirmation.
@@ -286,9 +322,13 @@ Use dialogs for decisions and drawers for exploration.
 
 ------------------------------------------------------------------------
 
-# 14. Tables & Data Presentation
+# 15. Tables & Data Presentation
 
 Tables should prioritize scanning over density.
+
+A table is the primary mechanism of a Collection View
+(docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection View & Detail View"):
+it should display only identifying information, not the full object.
 
 Common capabilities include:
 
@@ -300,11 +340,11 @@ Common capabilities include:
 -   Keyboard navigation
 
 Every table should support opening the selected item directly into its
-Workspace.
+Detail View.
 
 ------------------------------------------------------------------------
 
-# 15. Forms & Editing Patterns
+# 16. Forms & Editing Patterns
 
 Forms should be task-oriented rather than database-oriented.
 
@@ -321,7 +361,7 @@ rather than directly through form submission.
 
 ------------------------------------------------------------------------
 
-# 16. Workflow Integration
+# 17. Workflow Integration
 
 Workflows are first-class UI elements.
 
@@ -339,7 +379,7 @@ currently active.
 
 ------------------------------------------------------------------------
 
-# 17. Notifications & Activity
+# 18. Notifications & Activity
 
 Notifications communicate changes requiring operator awareness.
 
@@ -355,7 +395,7 @@ Event when applicable.
 
 ------------------------------------------------------------------------
 
-# 18. State Management
+# 19. State Management
 
 Application state should be separated into distinct layers:
 
@@ -378,7 +418,7 @@ Every interaction should either:
 
 The interface should never create unnecessary work.
 
-# 19. Loading & Empty States
+# 20. Loading & Empty States
 
 Loading states should communicate progress without disrupting the
 operator's workflow.
@@ -394,7 +434,7 @@ next action.
 
 ------------------------------------------------------------------------
 
-# 20. Error & Recovery UX
+# 21. Error & Recovery UX
 
 Errors should help operators recover, not merely report failure.
 
@@ -410,7 +450,7 @@ routine operations.
 
 ------------------------------------------------------------------------
 
-# 21. Accessibility
+# 22. Accessibility
 
 Accessibility is a core quality attribute.
 
@@ -427,7 +467,7 @@ using assistive technologies.
 
 ------------------------------------------------------------------------
 
-# 22. Keyboard Navigation
+# 23. Keyboard Navigation
 
 Common operations should be available without a mouse.
 
@@ -443,7 +483,7 @@ Keyboard shortcuts should remain consistent throughout the application.
 
 ------------------------------------------------------------------------
 
-# 23. Responsive Behavior
+# 24. Responsive Behavior
 
 Palladium is designed primarily for desktop operations but should remain
 usable on smaller displays.
@@ -453,7 +493,7 @@ navigation while preserving access to all core functionality.
 
 ------------------------------------------------------------------------
 
-# 24. Performance Considerations
+# 25. Performance Considerations
 
 The UI should remain responsive even when managing large networks.
 
@@ -470,7 +510,7 @@ later.
 
 ------------------------------------------------------------------------
 
-# 25. Future Enhancements
+# 26. Future Enhancements
 
 Future versions may include:
 
@@ -501,14 +541,18 @@ of the operator's mental model rather than an obstacle to it.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-07-30   Clarified tables belong to Collection Views and open a Detail View (section 14)
+  1.2 Draft   2026-07-30   Added Detail Workspace Interaction Model (section 13): sticky Contents navigation, active section highlighting, smooth scrolling, collapsible sections; replaced tab/sidebar language with sections throughout
 
 ------------------------------------------------------------------------
 
 # Related Documents
 
+-   02-DESIGN-PRINCIPLES.md
 -   04-NAVIGATION.md
 -   05-WORKFLOW-ENGINE.md
 -   06-PLUGIN-ARCHITECTURE.md
 -   08-DESIGN-SYSTEM.md
+-   09-WORKSPACE-SPECIFICATIONS.md
 
 **End of Document**

@@ -2,7 +2,7 @@
 document: 02-DESIGN-PRINCIPLES
 status: Draft
 title: Design Principles
-version: 1.0-draft
+version: 1.3-draft
 ---
 
 # Design Principles
@@ -25,13 +25,15 @@ These principles form the constitutional foundation of the project.
 2.  Operations First
 3.  Search First
 4.  Workspaces, Not Pages
-5.  Workflows Over Buttons
-6.  Business Intent Over Vendor Commands
-7.  Read Before Write
-8.  Events as Operational History
-9.  Correlation Over Collection
-10. Simplicity Over Feature Count
-11. Consistency Above Cleverness
+5.  Discovery Before Detail
+6.  Single-Workspace Operations
+7.  Workflows Over Buttons
+8.  Business Intent Over Vendor Commands
+9.  Read Before Write
+10. Events as Operational History
+11. Correlation Over Collection
+12. Simplicity Over Feature Count
+13. Consistency Above Cleverness
 
 ------------------------------------------------------------------------
 
@@ -80,8 +82,9 @@ Operators begin with information they already know:
 -   Router hostname
 -   OLT name
 
-Search should immediately lead them into the appropriate operational
-workspace.
+Search should immediately lead them into the object's Detail View
+(principle 5, "Discovery Before Detail") -- the same Detail View that
+object opens into no matter how it was reached.
 
 Navigation exists for exploration.
 
@@ -103,12 +106,16 @@ Palladium adopts a different philosophy.
 
 Every major interface is a **workspace**.
 
-A workspace is centered around an operational subject, such as a
-customer, service, OLT, or asset. It brings together everything an
-operator needs to understand the current state, review history, identify
-relationships, and safely take action.
+Most workspaces are Entity Workspaces (docs/11-COMPONENT-ARCHITECTURE.md,
+"Workspace Archetypes"), centered around an operational subject, such as
+a customer, service, OLT, or asset. An Entity Workspace brings together
+everything an operator needs to understand the current state, review
+history, identify relationships, and safely take action -- but not all
+at once. Operators reach that detail by first discovering the object
+through a Collection View, then opening its Detail View (principle 5,
+"Discovery Before Detail").
 
-A workspace should include:
+An Entity Workspace's Detail View should include:
 
 -   Current state
 -   Historical activity
@@ -122,7 +129,57 @@ navigation.
 
 ------------------------------------------------------------------------
 
-# 5. Workflows Over Buttons
+# 5. Discovery Before Detail
+
+Collection Views are optimized for discovery rather than management.
+
+They present only the minimum information necessary to identify and
+locate an object.
+
+Detailed operational information belongs exclusively within that
+object's Detail View.
+
+The goal is to reduce visual clutter, improve navigation speed, and keep
+operators focused on the current task.
+
+-   Collection pages are for discovery.
+-   Detail pages are for operations.
+-   Search is for finding, not reading.
+-   Context is earned by selecting an object.
+
+See docs/09-WORKSPACE-SPECIFICATIONS.md, "Collection View & Detail
+View," for the full specification.
+
+------------------------------------------------------------------------
+
+# 6. Single-Workspace Operations
+
+Operational work should be completed within a single Detail Workspace
+whenever practical.
+
+Rather than dividing information across tabs or nested pages, related
+information is organized into sections within one continuous workspace.
+
+This reduces navigation overhead, preserves context, and allows
+technicians to understand an object without switching between views.
+
+-   Detail Workspaces are continuous operational documents.
+-   Information is organized into sections.
+-   All sections are expanded by default.
+-   Users may collapse sections individually.
+-   Collapse state may be remembered as a user preference.
+-   Navigation should never be required to understand an object.
+
+> A technician should never have to wonder where information lives. If
+> it relates to the current object, it should be available within that
+> object's Detail Workspace.
+
+See docs/09-WORKSPACE-SPECIFICATIONS.md, "Detail Workspace Structure,"
+for the full specification.
+
+------------------------------------------------------------------------
+
+# 7. Workflows Over Buttons
 
 Individual buttons encourage isolated actions.
 
@@ -143,7 +200,7 @@ Complexity belongs inside the workflow---not in the operator's head.
 
 ------------------------------------------------------------------------
 
-# 6. Business Intent Over Vendor Commands
+# 8. Business Intent Over Vendor Commands
 
 Operators think in business outcomes.
 
@@ -178,7 +235,7 @@ This principle requires a clear separation between:
 
 The core platform should never depend on vendor-specific command syntax.
 
-# 7. Read Before Write
+# 9. Read Before Write
 
 Palladium should prefer understanding the current state of the network
 before attempting to change it.
@@ -203,7 +260,7 @@ Understanding precedes action.
 
 ------------------------------------------------------------------------
 
-# 8. Events as Operational History
+# 10. Events as Operational History
 
 Every meaningful action within Palladium should generate an event.
 
@@ -248,7 +305,7 @@ The event stream should describe the operational life of the network.
 
 ------------------------------------------------------------------------
 
-# 9. Correlation Over Collection
+# 11. Correlation Over Collection
 
 Collecting more information does not necessarily improve operations.
 
@@ -279,7 +336,7 @@ Information without context increases cognitive load.
 
 Correlated information reduces it.
 
-# 10. Simplicity Over Feature Count
+# 12. Simplicity Over Feature Count
 
 Palladium should not compete by offering the largest number of features.
 
@@ -299,7 +356,7 @@ Complexity should be earned, not accumulated.
 
 ------------------------------------------------------------------------
 
-# 11. Consistency Above Cleverness
+# 13. Consistency Above Cleverness
 
 Operators benefit from consistency more than novelty.
 
@@ -307,8 +364,11 @@ The same concepts should behave the same way throughout the platform.
 
 Examples include:
 
--   Every workspace presents state, history, relationships, and
-    workflows.
+-   Every Entity Workspace presents state, history, relationships, and
+    workflows (docs/11-COMPONENT-ARCHITECTURE.md, "Workspace
+    Archetypes"). The Dashboard Landing Workspace summarizes state
+    instead, since it has no single entity to show history or
+    relationships for.
 -   Every workflow follows the same lifecycle.
 -   Every search result opens into an appropriate workspace.
 -   Every event appears in a consistent timeline.
@@ -318,7 +378,7 @@ confidence.
 
 ------------------------------------------------------------------------
 
-# 12. Design Decision Checklist
+# 14. Design Decision Checklist
 
 Before implementing a new feature, ask:
 
@@ -336,7 +396,7 @@ implementation.
 
 ------------------------------------------------------------------------
 
-# 13. Applying These Principles
+# 15. Applying These Principles
 
 These principles are intended to guide every stage of development.
 
@@ -375,6 +435,9 @@ principles---should be questioned first.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-07-30   Scoped the "every workspace presents state, history, relationships, and workflows" example to Entity Workspaces
+  1.2 Draft   2026-07-30   Added principle 5, "Discovery Before Detail" (Collection View vs. Detail View)
+  1.3 Draft   2026-07-30   Added principle 6, "Single-Workspace Operations" (Detail Workspace sections, not tabs)
 
 ------------------------------------------------------------------------
 
@@ -383,6 +446,8 @@ principles---should be questioned first.
 -   00-INTRODUCTION.md
 -   01-VISION.md
 -   03-DOMAIN-MODEL.md
+-   09-WORKSPACE-SPECIFICATIONS.md
+-   11-COMPONENT-ARCHITECTURE.md
 
 ------------------------------------------------------------------------
 
