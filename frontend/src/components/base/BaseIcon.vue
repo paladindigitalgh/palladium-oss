@@ -25,6 +25,9 @@ import {
   Activity,
   ListTodo,
   CircleCheck,
+  ListFilter,
+  MapPin,
+  ChevronsUpDown,
 } from '@lucide/vue'
 
 /**
@@ -72,6 +75,9 @@ export type IconName =
   | 'health'
   | 'tasks'
   | 'check'
+  | 'filter'
+  | 'location'
+  | 'sort'
 
 // Typed as Vue's generic `Component`, not Lucide's own icon type -- even
 // this internal map stays library-agnostic, so nothing here nudges a
@@ -101,6 +107,9 @@ const ICONS: Record<IconName, Component> = {
   health: Activity,
   tasks: ListTodo,
   check: CircleCheck,
+  filter: ListFilter,
+  location: MapPin,
+  sort: ChevronsUpDown,
 }
 
 defineOptions({ inheritAttrs: false })

@@ -42,7 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Customers',
     path: '/customers',
     icon: 'customers',
-    description: 'Customer management will appear here.',
+    description: 'Search, filter, and open a customer workspace.',
   },
   {
     id: 'services',

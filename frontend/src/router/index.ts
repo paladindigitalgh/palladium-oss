@@ -11,13 +11,13 @@ import { NAV_ITEMS } from './navigation'
  *
  * Routes default to the shared PlaceholderWorkspaceView (see that file's
  * own doc comment) until a workspace has a real implementation, at which
- * point its nav id is added to VIEW_COMPONENTS below. Dashboard
- * (Milestone 2) is the first entry; Customers (Milestone 3) and the
- * others will follow the same pattern rather than each needing its own
- * routing logic.
+ * point its nav id is added to VIEW_COMPONENTS below. Dashboard and
+ * Customers are implemented; the rest will follow the same pattern
+ * rather than each needing its own routing logic.
  */
 const VIEW_COMPONENTS: Record<string, () => Promise<{ default: Component }>> = {
   dashboard: () => import('@/views/DashboardView.vue'),
+  customers: () => import('@/views/CustomerCollectionView.vue'),
 }
 
 const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.map((item) => ({
@@ -35,13 +35,15 @@ const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/dashboard' },
   ...workspaceRoutes,
   {
-    // TEMPORARY, not in NAV_ITEMS and not linked from anywhere in the
-    // app: validates the Detail Workspace framework in isolation with
-    // placeholder content. See that view's own doc comment. Delete once
-    // a real Detail Workspace (starting with Customers) exists.
-    path: '/_demo/detail-workspace',
-    name: 'detail-workspace-demo',
-    component: () => import('@/views/DetailWorkspaceDemoView.vue'),
+    // The Customer Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
+    // "Navigation Flow": Customers -> Customer Collection View -> Customer
+    // Detail View). Not derived from NAV_ITEMS -- it is reached by
+    // selecting a row in the Customer Collection View, not from primary
+    // navigation -- but it is a real, permanent route, unlike the
+    // /_demo/detail-workspace route it replaces.
+    path: '/customers/:id',
+    name: 'customer-detail',
+    component: () => import('@/views/CustomerDetailView.vue'),
   },
   {
     path: '/:pathMatch(.*)*',
