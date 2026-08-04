@@ -139,8 +139,8 @@ function handleSort(key: string) {
 
         <template #cell-primaryService="{ row }">
           <div class="service-cell">
-            <span class="service-cell__tier">{{ row.primaryService.tier }}</span>
-            <BaseBadge variant="info">{{ row.primaryService.technology === 'gpon' ? 'GPON' : 'XGS-PON' }}</BaseBadge>
+            <span class="service-cell__tier">{{ row.services[0].tier }}</span>
+            <BaseBadge variant="info">{{ row.services[0].technology === 'gpon' ? 'GPON' : 'XGS-PON' }}</BaseBadge>
           </div>
         </template>
       </DataTable>

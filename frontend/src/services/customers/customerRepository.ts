@@ -62,8 +62,8 @@ function compareCustomers(
         break
       case 'primaryService':
         comparison =
-          a.primaryService.technology.localeCompare(b.primaryService.technology) ||
-          a.primaryService.tier.localeCompare(b.primaryService.tier)
+          a.services[0].technology.localeCompare(b.services[0].technology) ||
+          a.services[0].tier.localeCompare(b.services[0].tier)
         break
       case 'customer':
       default:
@@ -95,7 +95,7 @@ export async function listCustomers(query: CustomerListQuery = {}): Promise<Cust
     results = results.filter((customer) => customer.status === status)
   }
   if (serviceTechnology !== 'any') {
-    results = results.filter((customer) => customer.primaryService.technology === serviceTechnology)
+    results = results.filter((customer) => customer.services.some((service) => service.technology === serviceTechnology))
   }
   if (customerType !== 'all') {
     results = results.filter((customer) => customer.type === customerType)

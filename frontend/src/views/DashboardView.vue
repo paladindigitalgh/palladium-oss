@@ -7,6 +7,7 @@ import DashboardWidget from '@/components/dashboard/DashboardWidget.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BasePropertyGrid from '@/components/base/BasePropertyGrid.vue'
 import BaseIcon from '@/components/base/BaseIcon.vue'
+import ActivityList from '@/components/data-display/ActivityList.vue'
 
 /**
  * Milestone 2: the first real workspace. Everything below this line is
@@ -93,12 +94,7 @@ const PLACEHOLDER_TASKS = [
       </DashboardWidget>
 
       <DashboardWidget title="Recent Activity" icon="clock" view-all-to="/explorer">
-        <ol class="dashboard-view__activity">
-          <li v-for="entry in PLACEHOLDER_ACTIVITY" :key="entry.id" class="dashboard-view__activity-item">
-            <span class="dashboard-view__activity-label">{{ entry.label }}</span>
-            <span class="dashboard-view__activity-timestamp">{{ entry.timestamp }}</span>
-          </li>
-        </ol>
+        <ActivityList :entries="PLACEHOLDER_ACTIVITY" />
       </DashboardWidget>
 
       <DashboardWidget title="Network Overview" icon="network" view-all-to="/network">
@@ -136,36 +132,9 @@ const PLACEHOLDER_TASKS = [
   gap: var(--space-4);
 }
 
-.dashboard-view__activity,
 .dashboard-view__tasks {
   display: flex;
   flex-direction: column;
-}
-
-.dashboard-view__activity-item {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.dashboard-view__activity-item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.dashboard-view__activity-label {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
-}
-
-.dashboard-view__activity-timestamp {
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  white-space: nowrap;
 }
 
 .dashboard-view__task-item {
