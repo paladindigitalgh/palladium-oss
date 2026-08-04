@@ -1,3 +1,6 @@
+import type { ActivityEntry } from './activity'
+import type { Note } from './note'
+
 /**
  * The Customer domain type and everything it's composed of. This is the
  * shape the mock repository (services/customers/customerRepository.ts)
@@ -73,21 +76,6 @@ export interface CustomerAlert {
   timestamp: string
 }
 
-/** Matches TimelineEntries.vue's entry shape exactly so both Recent Activity and Timeline can render through it. */
-export interface CustomerActivityEntry {
-  id: string
-  label: string
-  timestamp: string
-  description?: string
-}
-
-export interface CustomerNote {
-  id: string
-  author: string
-  timestamp: string
-  body: string
-}
-
 export interface Customer {
   /** Customer-facing identifier, e.g. "CUST-100482". Also the route param in /customers/:id. */
   id: string
@@ -106,7 +94,7 @@ export interface Customer {
   }
   alerts: CustomerAlert[]
   /** The most recent slice of `timeline`, not an independently maintained list. */
-  activity: CustomerActivityEntry[]
-  timeline: CustomerActivityEntry[]
-  notes: CustomerNote[]
+  activity: ActivityEntry[]
+  timeline: ActivityEntry[]
+  notes: Note[]
 }

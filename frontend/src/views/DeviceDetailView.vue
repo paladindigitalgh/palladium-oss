@@ -1,32 +1,48 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import DetailWorkspace from '@/components/workspace/DetailWorkspace.vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import SectionCard from '@/components/data-display/SectionCard.vue'
-import BaseIcon, { type IconName } from '@/components/base/BaseIcon.vue'
+import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
+import ActivityList from '@/components/data-display/ActivityList.vue'
+import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
+import NotesList from '@/components/data-display/NotesList.vue'
+import BaseIcon from '@/components/base/BaseIcon.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import { getDeviceById } from '@/services/devices/deviceRepository'
+import { getCustomerById } from '@/services/customers/customerRepository'
 import type { Device, DeviceStatus } from '@/types/device'
+import type { Customer, CustomerStatus, ServiceStatus } from '@/types/customer'
 
 /**
- * The Device Detail Workspace placeholder (docs/09-WORKSPACE-
- * SPECIFICATIONS.md, section 10, "Device Workspace"). Same treatment as
- * the Customer Detail Workspace's own first pass: the header and Summary
- * bind to a real device looked up by route param (proving the Device
- * Collection -> Device Detail routing and canonical-lookup path work),
- * but Interfaces/Alarms/Timeline stay honest "not yet implemented"
- * placeholders rather than fabricated operational data. Building those
- * out is a future milestone's job.
+ * The Device Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
+ * section 10, "Device Workspace"): an operational dossier answering
+ * "what is this device doing right now?" -- not a configuration form.
+ * Every section is read-only this milestone -- no editing, provisioning,
+ * or destructive actions, same treatment as the Customer Detail
+ * Workspace's header (disabled primary actions with a reason,
+ * docs/08-DESIGN-SYSTEM.md section 12).
+ *
+ * Devices remain projections of Customer -> Service -> Equipment
+ * (docs/03-DOMAIN-MODEL.md): the device fetch resolves the device
+ * itself, and Assignment additionally resolves the owning customer *on
+ * demand* via `assignedCustomerId` (only when present) rather than
+ * carrying the full Customer/Service objects on Device permanently --
+ * that would duplicate data DeviceCollectionView never needs. Full
+ * service detail (`relatedService`) is read out of that fetched
+ * customer's own `services` array by `serviceId`, never stored
+ * redundantly on Device either.
  */
 const route = useRoute()
 const router = useRouter()
 
 const device = ref<Device | null>(null)
+const relatedCustomer = ref<Customer | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
 
@@ -34,10 +50,14 @@ async function load(id: string) {
   loading.value = true
   notFound.value = false
   device.value = null
+  relatedCustomer.value = null
 
   const result = await getDeviceById(id)
   if (result) {
     device.value = result
+    if (result.assignedCustomerId) {
+      relatedCustomer.value = await getCustomerById(result.assignedCustomerId)
+    }
   } else {
     notFound.value = true
   }
@@ -49,6 +69,8 @@ watch(
   () => route.params.id,
   (id) => load(id as string),
 )
+
+const relatedService = computed(() => relatedCustomer.value?.services.find((service) => service.id === device.value?.serviceId))
 
 const STATUS_LABELS: Record<DeviceStatus, string> = {
   online: 'Online',
@@ -64,28 +86,116 @@ const STATUS_VARIANTS: Record<DeviceStatus, 'success' | 'error' | 'warning' | 'i
   provisioning: 'info',
 }
 
-interface SummaryFact {
-  icon: IconName
-  label: string
-  value: string
+const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
+  active: 'Active',
+  suspended: 'Suspended',
+  pending: 'Pending',
+  cancelled: 'Cancelled',
 }
 
-const summaryFacts = computed<SummaryFact[]>(() => {
+const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
+  active: 'Active',
+  suspended: 'Suspended',
+  pending: 'Pending',
+  decommissioned: 'Decommissioned',
+}
+
+function managementStateLabel(status: DeviceStatus): string {
+  return status === 'provisioning' ? 'Pending Discovery' : 'Managed'
+}
+
+function operationalStateLabel(status: DeviceStatus): string {
+  switch (status) {
+    case 'online':
+      return 'Operational'
+    case 'warning':
+      return 'Degraded'
+    case 'offline':
+      return 'Unreachable'
+    case 'provisioning':
+      return 'Provisioning'
+  }
+}
+
+function provisioningStatusLabel(status: DeviceStatus): string {
+  if (status === 'provisioning') return 'Pending Activation'
+  if (status === 'offline') return 'Provisioned (Unreachable)'
+  return 'Provisioned'
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  if (days > 0) return `${days}d ${hours}h`
+  const minutes = Math.floor((seconds % 3600) / 60)
+  return `${hours}h ${minutes}m`
+}
+
+function formatDate(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+const summaryFacts = computed<Fact[]>(() => {
   const d = device.value
   if (!d) return []
-  const facts: SummaryFact[] = [
-    { icon: 'devices', label: 'Type', value: d.type },
-    { icon: 'health', label: 'Status', value: STATUS_LABELS[d.status] },
-    { icon: 'location', label: 'Location', value: d.location },
-  ]
+  const facts: Fact[] = [{ icon: 'devices', label: 'Device Type', value: d.type }]
   if (d.technology) {
     facts.push({ icon: 'network', label: 'Technology', value: d.technology === 'gpon' ? 'GPON' : 'XGS-PON' })
   }
-  facts.push({
-    icon: 'customers',
-    label: 'Assigned Customer',
-    value: d.assignedCustomerName ?? 'Unassigned',
-  })
+  facts.push(
+    { icon: 'clock', label: 'Installed', value: formatDate(d.installedDate) },
+    { icon: 'tasks', label: 'Firmware Version', value: d.firmwareVersion },
+    { icon: 'health', label: 'Management State', value: managementStateLabel(d.status) },
+    { icon: 'inventory', label: 'Vendor', value: d.vendor },
+  )
+  return facts
+})
+
+const networkFacts = computed<Fact[]>(() => {
+  const d = device.value
+  if (!d) return []
+  const facts: Fact[] = [{ icon: 'location', label: 'Site', value: d.siteName }]
+  if (d.oltId) facts.push({ icon: 'network', label: 'OLT', value: d.oltId })
+  if (d.ponPort) facts.push({ icon: 'network', label: 'PON Port', value: d.ponPort })
+  if (d.managementIp) facts.push({ icon: 'network', label: 'Management IP', value: d.managementIp })
+  if (d.uplinkPort) facts.push({ icon: 'network', label: 'Uplink Port', value: d.uplinkPort })
+  return facts
+})
+
+const statusFacts = computed<Fact[]>(() => {
+  const d = device.value
+  if (!d) return []
+  const facts: Fact[] = [
+    { icon: 'health', label: 'Operational State', value: operationalStateLabel(d.status) },
+    { icon: 'clock', label: 'Last Contact', value: d.lastContact },
+  ]
+  if (d.uptimeSeconds !== undefined) {
+    facts.push({ icon: 'clock', label: 'Uptime', value: formatUptime(d.uptimeSeconds) })
+  }
+  if (d.opticalPowerDbm !== undefined) {
+    facts.push({ icon: 'network', label: 'Optical Power', value: `${d.opticalPowerDbm} dBm` })
+  }
+  facts.push(
+    { icon: 'alert', label: 'Temperature', value: `${d.temperatureC}°C` },
+    { icon: 'tasks', label: 'Provisioning Status', value: provisioningStatusLabel(d.status) },
+  )
+  return facts
+})
+
+const configFacts = computed<Fact[]>(() => {
+  const d = device.value
+  if (!d) return []
+  const facts: Fact[] = [{ icon: 'tasks', label: 'Provisioning Profile', value: d.configProfile }]
+  if (d.serviceVlan !== undefined) facts.push({ icon: 'network', label: 'Service VLAN', value: String(d.serviceVlan) })
+  if (d.managementVlan !== undefined) {
+    facts.push({ icon: 'network', label: 'Management VLAN', value: String(d.managementVlan) })
+  }
+  facts.push({ icon: 'inventory', label: 'Configuration Version', value: d.configVersion })
   return facts
 })
 </script>
@@ -107,9 +217,9 @@ const summaryFacts = computed<SummaryFact[]>(() => {
   <DetailWorkspace v-else-if="device">
     <WorkspaceHeader
       :title="device.model"
-      :subtitle="`${device.type} · ${device.location}`"
+      :subtitle="device.type"
       :status="{ label: STATUS_LABELS[device.status], variant: STATUS_VARIANTS[device.status] }"
-      :metadata="[`Serial ${device.serialNumber}`, device.assignedCustomerName ?? 'Unassigned']"
+      :metadata="[`Serial ${device.serialNumber}`, device.location]"
     >
       <template #actions>
         <WorkspaceActions>
@@ -138,39 +248,61 @@ const summaryFacts = computed<SummaryFact[]>(() => {
     </WorkspaceHeader>
 
     <SectionCard title="Summary" icon="devices">
-      <div class="summary-facts">
-        <div v-for="fact in summaryFacts" :key="fact.label" class="summary-fact">
-          <BaseIcon :name="fact.icon" size="sm" class="summary-fact__icon" />
-          <div class="summary-fact__text">
-            <span class="summary-fact__label">{{ fact.label }}</span>
-            <span class="summary-fact__value">{{ fact.value }}</span>
-          </div>
+      <FactGrid :facts="summaryFacts" />
+    </SectionCard>
+
+    <SectionCard title="Network" icon="network">
+      <FactGrid :facts="networkFacts" />
+    </SectionCard>
+
+    <SectionCard title="Assignment" icon="customers">
+      <BaseEmptyState
+        v-if="!device.assignedCustomerId"
+        icon="devices"
+        title="Not assigned to a customer"
+        description="This is network infrastructure equipment -- it serves many customers rather than belonging to one."
+      />
+      <div v-else class="assignment-cards">
+        <RouterLink :to="`/customers/${device.assignedCustomerId}`" class="assignment-card">
+          <span class="assignment-card__eyebrow">Assigned Customer</span>
+          <span class="assignment-card__title">{{ device.assignedCustomerName }}</span>
+          <span v-if="relatedCustomer" class="assignment-card__meta">
+            {{ relatedCustomer.type === 'business' ? 'Business' : 'Residential' }} ·
+            {{ CUSTOMER_STATUS_LABELS[relatedCustomer.status] }}
+          </span>
+          <span class="assignment-card__action">View Customer <BaseIcon name="arrow-right" size="sm" /></span>
+        </RouterLink>
+
+        <div class="assignment-card assignment-card--placeholder">
+          <span class="assignment-card__eyebrow">Assigned Service</span>
+          <span class="assignment-card__title">{{ relatedService?.tier ?? 'Service' }}</span>
+          <span v-if="relatedService" class="assignment-card__meta">
+            {{ relatedService.technology === 'gpon' ? 'GPON' : 'XGS-PON' }} ·
+            {{ SERVICE_STATUS_LABELS[relatedService.status] }}
+          </span>
+          <span class="assignment-card__action assignment-card__action--disabled">Service Detail coming soon</span>
         </div>
       </div>
     </SectionCard>
 
-    <SectionCard title="Interfaces">
-      <BaseEmptyState
-        icon="network"
-        title="Interfaces not yet implemented"
-        description="Port and interface state will appear here in a future milestone."
-      />
+    <SectionCard title="Status" icon="health">
+      <FactGrid :facts="statusFacts" />
     </SectionCard>
 
-    <SectionCard title="Alarms" icon="alert">
-      <BaseEmptyState
-        icon="check"
-        title="Alarms not yet implemented"
-        description="Active alarms for this device will appear here in a future milestone."
-      />
+    <SectionCard title="Configuration">
+      <FactGrid :facts="configFacts" />
+    </SectionCard>
+
+    <SectionCard title="Recent Activity" icon="clock">
+      <ActivityList :entries="device.activity" />
     </SectionCard>
 
     <SectionCard title="Timeline">
-      <BaseEmptyState
-        icon="clock"
-        title="Timeline not yet implemented"
-        description="Provisioning and configuration history will appear here in a future milestone."
-      />
+      <TimelineEntries :entries="device.timeline" />
+    </SectionCard>
+
+    <SectionCard title="Notes">
+      <NotesList :notes="device.notes" />
     </SectionCard>
   </DetailWorkspace>
 </template>
@@ -180,43 +312,68 @@ const summaryFacts = computed<SummaryFact[]>(() => {
   padding: var(--space-6);
 }
 
-.summary-facts {
+.assignment-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
 }
 
-.summary-fact {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background-color: var(--color-bg);
-}
-
-.summary-fact__icon {
-  color: var(--color-text-muted);
-  margin-top: 2px;
-}
-
-.summary-fact__text {
+.assignment-card {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--motion-fast) var(--motion-ease);
 }
 
-.summary-fact__label {
+a.assignment-card:hover {
+  border-color: var(--color-brand);
+}
+
+a.assignment-card:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.assignment-card--placeholder {
+  border-style: dashed;
+}
+
+.assignment-card__eyebrow {
   font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.summary-fact__value {
+.assignment-card__title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.assignment-card__meta {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.assignment-card__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  color: var(--color-text-primary);
+  color: var(--color-brand);
+}
+
+.assignment-card__action--disabled {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-regular);
 }
 </style>

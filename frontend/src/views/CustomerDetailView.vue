@@ -8,7 +8,8 @@ import SectionCard from '@/components/data-display/SectionCard.vue'
 import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/SimpleTable.vue'
 import ActivityList from '@/components/data-display/ActivityList.vue'
 import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
-import BaseIcon, { type IconName } from '@/components/base/BaseIcon.vue'
+import NotesList from '@/components/data-display/NotesList.vue'
+import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
 import BaseBadge from '@/components/base/BaseBadge.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
@@ -131,13 +132,7 @@ function formatDate(iso: string): string {
   })
 }
 
-interface SummaryFact {
-  icon: IconName
-  label: string
-  value: string
-}
-
-const summaryFacts = computed<SummaryFact[]>(() => {
+const summaryFacts = computed<Fact[]>(() => {
   const c = customer.value
   if (!c) return []
   const primary = c.services[0]
@@ -232,15 +227,7 @@ function openDevice(device: CustomerAsset) {
     </WorkspaceHeader>
 
     <SectionCard title="Summary" icon="customers">
-      <div class="summary-facts">
-        <div v-for="fact in summaryFacts" :key="fact.label" class="summary-fact">
-          <BaseIcon :name="fact.icon" size="sm" class="summary-fact__icon" />
-          <div class="summary-fact__text">
-            <span class="summary-fact__label">{{ fact.label }}</span>
-            <span class="summary-fact__value">{{ fact.value }}</span>
-          </div>
-        </div>
-      </div>
+      <FactGrid :facts="summaryFacts" />
     </SectionCard>
 
     <SectionCard title="Services" icon="services" :badge="customer.services.length">
@@ -361,21 +348,7 @@ function openDevice(device: CustomerAsset) {
     </SectionCard>
 
     <SectionCard title="Notes">
-      <BaseEmptyState
-        v-if="customer.notes.length === 0"
-        icon="check"
-        title="No notes yet"
-        description="Operator notes for this customer will appear here."
-      />
-      <ul v-else class="note-list">
-        <li v-for="note in customer.notes" :key="note.id" class="note-list__item">
-          <div class="note-list__meta">
-            <span class="note-list__author">{{ note.author }}</span>
-            <span class="note-list__timestamp">{{ note.timestamp }}</span>
-          </div>
-          <p class="note-list__body">{{ note.body }}</p>
-        </li>
-      </ul>
+      <NotesList :notes="customer.notes" />
     </SectionCard>
   </DetailWorkspace>
 </template>
@@ -394,48 +367,6 @@ function openDevice(device: CustomerAsset) {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
-}
-
-/* Summary: deliberately not BasePropertyGrid -- small tinted fact tiles
-   read faster than a wall of label/value pairs and group naturally. */
-.summary-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-3);
-}
-
-.summary-fact {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background-color: var(--color-bg);
-}
-
-.summary-fact__icon {
-  color: var(--color-text-muted);
-  margin-top: 2px;
-}
-
-.summary-fact__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.summary-fact__label {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.summary-fact__value {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-primary);
 }
 
 .contacts {
@@ -518,42 +449,4 @@ function openDevice(device: CustomerAsset) {
   white-space: nowrap;
 }
 
-.note-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.note-list__item {
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.note-list__item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.note-list__meta {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-1);
-}
-
-.note-list__author {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-primary);
-}
-
-.note-list__timestamp {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-}
-
-.note-list__body {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-}
 </style>

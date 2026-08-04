@@ -1,17 +1,18 @@
 import type {
   Customer,
   CustomerAlert,
-  CustomerActivityEntry,
   CustomerAsset,
   CustomerContact,
-  CustomerNote,
   CustomerService,
   CustomerStatus,
   CustomerType,
   ServiceStatus,
   ServiceTechnology,
 } from '@/types/customer'
+import type { ActivityEntry } from '@/types/activity'
+import type { Note } from '@/types/note'
 import { createPrng } from '@/lib/prng'
+import { NOW, addDays, daysBetween, formatIsoDate, formatAbsoluteDate, formatRelative } from '@/lib/dates'
 
 /**
  * A development dataset simulating a believable regional fiber ISP
@@ -23,11 +24,6 @@ import { createPrng } from '@/lib/prng'
  */
 
 const { random, pick, pickWeighted, randomInt, chance } = createPrng(133742)
-
-// Fixed rather than Date.now(): keeps generated dates (and their
-// relative-time labels) deterministic across sessions instead of
-// silently drifting each day the dev server happens to run.
-const NOW = new Date(2026, 7, 4)
 
 const MALE_FIRST_NAMES = [
   'James', 'Michael', 'Robert', 'John', 'David', 'William', 'Richard', 'Joseph', 'Thomas',
@@ -134,38 +130,6 @@ const CUSTOMER_TYPE_WEIGHTS: [CustomerType, number][] = [
   ['residential', 68],
   ['business', 32],
 ]
-
-function daysBetween(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24))
-}
-
-function addDays(date: Date, days: number): Date {
-  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000)
-}
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-function formatAbsoluteDate(date: Date): string {
-  return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`
-}
-
-function formatIsoDate(date: Date): string {
-  return date.toISOString().slice(0, 10)
-}
-
-function formatRelative(date: Date): string {
-  const minutes = Math.floor((NOW.getTime() - date.getTime()) / 60000)
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
-  const days = Math.floor(hours / 24)
-  if (days < 2) return 'Yesterday'
-  if (days < 30) return `${days} days ago`
-  const months = Math.floor(days / 30)
-  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`
-  return formatAbsoluteDate(date)
-}
 
 function randomInstallDate(): Date {
   // Between 2016-01-01 and 2026-06-01, before this milestone's "today".
@@ -400,7 +364,7 @@ function buildOperationalHistory(
   status: CustomerStatus,
   installDate: Date,
   primaryTier: string,
-): { timeline: CustomerActivityEntry[]; activity: CustomerActivityEntry[] } {
+): { timeline: ActivityEntry[]; activity: ActivityEntry[] } {
   const provisioned: { date: Date; template: EventTemplate } = {
     date: installDate,
     template: { kind: 'provisioned', label: 'Customer provisioned', description: 'Account created and service scheduled for installation.' },
@@ -442,14 +406,14 @@ function buildOperationalHistory(
 
   entries.sort((a, b) => b.date.getTime() - a.date.getTime())
 
-  const timeline: CustomerActivityEntry[] = entries.map((entry, index) => ({
+  const timeline: ActivityEntry[] = entries.map((entry, index) => ({
     id: `${customerId}-EVT-${index + 1}`,
     label: entry.template.label,
     timestamp: formatAbsoluteDate(entry.date),
     description: entry.template.description,
   }))
 
-  const activity: CustomerActivityEntry[] = entries.slice(0, Math.min(8, entries.length)).map((entry, index) => ({
+  const activity: ActivityEntry[] = entries.slice(0, Math.min(8, entries.length)).map((entry, index) => ({
     id: `${customerId}-ACT-${index + 1}`,
     label: entry.template.label,
     timestamp: formatRelative(entry.date),
@@ -472,9 +436,9 @@ const NOTE_TEMPLATES = [
   'Noted a dog on the property; technician should call ahead before arrival.',
 ]
 
-function buildNotes(customerId: string, installDate: Date): CustomerNote[] {
+function buildNotes(customerId: string, installDate: Date): Note[] {
   const count = pickWeighted([[0, 5], [1, 4], [2, 3], [3, 1]] as const)
-  const notes: CustomerNote[] = []
+  const notes: Note[] = []
   for (let i = 0; i < count; i += 1) {
     const date = addDays(installDate, randomInt(0, Math.max(1, daysBetween(installDate, NOW))))
     notes.push({
