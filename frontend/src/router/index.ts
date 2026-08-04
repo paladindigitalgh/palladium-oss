@@ -12,13 +12,14 @@ import { NAV_ITEMS } from './navigation'
  * Routes default to the shared PlaceholderWorkspaceView (see that file's
  * own doc comment) until a workspace has a real implementation, at which
  * point its nav id is added to VIEW_COMPONENTS below. Dashboard,
- * Customers, and Devices are implemented; the rest will follow the same
- * pattern rather than each needing its own routing logic.
+ * Customers, Devices, and Services are implemented; the rest will follow
+ * the same pattern rather than each needing its own routing logic.
  */
 const VIEW_COMPONENTS: Record<string, () => Promise<{ default: Component }>> = {
   dashboard: () => import('@/views/DashboardView.vue'),
   customers: () => import('@/views/CustomerCollectionView.vue'),
   devices: () => import('@/views/DeviceCollectionView.vue'),
+  services: () => import('@/views/ServiceCollectionView.vue'),
 }
 
 const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.map((item) => ({
@@ -53,6 +54,15 @@ const routes: RouteRecordRaw[] = [
     path: '/devices/:id',
     name: 'device-detail',
     component: () => import('@/views/DeviceDetailView.vue'),
+  },
+  {
+    // The Service Detail Workspace -- reached from the Service
+    // Collection View, a Customer Detail Workspace's Services section,
+    // or a Device Detail Workspace's Assignment section, same pattern as
+    // /customers/:id and /devices/:id above.
+    path: '/services/:id',
+    name: 'service-detail',
+    component: () => import('@/views/ServiceDetailView.vue'),
   },
   {
     path: '/:pathMatch(.*)*',

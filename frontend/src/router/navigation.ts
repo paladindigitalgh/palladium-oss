@@ -49,7 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Services',
     path: '/services',
     icon: 'services',
-    description: 'Service management will appear here.',
+    description: 'Find what is being delivered, and to whom.',
   },
   {
     id: 'devices',

@@ -24,10 +24,21 @@ export function formatIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10)
 }
 
+/** "YYYY-MM-DD" -> local Date, avoiding the UTC-midnight parse pitfall of `new Date(iso)`. */
+export function parseIsoDate(iso: string): Date {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 export function formatAbsoluteDate(date: Date): string {
   return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`
+}
+
+/** "2024-03-10" -> "Mar 10, 2024", for display in a Detail Workspace fact. */
+export function formatDisplayDate(iso: string): string {
+  return parseIsoDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export function formatRelative(date: Date): string {

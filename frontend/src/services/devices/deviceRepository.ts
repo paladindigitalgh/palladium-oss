@@ -126,6 +126,18 @@ export async function getDeviceById(id: string): Promise<Device | null> {
 }
 
 /**
+ * Every device delivering a given service -- the Service Detail
+ * Workspace's Devices section resolves this on demand rather than
+ * Service carrying device detail itself (services/services/
+ * serviceDataset.ts never stores it), the same on-demand-resolution
+ * pattern Device Detail already uses for its own Assignment section.
+ */
+export async function listDevicesByServiceId(serviceId: string): Promise<Device[]> {
+  await simulateLatency()
+  return DEVICES.filter((device) => device.serviceId === serviceId)
+}
+
+/**
  * Distinct locations present in the dataset, for the Location filter.
  * Synchronous: small, static reference data, same reasoning as
  * customerRepository.ts's listAvailableCities.

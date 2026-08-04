@@ -13,6 +13,7 @@ import type { ActivityEntry } from '@/types/activity'
 import type { Note } from '@/types/note'
 import { createPrng } from '@/lib/prng'
 import { NOW, addDays, daysBetween, formatIsoDate, formatAbsoluteDate, formatRelative } from '@/lib/dates'
+import { finalizeHistory } from '@/lib/history'
 
 /**
  * A development dataset simulating a believable regional fiber ISP
@@ -193,14 +194,14 @@ function serviceStatusFor(customerStatus: CustomerStatus): ServiceStatus {
     case 'suspended':
       return 'suspended'
     case 'pending':
-      return 'pending'
+      return 'provisioning'
     case 'cancelled':
-      return 'decommissioned'
+      return 'cancelled'
   }
 }
 
 function assetStatusFor(serviceStatus: ServiceStatus): CustomerAsset['status'] {
-  if (serviceStatus === 'pending') return 'unknown'
+  if (serviceStatus === 'provisioning') return 'unknown'
   if (serviceStatus === 'active') return chance(0.92) ? 'online' : 'offline'
   return 'offline'
 }
@@ -404,23 +405,7 @@ function buildOperationalHistory(
     }
   }
 
-  entries.sort((a, b) => b.date.getTime() - a.date.getTime())
-
-  const timeline: ActivityEntry[] = entries.map((entry, index) => ({
-    id: `${customerId}-EVT-${index + 1}`,
-    label: entry.template.label,
-    timestamp: formatAbsoluteDate(entry.date),
-    description: entry.template.description,
-  }))
-
-  const activity: ActivityEntry[] = entries.slice(0, Math.min(8, entries.length)).map((entry, index) => ({
-    id: `${customerId}-ACT-${index + 1}`,
-    label: entry.template.label,
-    timestamp: formatRelative(entry.date),
-    description: entry.template.description,
-  }))
-
-  return { timeline, activity }
+  return finalizeHistory(customerId, entries)
 }
 
 const NOTE_TEMPLATES = [
@@ -478,7 +463,7 @@ function buildCustomer(index: number): Customer {
 
   if (type === 'business' && status !== 'pending' && chance(0.2)) {
     const secondaryProvisioned = addDays(installDate, randomInt(30, 400))
-    const secondaryStatus = chance(0.15) ? 'pending' : serviceStatus
+    const secondaryStatus = chance(0.15) ? 'provisioning' : serviceStatus
     services.push(
       buildService(id, 2, type, secondaryStatus, secondaryProvisioned, serviceAddress, SECONDARY_BUSINESS_SERVICES),
     )

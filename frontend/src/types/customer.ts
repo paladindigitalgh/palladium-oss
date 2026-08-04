@@ -21,7 +21,7 @@ export type CustomerStatus = 'active' | 'suspended' | 'pending' | 'cancelled'
 
 export type ServiceTechnology = 'gpon' | 'xgs-pon'
 
-export type ServiceStatus = 'active' | 'suspended' | 'pending' | 'decommissioned'
+export type ServiceStatus = 'active' | 'provisioning' | 'suspended' | 'cancelled'
 
 /**
  * "ONT" here (not the domain model's "ONU" -- docs/03-DOMAIN-MODEL.md

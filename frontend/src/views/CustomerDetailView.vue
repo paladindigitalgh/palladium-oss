@@ -16,6 +16,7 @@ import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import { getCustomerById } from '@/services/customers/customerRepository'
+import { formatDisplayDate as formatDate } from '@/lib/dates'
 import type {
   AlertSeverity,
   AssetStatus,
@@ -87,16 +88,16 @@ const STATUS_VARIANTS: Record<CustomerStatus, 'success' | 'warning' | 'error'> =
 
 const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
   active: 'Active',
+  provisioning: 'Provisioning',
   suspended: 'Suspended',
-  pending: 'Pending',
-  decommissioned: 'Decommissioned',
+  cancelled: 'Cancelled',
 }
 
-const SERVICE_STATUS_VARIANTS: Record<ServiceStatus, 'success' | 'warning' | 'error' | 'neutral'> = {
+const SERVICE_STATUS_VARIANTS: Record<ServiceStatus, 'success' | 'warning' | 'error' | 'info'> = {
   active: 'success',
+  provisioning: 'info',
   suspended: 'warning',
-  pending: 'warning',
-  decommissioned: 'neutral',
+  cancelled: 'error',
 }
 
 const ASSET_STATUS_LABELS: Record<AssetStatus, string> = {
@@ -121,15 +122,6 @@ const ALERT_SEVERITY_VARIANTS: Record<AlertSeverity, 'error' | 'warning' | 'info
   critical: 'error',
   warning: 'warning',
   info: 'info',
-}
-
-function formatDate(iso: string): string {
-  const [year, month, day] = iso.split('-').map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
 }
 
 const summaryFacts = computed<Fact[]>(() => {
@@ -164,6 +156,14 @@ const devices = computed<CustomerAsset[]>(() => customer.value?.services.flatMap
 
 function serviceRowKey(service: CustomerService): string {
   return service.id
+}
+
+function serviceRowLabel(service: CustomerService): string {
+  return `Open ${service.tier}`
+}
+
+function openService(service: CustomerService) {
+  router.push(`/services/${service.id}`)
 }
 
 function deviceRowKey(device: CustomerAsset): string {
@@ -235,8 +235,11 @@ function openDevice(device: CustomerAsset) {
         :columns="serviceColumns"
         :rows="customer.services"
         :row-key="serviceRowKey"
+        :row-label="serviceRowLabel"
+        clickable
         empty-icon="services"
         empty-title="No services on this account"
+        @row-click="openService"
       >
         <template #cell-service="{ row }">
           <span class="cell-strong">{{ row.tier }}</span>

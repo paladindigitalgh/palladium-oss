@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter, RouterLink } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import DetailWorkspace from '@/components/workspace/DetailWorkspace.vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
@@ -9,13 +9,14 @@ import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
 import ActivityList from '@/components/data-display/ActivityList.vue'
 import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
 import NotesList from '@/components/data-display/NotesList.vue'
-import BaseIcon from '@/components/base/BaseIcon.vue'
+import RelationshipCard from '@/components/data-display/RelationshipCard.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import { getDeviceById } from '@/services/devices/deviceRepository'
 import { getCustomerById } from '@/services/customers/customerRepository'
+import { formatDisplayDate as formatDate } from '@/lib/dates'
 import type { Device, DeviceStatus } from '@/types/device'
 import type { Customer, CustomerStatus, ServiceStatus } from '@/types/customer'
 
@@ -95,9 +96,9 @@ const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
 
 const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
   active: 'Active',
+  provisioning: 'Provisioning',
   suspended: 'Suspended',
-  pending: 'Pending',
-  decommissioned: 'Decommissioned',
+  cancelled: 'Cancelled',
 }
 
 function managementStateLabel(status: DeviceStatus): string {
@@ -131,14 +132,6 @@ function formatUptime(seconds: number): string {
   return `${hours}h ${minutes}m`
 }
 
-function formatDate(iso: string): string {
-  const [year, month, day] = iso.split('-').map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
 
 const summaryFacts = computed<Fact[]>(() => {
   const d = device.value
@@ -263,25 +256,29 @@ const configFacts = computed<Fact[]>(() => {
         description="This is network infrastructure equipment -- it serves many customers rather than belonging to one."
       />
       <div v-else class="assignment-cards">
-        <RouterLink :to="`/customers/${device.assignedCustomerId}`" class="assignment-card">
-          <span class="assignment-card__eyebrow">Assigned Customer</span>
-          <span class="assignment-card__title">{{ device.assignedCustomerName }}</span>
-          <span v-if="relatedCustomer" class="assignment-card__meta">
-            {{ relatedCustomer.type === 'business' ? 'Business' : 'Residential' }} ·
-            {{ CUSTOMER_STATUS_LABELS[relatedCustomer.status] }}
-          </span>
-          <span class="assignment-card__action">View Customer <BaseIcon name="arrow-right" size="sm" /></span>
-        </RouterLink>
+        <RelationshipCard
+          eyebrow="Assigned Customer"
+          :title="device.assignedCustomerName ?? 'Customer'"
+          :meta="
+            relatedCustomer
+              ? `${relatedCustomer.type === 'business' ? 'Business' : 'Residential'} · ${CUSTOMER_STATUS_LABELS[relatedCustomer.status]}`
+              : undefined
+          "
+          :to="`/customers/${device.assignedCustomerId}`"
+          action-label="View Customer"
+        />
 
-        <div class="assignment-card assignment-card--placeholder">
-          <span class="assignment-card__eyebrow">Assigned Service</span>
-          <span class="assignment-card__title">{{ relatedService?.tier ?? 'Service' }}</span>
-          <span v-if="relatedService" class="assignment-card__meta">
-            {{ relatedService.technology === 'gpon' ? 'GPON' : 'XGS-PON' }} ·
-            {{ SERVICE_STATUS_LABELS[relatedService.status] }}
-          </span>
-          <span class="assignment-card__action assignment-card__action--disabled">Service Detail coming soon</span>
-        </div>
+        <RelationshipCard
+          eyebrow="Assigned Service"
+          :title="relatedService?.tier ?? 'Service'"
+          :meta="
+            relatedService
+              ? `${relatedService.technology === 'gpon' ? 'GPON' : 'XGS-PON'} · ${SERVICE_STATUS_LABELS[relatedService.status]}`
+              : undefined
+          "
+          :to="device.serviceId ? `/services/${device.serviceId}` : undefined"
+          action-label="View Service"
+        />
       </div>
     </SectionCard>
 
@@ -316,64 +313,5 @@ const configFacts = computed<Fact[]>(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--space-4);
-}
-
-.assignment-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  text-decoration: none;
-  color: inherit;
-  transition: border-color var(--motion-fast) var(--motion-ease);
-}
-
-a.assignment-card:hover {
-  border-color: var(--color-brand);
-}
-
-a.assignment-card:focus-visible {
-  outline: 2px solid var(--color-brand);
-  outline-offset: 2px;
-}
-
-.assignment-card--placeholder {
-  border-style: dashed;
-}
-
-.assignment-card__eyebrow {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.assignment-card__title {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-}
-
-.assignment-card__meta {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-}
-
-.assignment-card__action {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  margin-top: var(--space-2);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-brand);
-}
-
-.assignment-card__action--disabled {
-  color: var(--color-text-muted);
-  font-weight: var(--font-weight-regular);
 }
 </style>

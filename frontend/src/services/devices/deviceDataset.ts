@@ -4,7 +4,8 @@ import type { Note } from '@/types/note'
 import type { Device, DeviceStatus } from '@/types/device'
 import { CUSTOMERS } from '@/services/customers/customerDataset'
 import { createPrng, type Prng } from '@/lib/prng'
-import { NOW, addDays, daysBetween, formatIsoDate, formatAbsoluteDate, formatRelative } from '@/lib/dates'
+import { NOW, addDays, daysBetween, formatIsoDate, formatAbsoluteDate, formatRelative, parseIsoDate } from '@/lib/dates'
+import { finalizeHistory } from '@/lib/history'
 
 /**
  * The Device Collection/Detail Workspace's dataset: every managed device
@@ -104,12 +105,6 @@ function mapAssetStatus(assetStatus: AssetStatus, prng: Prng): DeviceStatus {
   return prng.chance(0.1) ? 'warning' : 'online'
 }
 
-/** "YYYY-MM-DD" -> local Date, avoiding the UTC-midnight parse pitfall of `new Date(iso)`. */
-function parseIsoDate(iso: string): Date {
-  const [year, month, day] = iso.split('-').map(Number)
-  return new Date(year, month - 1, day)
-}
-
 interface EventTemplate {
   kind: string
   label: string
@@ -161,23 +156,7 @@ function buildDeviceHistory(
     }
   }
 
-  entries.sort((a, b) => b.date.getTime() - a.date.getTime())
-
-  const timeline: ActivityEntry[] = entries.map((entry, index) => ({
-    id: `${deviceId}-EVT-${index + 1}`,
-    label: entry.template.label,
-    timestamp: formatAbsoluteDate(entry.date),
-    description: entry.template.description,
-  }))
-
-  const activity: ActivityEntry[] = entries.slice(0, Math.min(8, entries.length)).map((entry, index) => ({
-    id: `${deviceId}-ACT-${index + 1}`,
-    label: entry.template.label,
-    timestamp: formatRelative(entry.date),
-    description: entry.template.description,
-  }))
-
-  return { timeline, activity }
+  return finalizeHistory(deviceId, entries)
 }
 
 const NOTE_AUTHORS = ['Casey Whitmore', 'Jordan Reyes', 'Taylor Nguyen', 'Morgan Fields', 'Riley Osei', 'Alex Turner']
