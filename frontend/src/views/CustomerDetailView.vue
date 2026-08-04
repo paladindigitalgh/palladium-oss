@@ -174,6 +174,14 @@ function serviceRowKey(service: CustomerService): string {
 function deviceRowKey(device: CustomerAsset): string {
   return device.id
 }
+
+function deviceRowLabel(device: CustomerAsset): string {
+  return `Open ${device.model}`
+}
+
+function openDevice(device: CustomerAsset) {
+  router.push(`/devices/${device.id}`)
+}
 </script>
 
 <template>
@@ -265,8 +273,11 @@ function deviceRowKey(device: CustomerAsset): string {
         :columns="deviceColumns"
         :rows="devices"
         :row-key="deviceRowKey"
+        :row-label="deviceRowLabel"
+        clickable
         empty-icon="devices"
         empty-title="No equipment assigned"
+        @row-click="openDevice"
       >
         <template #cell-device="{ row }">
           <span class="cell-strong">{{ row.model }}</span>

@@ -11,6 +11,7 @@ import type {
   ServiceStatus,
   ServiceTechnology,
 } from '@/types/customer'
+import { createPrng } from '@/lib/prng'
 
 /**
  * A development dataset simulating a believable regional fiber ISP
@@ -21,42 +22,7 @@ import type {
  * file's own doc comment).
  */
 
-// mulberry32: small, dependency-free, deterministic PRNG. Only used to
-// keep this fixture dataset stable; never used anywhere security-sensitive.
-function mulberry32(seed: number) {
-  let state = seed
-  return function random() {
-    state |= 0
-    state = (state + 0x6d2b79f5) | 0
-    let t = Math.imul(state ^ (state >>> 15), 1 | state)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-const random = mulberry32(133742)
-
-function pick<T>(items: readonly T[]): T {
-  return items[Math.floor(random() * items.length)]
-}
-
-function pickWeighted<T>(items: readonly [T, number][]): T {
-  const total = items.reduce((sum, [, weight]) => sum + weight, 0)
-  let roll = random() * total
-  for (const [item, weight] of items) {
-    roll -= weight
-    if (roll <= 0) return item
-  }
-  return items[items.length - 1][0]
-}
-
-function randomInt(min: number, max: number): number {
-  return Math.floor(random() * (max - min + 1)) + min
-}
-
-function chance(probability: number): boolean {
-  return random() < probability
-}
+const { random, pick, pickWeighted, randomInt, chance } = createPrng(133742)
 
 // Fixed rather than Date.now(): keeps generated dates (and their
 // relative-time labels) deterministic across sessions instead of
@@ -251,7 +217,7 @@ function randomSerial(): string {
   return `SN-${serial}`
 }
 
-function modelFor(role: 'ONU' | 'Router', technology: ServiceTechnology): string {
+function modelFor(role: 'ONT' | 'Router', technology: ServiceTechnology): string {
   if (role === 'Router') return pick(ROUTER_MODELS)
   return pick(technology === 'gpon' ? GPON_MODELS : XGS_MODELS)
 }
@@ -275,7 +241,7 @@ function assetStatusFor(serviceStatus: ServiceStatus): CustomerAsset['status'] {
   return 'offline'
 }
 
-function buildAsset(idPrefix: string, index: number, role: 'ONU' | 'Router', technology: ServiceTechnology, serviceStatus: ServiceStatus): CustomerAsset {
+function buildAsset(idPrefix: string, index: number, role: 'ONT' | 'Router', technology: ServiceTechnology, serviceStatus: ServiceStatus): CustomerAsset {
   return {
     id: `${idPrefix}-AST-${index}`,
     role,
@@ -296,7 +262,7 @@ function buildService(
 ): CustomerService {
   const picked = pickWeighted(pool)
   const idPrefix = `${customerId}-SVC-${index}`
-  const equipment = [buildAsset(idPrefix, 1, 'ONU', picked.technology, status)]
+  const equipment = [buildAsset(idPrefix, 1, 'ONT', picked.technology, status)]
   if (type === 'business' && chance(0.35)) {
     equipment.push(buildAsset(idPrefix, 2, 'Router', picked.technology, status))
   }

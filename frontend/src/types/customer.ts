@@ -20,7 +20,15 @@ export type ServiceTechnology = 'gpon' | 'xgs-pon'
 
 export type ServiceStatus = 'active' | 'suspended' | 'pending' | 'decommissioned'
 
-export type AssetRole = 'ONU' | 'Router'
+/**
+ * "ONT" here (not the domain model's "ONU" -- docs/03-DOMAIN-MODEL.md
+ * section 6) matches the shared Device Type vocabulary
+ * (docs/09-WORKSPACE-SPECIFICATIONS.md section 10, "Device Workspace";
+ * the Device Collection Workspace's own Device Type filter). Same
+ * physical asset, industry-interchangeable term -- kept as one spelling
+ * across the app rather than two for the same concept.
+ */
+export type AssetRole = 'ONT' | 'Router'
 
 export type AssetStatus = 'online' | 'offline' | 'unknown'
 

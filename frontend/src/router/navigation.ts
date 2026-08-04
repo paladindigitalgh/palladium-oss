@@ -56,7 +56,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Devices',
     path: '/devices',
     icon: 'devices',
-    description: 'Device management will appear here.',
+    description: 'Find managed equipment on the live network.',
   },
   {
     id: 'network',
