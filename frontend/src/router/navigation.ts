@@ -63,7 +63,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Network',
     path: '/network',
     icon: 'network',
-    description: 'Network infrastructure will appear here.',
+    description: 'Search access networks, OLTs, and PON ports.',
   },
   {
     id: 'inventory',
