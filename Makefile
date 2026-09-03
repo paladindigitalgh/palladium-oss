@@ -1,10 +1,11 @@
 .PHONY: build run test test-integration vet fmt tidy clean \
-	migrate-up migrate-status db-up db-down bootstrap
+	migrate-up migrate-status db-up db-down bootstrap seed
 
 build:
 	go build -o bin/palladium-server ./cmd/server
 	go build -o bin/palladium-migrate ./cmd/migrate
 	go build -o bin/palladium-bootstrap ./cmd/bootstrap
+	go build -o bin/palladium-seed ./cmd/seed
 
 run:
 	go run ./cmd/server
@@ -41,3 +42,6 @@ db-down:
 
 bootstrap:
 	go run ./cmd/bootstrap
+
+seed:
+	go run ./cmd/seed

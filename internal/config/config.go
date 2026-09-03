@@ -15,6 +15,14 @@ type HTTPConfig struct {
 	WriteTimeout    time.Duration
 	IdleTimeout     time.Duration
 	ShutdownTimeout time.Duration
+	// AllowedOrigin is the one frontend origin the API accepts
+	// cross-origin requests from (see internal/server's CORS
+	// middleware). The frontend and API run on different ports in
+	// development (Vite's 5173 vs the API's 8080), so without this a
+	// browser rejects every request before it ever reaches a handler --
+	// this is not optional dev polish, it is required for the frontend
+	// to work in a real browser at all.
+	AllowedOrigin string
 }
 
 // LogConfig holds settings for structured logging.
@@ -93,6 +101,7 @@ func Load() (Config, error) {
 			WriteTimeout:    getEnvDuration("HTTP_WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:     getEnvDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
 			ShutdownTimeout: getEnvDuration("HTTP_SHUTDOWN_TIMEOUT", 15*time.Second),
+			AllowedOrigin:   getEnvString("CORS_ALLOWED_ORIGIN", "http://localhost:5173"),
 		},
 		Log: LogConfig{
 			Level:  getEnvString("LOG_LEVEL", "info"),

@@ -43,8 +43,6 @@ import (
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
-	"github.com/paladindigitalgh/palladium-oss/internal/provisioning"
-	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
@@ -52,6 +50,8 @@ import (
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
 	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/workflow"
+	workflowhttpapi "github.com/paladindigitalgh/palladium-oss/internal/workflow/httpapi"
 )
 
 func TestRouterMountsInventorySchemaEndpoint(t *testing.T) {
@@ -926,83 +926,81 @@ func TestRouterAdministratorCanWriteServiceEquipment(t *testing.T) {
 	}
 }
 
-// stubProvisioningService satisfies whatever interface
-// provisioninghttpapi.ProvisioningHandler needs structurally, the same
-// technique stubSiteService and every other stub above uses.
-type stubProvisioningService struct{}
+// stubWorkflowService satisfies whatever interface
+// workflowhttpapi.WorkflowHandler needs structurally, the same technique
+// stubSiteService and every other stub above uses.
+type stubWorkflowService struct{}
 
-func (stubProvisioningService) Get(context.Context, uuid.UUID) (provisioning.ProvisioningJob, error) {
-	return provisioning.ProvisioningJob{}, apperror.NotFound("provisioning job not found")
+// Get returns a real (if empty) instance for any id, unlike most other
+// stubs' NotFound default: WorkflowHandler.Execute calls Get again after
+// a successful Engine.Execute to return the up-to-date instance, so this
+// stub must satisfy that second call, not just the initial lookup.
+func (stubWorkflowService) Get(_ context.Context, id uuid.UUID) (workflow.Instance, error) {
+	return workflow.Instance{ID: id, Status: workflow.StatusSucceeded}, nil
 }
-func (stubProvisioningService) List(context.Context) ([]provisioning.ProvisioningJob, error) {
+func (stubWorkflowService) List(context.Context) ([]workflow.Instance, error) {
 	return nil, nil
 }
-func (stubProvisioningService) ListByServiceID(context.Context, uuid.UUID) ([]provisioning.ProvisioningJob, error) {
+func (stubWorkflowService) ListByServiceID(context.Context, uuid.UUID) ([]workflow.Instance, error) {
 	return nil, nil
 }
-func (stubProvisioningService) Create(_ context.Context, j provisioning.ProvisioningJob) (provisioning.ProvisioningJob, error) {
-	return j, nil
+func (stubWorkflowService) Create(_ context.Context, i workflow.Instance) (workflow.Instance, error) {
+	return i, nil
 }
-func (stubProvisioningService) Delete(context.Context, uuid.UUID) error { return nil }
-func (stubProvisioningService) Start(_ context.Context, id uuid.UUID) (provisioning.ProvisioningJob, error) {
-	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusRunning}, nil
+func (stubWorkflowService) Delete(context.Context, uuid.UUID) error { return nil }
+func (stubWorkflowService) Cancel(_ context.Context, id uuid.UUID) (workflow.Instance, error) {
+	return workflow.Instance{ID: id, Status: workflow.StatusCancelled}, nil
 }
-func (stubProvisioningService) Succeed(_ context.Context, id uuid.UUID) (provisioning.ProvisioningJob, error) {
-	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusSucceeded}, nil
-}
-func (stubProvisioningService) Fail(_ context.Context, id uuid.UUID, _ string) (provisioning.ProvisioningJob, error) {
-	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusFailed}, nil
-}
-func (stubProvisioningService) Cancel(_ context.Context, id uuid.UUID) (provisioning.ProvisioningJob, error) {
-	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusCancelled}, nil
-}
-func (stubProvisioningService) Retry(_ context.Context, id uuid.UUID) (provisioning.ProvisioningJob, error) {
-	return provisioning.ProvisioningJob{ID: id, Status: provisioning.ProvisioningStatusPending}, nil
+func (stubWorkflowService) Retry(_ context.Context, id uuid.UUID) (workflow.Instance, error) {
+	return workflow.Instance{ID: id, Status: workflow.StatusPending}, nil
 }
 
-// newRouterWithProvisioning mirrors newRouterWithServiceEquipment
-// exactly, one resource over: it proves /api/v1/provisioning-jobs
-// (including its action sub-routes) is wired up behind auth.Middleware
-// and authz.Middleware in the real production router, using its own
-// dedicated RequireProvisioningRead/RequireProvisioningWrite (see
-// authz.CanReadProvisioning's doc comment for why Provisioning does not
-// share Service's capability pair). See
-// internal/provisioning/httpapi/authenticated_test.go for a far more
-// thorough version of the same checks, scoped to that package.
-func newRouterWithProvisioning(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+// stubWorkflowEngine satisfies workflowhttpapi.WorkflowHandler's engine
+// dependency, always succeeding without touching a Service, equipment,
+// or a real Plugin.
+type stubWorkflowEngine struct{}
+
+func (stubWorkflowEngine) Execute(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithWorkflow mirrors newRouterWithServiceEquipment exactly,
+// one resource over: it proves /api/v1/workflow-instances (including its
+// action sub-routes) is wired up behind auth.Middleware and
+// authz.Middleware in the real production router, using its own
+// dedicated RequireWorkflowRead/RequireWorkflowWrite.
+func newRouterWithWorkflow(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return api.NewRouter(api.Dependencies{
-		Logger:              logger,
-		Version:             "test",
-		Commit:              "test",
-		ProvisioningHandler: provisioninghttpapi.NewProvisioningHandler(stubProvisioningService{}),
-		Tokens:              tokens,
-		Authz:               authz.NewMiddleware(stubUserRepository{role: role}),
+		Logger:          logger,
+		Version:         "test",
+		Commit:          "test",
+		WorkflowHandler: workflowhttpapi.NewWorkflowHandler(stubWorkflowService{}, stubWorkflowEngine{}),
+		Tokens:          tokens,
+		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
 	})
 }
 
-const validProvisioningBody = `{"service_id":"11111111-1111-1111-1111-111111111111","operation":"Provision"}`
+const validWorkflowBody = `{"service_id":"11111111-1111-1111-1111-111111111111","definition_name":"provision-service"}`
 
-func TestRouterRejectsUnauthenticatedProvisioningRequests(t *testing.T) {
+func TestRouterRejectsUnauthenticatedWorkflowRequests(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithProvisioning(tokens, auth.RoleAdministrator)
+	router := newRouterWithWorkflow(tokens, auth.RoleAdministrator)
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/provisioning-jobs/", nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/workflow-instances/", nil))
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
 	}
 }
 
-// TestRouterViewerCanReadProvisioning is "apply the standard RBAC
-// matrix", proven through the real, fully wired router.
-func TestRouterViewerCanReadProvisioning(t *testing.T) {
+// TestRouterViewerCanReadWorkflow is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterViewerCanReadWorkflow(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithProvisioning(tokens, auth.RoleViewer)
+	router := newRouterWithWorkflow(tokens, auth.RoleViewer)
 	token := mustIssueToken(t, tokens)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/provisioning-jobs/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workflow-instances/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -1012,14 +1010,14 @@ func TestRouterViewerCanReadProvisioning(t *testing.T) {
 	}
 }
 
-// TestRouterViewerCannotWriteProvisioning is "apply the standard RBAC
+// TestRouterViewerCannotWriteWorkflow is "apply the standard RBAC
 // matrix", proven through the real, fully wired router.
-func TestRouterViewerCannotWriteProvisioning(t *testing.T) {
+func TestRouterViewerCannotWriteWorkflow(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithProvisioning(tokens, auth.RoleViewer)
+	router := newRouterWithWorkflow(tokens, auth.RoleViewer)
 	token := mustIssueToken(t, tokens)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/", strings.NewReader(validProvisioningBody))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/", strings.NewReader(validWorkflowBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -1029,17 +1027,17 @@ func TestRouterViewerCannotWriteProvisioning(t *testing.T) {
 	}
 }
 
-// TestRouterViewerCannotDriveProvisioningStateTransitions proves the
-// action sub-routes (start/succeed/fail/cancel/retry) are covered by the
-// same write capability as create/delete, not left unguarded.
-func TestRouterViewerCannotDriveProvisioningStateTransitions(t *testing.T) {
+// TestRouterViewerCannotDriveWorkflowStateTransitions proves the action
+// sub-routes (execute/cancel/retry) are covered by the same write
+// capability as create/delete, not left unguarded.
+func TestRouterViewerCannotDriveWorkflowStateTransitions(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithProvisioning(tokens, auth.RoleViewer)
+	router := newRouterWithWorkflow(tokens, auth.RoleViewer)
 	token := mustIssueToken(t, tokens)
 
-	jobID := uuid.New()
-	for _, action := range []string{"start", "succeed", "fail", "cancel", "retry"} {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/"+jobID.String()+"/"+action, nil)
+	instanceID := uuid.New()
+	for _, action := range []string{"execute", "cancel", "retry"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/"+instanceID.String()+"/"+action, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
@@ -1050,14 +1048,14 @@ func TestRouterViewerCannotDriveProvisioningStateTransitions(t *testing.T) {
 	}
 }
 
-// TestRouterOperatorCanWriteProvisioning is "apply the standard RBAC
+// TestRouterOperatorCanWriteWorkflow is "apply the standard RBAC
 // matrix", proven through the real, fully wired router.
-func TestRouterOperatorCanWriteProvisioning(t *testing.T) {
+func TestRouterOperatorCanWriteWorkflow(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithProvisioning(tokens, auth.RoleOperator)
+	router := newRouterWithWorkflow(tokens, auth.RoleOperator)
 	token := mustIssueToken(t, tokens)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/", strings.NewReader(validProvisioningBody))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/", strings.NewReader(validWorkflowBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -1067,14 +1065,14 @@ func TestRouterOperatorCanWriteProvisioning(t *testing.T) {
 	}
 }
 
-// TestRouterAdministratorCanWriteProvisioning is "apply the standard RBAC
+// TestRouterAdministratorCanWriteWorkflow is "apply the standard RBAC
 // matrix", proven through the real, fully wired router.
-func TestRouterAdministratorCanWriteProvisioning(t *testing.T) {
+func TestRouterAdministratorCanWriteWorkflow(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithProvisioning(tokens, auth.RoleAdministrator)
+	router := newRouterWithWorkflow(tokens, auth.RoleAdministrator)
 	token := mustIssueToken(t, tokens)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/", strings.NewReader(validProvisioningBody))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/", strings.NewReader(validWorkflowBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -1084,21 +1082,17 @@ func TestRouterAdministratorCanWriteProvisioning(t *testing.T) {
 	}
 }
 
-// TestRouterAdministratorCanDriveProvisioningStateTransitions proves the
+// TestRouterAdministratorCanDriveWorkflowStateTransitions proves the
 // action sub-routes are reachable at all through the real router for a
 // role that has the write capability.
-func TestRouterAdministratorCanDriveProvisioningStateTransitions(t *testing.T) {
+func TestRouterAdministratorCanDriveWorkflowStateTransitions(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithProvisioning(tokens, auth.RoleAdministrator)
+	router := newRouterWithWorkflow(tokens, auth.RoleAdministrator)
 	token := mustIssueToken(t, tokens)
 
-	jobID := uuid.New()
-	for _, action := range []string{"start", "succeed", "fail", "cancel", "retry"} {
-		var body io.Reader
-		if action == "fail" {
-			body = strings.NewReader(`{"error_message":"device unreachable"}`)
-		}
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/provisioning-jobs/"+jobID.String()+"/"+action, body)
+	instanceID := uuid.New()
+	for _, action := range []string{"execute", "cancel", "retry"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/"+instanceID.String()+"/"+action, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)

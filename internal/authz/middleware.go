@@ -174,20 +174,20 @@ func (m *Middleware) RequireServiceEquipmentWrite() func(http.Handler) http.Hand
 	return m.Require(CanWriteServiceEquipment)
 }
 
-// RequireProvisioningRead returns middleware allowing any Role that
-// CanReadProvisioning (Administrator, Operator, Viewer) — the same
+// RequireWorkflowRead returns middleware allowing any Role that
+// CanReadWorkflow (Administrator, Operator, Viewer) — the same
 // authorization model as RequireServiceEquipmentRead, applied to the
-// Provisioning domain.
-func (m *Middleware) RequireProvisioningRead() func(http.Handler) http.Handler {
-	return m.Require(CanReadProvisioning)
+// Workflow domain.
+func (m *Middleware) RequireWorkflowRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadWorkflow)
 }
 
-// RequireProvisioningWrite returns middleware allowing any Role that
-// CanWriteProvisioning (Administrator, Operator) — the same
+// RequireWorkflowWrite returns middleware allowing any Role that
+// CanWriteWorkflow (Administrator, Operator) — the same
 // authorization model as RequireServiceEquipmentWrite, applied to the
-// Provisioning domain.
-func (m *Middleware) RequireProvisioningWrite() func(http.Handler) http.Handler {
-	return m.Require(CanWriteProvisioning)
+// Workflow domain.
+func (m *Middleware) RequireWorkflowWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteWorkflow)
 }
 
 // RequireAccessNetworkRead returns middleware allowing any Role that
@@ -277,4 +277,11 @@ func (m *Middleware) RequireConnectionProfilesRead() func(http.Handler) http.Han
 // the /connection-profiles route.
 func (m *Middleware) RequireConnectionProfilesWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteConnectionProfiles)
+}
+
+// RequireEventRead returns middleware allowing any Role that
+// CanReadEvents (Administrator, Operator, Viewer). Applied to the
+// /events route.
+func (m *Middleware) RequireEventRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadEvents)
 }

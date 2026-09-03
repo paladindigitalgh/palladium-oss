@@ -22,6 +22,7 @@ import (
 	connectionprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/httpapi"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
+	eventhttpapi "github.com/paladindigitalgh/palladium-oss/internal/event/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
@@ -29,10 +30,10 @@ import (
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
-	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
+	workflowhttpapi "github.com/paladindigitalgh/palladium-oss/internal/workflow/httpapi"
 )
 
 // Dependencies holds everything the router needs to wire up routes and
@@ -51,7 +52,8 @@ type Dependencies struct {
 	ProductHandler           *producthttpapi.ProductHandler
 	ServiceHandler           *servicehttpapi.ServiceHandler
 	ServiceEquipmentHandler  *serviceequipmenthttpapi.ServiceEquipmentHandler
-	ProvisioningHandler      *provisioninghttpapi.ProvisioningHandler
+	WorkflowHandler          *workflowhttpapi.WorkflowHandler
+	EventHandler             *eventhttpapi.EventHandler
 	AccessNetworkHandler     *accessnetworkhttpapi.AccessNetworkHandler
 	OLTHandler               *olthttpapi.OLTHandler
 	PONPortHandler           *ponporthttpapi.PONPortHandler
@@ -64,6 +66,11 @@ type Dependencies struct {
 	Tokens                   *auth.TokenIssuer
 	LoginHandler             *authhttpapi.LoginHandler
 	Authz                    *authz.Middleware
+	// AllowedOrigin is the frontend origin CORS middleware accepts
+	// cross-origin requests from (see corsMiddleware). Empty disables
+	// CORS headers entirely, which is fine for tests that never go
+	// through a browser.
+	AllowedOrigin string
 }
 
 // NewRouter builds the application's http.Handler.
@@ -75,6 +82,9 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Use(RequestLogger(deps.Logger))
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
+	if deps.AllowedOrigin != "" {
+		r.Use(corsMiddleware(deps.AllowedOrigin))
+	}
 
 	healthHandler := health.NewHandler(deps.HealthCheckers, deps.Version, deps.Commit)
 	r.Get("/healthz", healthHandler.Live)
@@ -269,36 +279,27 @@ func NewRouter(deps Dependencies) http.Handler {
 			})
 		})
 
-		// /provisioning-jobs gets its own dedicated capability pair
-		// (RequireProvisioningRead/RequireProvisioningWrite), not a reuse
-		// of /services' — per this milestone's explicit instruction ("do
-		// not reuse Service permissions"; see
-		// authz.CanReadProvisioning's doc comment for why). The write
-		// group also covers the state-machine action sub-routes
-		// (start/succeed/fail/cancel/retry): driving a transition is a
-		// write, the same as create/delete, and every one of those
-		// actions requires exactly the same capability — there is no
-		// narrower permission this milestone asks for (e.g. "can cancel
-		// but not start"), so splitting them into further sub-groups
-		// would add structure with no corresponding rule to justify it.
-		r.Route("/provisioning-jobs", func(r chi.Router) {
+		// /workflow-instances gets its own dedicated capability pair
+		// (RequireWorkflowRead/RequireWorkflowWrite), not a reuse of
+		// /services'. The write group also covers the action sub-routes
+		// (execute/cancel/retry): driving execution or a transition is a
+		// write, the same as create/delete.
+		r.Route("/workflow-instances", func(r chi.Router) {
 			r.Use(auth.Middleware(deps.Tokens))
 
 			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireProvisioningRead())
-				r.Get("/", deps.ProvisioningHandler.List)
-				r.Get("/{id}", deps.ProvisioningHandler.Get)
+				r.Use(deps.Authz.RequireWorkflowRead())
+				r.Get("/", deps.WorkflowHandler.List)
+				r.Get("/{id}", deps.WorkflowHandler.Get)
 			})
 
 			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireProvisioningWrite())
-				r.Post("/", deps.ProvisioningHandler.Create)
-				r.Delete("/{id}", deps.ProvisioningHandler.Delete)
-				r.Post("/{id}/start", deps.ProvisioningHandler.Start)
-				r.Post("/{id}/succeed", deps.ProvisioningHandler.Succeed)
-				r.Post("/{id}/fail", deps.ProvisioningHandler.Fail)
-				r.Post("/{id}/cancel", deps.ProvisioningHandler.Cancel)
-				r.Post("/{id}/retry", deps.ProvisioningHandler.Retry)
+				r.Use(deps.Authz.RequireWorkflowWrite())
+				r.Post("/", deps.WorkflowHandler.Create)
+				r.Delete("/{id}", deps.WorkflowHandler.Delete)
+				r.Post("/{id}/execute", deps.WorkflowHandler.Execute)
+				r.Post("/{id}/cancel", deps.WorkflowHandler.Cancel)
+				r.Post("/{id}/retry", deps.WorkflowHandler.Retry)
 			})
 		})
 
@@ -444,6 +445,15 @@ func NewRouter(deps Dependencies) http.Handler {
 			})
 		})
 
+		// /events is read-only: there is no write route, since events are
+		// written internally by domain/workflow code, never posted by a
+		// client (see internal/event/httpapi's package doc comment).
+		r.Route("/events", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+			r.Use(deps.Authz.RequireEventRead())
+			r.Get("/", deps.EventHandler.List)
+		})
+
 		// /authentication-methods gets its own dedicated capability pair
 		// (RequireAuthenticationRead/RequireAuthenticationWrite), not a
 		// reuse of any other domain's — per this milestone's explicit
@@ -492,4 +502,29 @@ func NewRouter(deps Dependencies) http.Handler {
 	})
 
 	return r
+}
+
+// corsMiddleware sets the CORS headers a browser requires to accept a
+// cross-origin response, and short-circuits the CORS preflight OPTIONS
+// request every non-trivial cross-origin call triggers (any request
+// carrying an Authorization header, which is every authenticated route
+// here) before it ever reaches auth.Middleware -- a preflight request
+// carries no Authorization header itself, so letting it fall through to
+// authentication would reject every preflight and break the real
+// request that follows it.
+func corsMiddleware(allowedOrigin string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

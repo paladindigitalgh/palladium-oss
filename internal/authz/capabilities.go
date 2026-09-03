@@ -260,25 +260,22 @@ func CanWriteServiceEquipment(role auth.Role) bool {
 	}
 }
 
-// CanReadProvisioning reports whether role may read Provisioning Job
+// CanReadWorkflow reports whether role may read Workflow Instance
 // data — the orchestration record for a request to provision, modify,
 // suspend, resume, disconnect, or synchronize a Service (see
-// internal/provisioning). All three built-in roles can — identical to
+// internal/workflow). All three built-in roles can — identical to
 // CanReadServiceEquipment's rule today.
 //
-// This is a separate function from CanReadServices, not a call to it, per
-// this milestone's explicit instruction ("do not reuse Service
-// permissions"). Provisioning is called out explicitly as "an
-// operational concern [that] deserves its own authorization boundary":
-// a ProvisioningJob references a Service, but "who can see a Service"
-// and "who can see the operational history of attempts to provision
-// it" are different questions that happen to share an answer today for
-// the same reason every other capability pair in this file does — a
-// future requirement scoped specifically to provisioning (e.g. a
-// field-operations role that can drive provisioning without general
+// This is a separate function from CanReadServices, not a call to it: a
+// WorkflowInstance references a Service, but "who can see a Service" and
+// "who can see the operational history of attempts to change it" are
+// different questions that happen to share an answer today for the same
+// reason every other capability pair in this file does — a future
+// requirement scoped specifically to workflow execution (e.g. a
+// field-operations role that can drive workflows without general
 // Service visibility) must never require touching Service's code, and
 // vice versa.
-func CanReadProvisioning(role auth.Role) bool {
+func CanReadWorkflow(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
 		return true
@@ -287,12 +284,12 @@ func CanReadProvisioning(role auth.Role) bool {
 	}
 }
 
-// CanWriteProvisioning reports whether role may create, update
-// (including driving state transitions), or delete Provisioning Job
+// CanWriteWorkflow reports whether role may create, update
+// (including driving state transitions), or delete Workflow Instance
 // data. Administrator and Operator can; Viewer cannot. See
-// CanReadProvisioning's doc comment for why this is not implemented in
+// CanReadWorkflow's doc comment for why this is not implemented in
 // terms of CanWriteServices despite the identical rule today.
-func CanWriteProvisioning(role auth.Role) bool {
+func CanWriteWorkflow(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator:
 		return true
@@ -304,7 +301,7 @@ func CanWriteProvisioning(role auth.Role) bool {
 // CanReadAccessNetwork reports whether role may read Access Network
 // data — AccessNetwork, OLT, and PONPort records alike (see
 // internal/accessnetwork, internal/olt, internal/ponport). All three
-// built-in roles can — identical to CanReadProvisioning's rule today.
+// built-in roles can — identical to CanReadWorkflow's rule today.
 //
 // A single capability pair (CanReadAccessNetwork/CanWriteAccessNetwork)
 // guards all three resources, the same reasoning
@@ -315,7 +312,7 @@ func CanWriteProvisioning(role auth.Role) bool {
 // network," "who can see an OLT in it," and "who can see a port on that
 // OLT" are the same question asked at three levels of one domain, not
 // three domains that happen to share a rule today. This is a separate
-// function from CanReadServices/CanReadServiceEquipment/CanReadProvisioning,
+// function from CanReadServices/CanReadServiceEquipment/CanReadWorkflow,
 // not a call to any of them, for the same reason those are each separate
 // from one another — a future access requirement specific to the
 // physical access network (e.g. field technicians needing OLT
@@ -545,6 +542,23 @@ func CanReadConnectionProfiles(role auth.Role) bool {
 func CanWriteConnectionProfiles(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanReadEvents reports whether role may read Event data — the immutable
+// operational history behind Timeline sections (see internal/event). All
+// three built-in roles can: an Event only ever describes something that
+// already happened, mirroring the read side of every other domain's
+// capability pair. There is no CanWriteEvents: events are written
+// internally by domain/workflow code, never through a public write route
+// (see internal/event/httpapi's package doc comment), so there is
+// nothing for a write capability to guard.
+func CanReadEvents(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
 		return true
 	default:
 		return false

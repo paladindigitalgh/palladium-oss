@@ -42,6 +42,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
 	diagnosticsservice "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/service"
+	eventhttpapi "github.com/paladindigitalgh/palladium-oss/internal/event/httpapi"
+	eventpostgres "github.com/paladindigitalgh/palladium-oss/internal/event/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpserver"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
@@ -58,15 +60,14 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/encryption"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/retry"
+	"github.com/paladindigitalgh/palladium-oss/internal/plugin"
+	pluginmock "github.com/paladindigitalgh/palladium-oss/internal/plugin/mock"
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	ponportpostgres "github.com/paladindigitalgh/palladium-oss/internal/ponport/postgres"
 	ponportservice "github.com/paladindigitalgh/palladium-oss/internal/ponport/service"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
 	productservice "github.com/paladindigitalgh/palladium-oss/internal/product/service"
-	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
-	provisioningpostgres "github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
-	provisioningservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/service"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
@@ -78,6 +79,10 @@ import (
 	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
 	serviceprofileservice "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/version"
+	workflowengine "github.com/paladindigitalgh/palladium-oss/internal/workflow/engine"
+	workflowhttpapi "github.com/paladindigitalgh/palladium-oss/internal/workflow/httpapi"
+	workflowpostgres "github.com/paladindigitalgh/palladium-oss/internal/workflow/postgres"
+	workflowservice "github.com/paladindigitalgh/palladium-oss/internal/workflow/service"
 )
 
 func main() {
@@ -206,19 +211,35 @@ func run() error {
 	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo)
 	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
 
-	// Provisioning follows the same repository -> service -> handler
-	// chain as every domain above, but ProvisioningService additionally
-	// takes a clock.Clock — the one business logic layer in this codebase
-	// that needs one, since it stamps StartedAt/CompletedAt itself as
-	// part of enforcing state transitions (see
-	// internal/provisioning/service's package doc comment). A separate
-	// clock.New() is passed here rather than reusing one of the instances
-	// above only because each repository already gets its own by
-	// convention (see the comment on siteRepo above); there is no
-	// shared-state reason it has to be this specific instance.
-	provisioningRepo := provisioningpostgres.NewProvisioningRepository(pool, clock.New(), id.New())
-	provisioningSvc := provisioningservice.NewProvisioningService(provisioningRepo, clock.New())
-	provisioningHandler := provisioninghttpapi.NewProvisioningHandler(provisioningSvc)
+	// Event has no service layer: there is no business logic beyond
+	// append and list (see internal/event's package doc comment), so the
+	// repository is wired directly to the handler.
+	eventRepo := eventpostgres.NewEventRepository(pool, clock.New(), id.New())
+	eventHandler := eventhttpapi.NewEventHandler(eventRepo)
+
+	// pluginRegistry is built and populated with every available plugin
+	// once, at startup — the same "every Register call happens before
+	// the HTTP server starts" assumption
+	// internal/plugin.DefaultRegistry's own doc comment documents.
+	// MockPlugin is the only plugin registered today: there is no real
+	// OLT/router vendor plugin yet, so every workflow capability is
+	// fulfilled by the simulated vendor until one is built.
+	pluginRegistry := plugin.NewDefaultRegistry()
+	pluginRegistry.Register(pluginmock.NewMockPlugin(logger))
+
+	// Workflow follows the same repository -> service -> handler chain
+	// as every domain above, but its service layer additionally takes
+	// clock.Clock (it stamps StartedAt/CompletedAt as part of enforcing
+	// state transitions) and an event.EventRepository (every transition
+	// records an Event — see internal/workflow/service's package doc
+	// comment). Engine sits alongside the service layer, depending on it
+	// directly (not the repository) so that executing a workflow reuses
+	// the exact same transition-and-event-recording logic as any other
+	// caller (see internal/workflow/engine's package doc comment).
+	workflowRepo := workflowpostgres.NewRepository(pool, clock.New(), id.New())
+	workflowSvc := workflowservice.New(workflowRepo, eventRepo, clock.New())
+	workflowEngine := workflowengine.NewDefaultEngine(workflowSvc, serviceRepo, serviceEquipmentRepo, pluginRegistry, clock.New())
+	workflowHandler := workflowhttpapi.NewWorkflowHandler(workflowSvc, workflowEngine)
 
 	// Access Network, OLT, and PON Port follow the same repository ->
 	// service -> handler chain as every domain above, three packages
@@ -331,7 +352,8 @@ func run() error {
 		DiagnosticsHandler:       diagnosticsHandler,
 		ServiceHandler:           serviceHandler,
 		ServiceEquipmentHandler:  serviceEquipmentHandler,
-		ProvisioningHandler:      provisioningHandler,
+		WorkflowHandler:          workflowHandler,
+		EventHandler:             eventHandler,
 		AccessNetworkHandler:     accessNetworkHandler,
 		OLTHandler:               oltHandler,
 		PONPortHandler:           ponPortHandler,
@@ -342,6 +364,7 @@ func run() error {
 		Tokens:                   tokenIssuer,
 		LoginHandler:             loginHandler,
 		Authz:                    authzMiddleware,
+		AllowedOrigin:            cfg.HTTP.AllowedOrigin,
 	})
 
 	srv := httpserver.New(httpserver.Config{

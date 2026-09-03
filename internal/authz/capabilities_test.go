@@ -239,11 +239,11 @@ func TestCanWriteServiceEquipment(t *testing.T) {
 	}
 }
 
-// TestCanReadProvisioning and TestCanWriteProvisioning are the same
+// TestCanReadWorkflow and TestCanWriteWorkflow are the same
 // direct proof as TestCanReadServiceEquipment/TestCanWriteServiceEquipment,
-// applied to the Provisioning domain's access-control table ("apply the
+// applied to the Workflow domain's access-control table ("apply the
 // standard RBAC matrix").
-func TestCanReadProvisioning(t *testing.T) {
+func TestCanReadWorkflow(t *testing.T) {
 	cases := map[auth.Role]bool{
 		auth.RoleAdministrator: true,
 		auth.RoleOperator:      true,
@@ -253,13 +253,13 @@ func TestCanReadProvisioning(t *testing.T) {
 	}
 
 	for role, want := range cases {
-		if got := authz.CanReadProvisioning(role); got != want {
-			t.Errorf("CanReadProvisioning(%q) = %v, want %v", role, got, want)
+		if got := authz.CanReadWorkflow(role); got != want {
+			t.Errorf("CanReadWorkflow(%q) = %v, want %v", role, got, want)
 		}
 	}
 }
 
-func TestCanWriteProvisioning(t *testing.T) {
+func TestCanWriteWorkflow(t *testing.T) {
 	cases := map[auth.Role]bool{
 		auth.RoleAdministrator: true,
 		auth.RoleOperator:      true,
@@ -269,14 +269,14 @@ func TestCanWriteProvisioning(t *testing.T) {
 	}
 
 	for role, want := range cases {
-		if got := authz.CanWriteProvisioning(role); got != want {
-			t.Errorf("CanWriteProvisioning(%q) = %v, want %v", role, got, want)
+		if got := authz.CanWriteWorkflow(role); got != want {
+			t.Errorf("CanWriteWorkflow(%q) = %v, want %v", role, got, want)
 		}
 	}
 }
 
 // TestCanReadAccessNetwork and TestCanWriteAccessNetwork are the same
-// direct proof as TestCanReadProvisioning/TestCanWriteProvisioning,
+// direct proof as TestCanReadWorkflow/TestCanWriteWorkflow,
 // applied to the Access Network domain's access-control table ("apply
 // the standard RBAC matrix").
 func TestCanReadAccessNetwork(t *testing.T) {
@@ -493,8 +493,8 @@ func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 		"CanWriteServices":           authz.CanWriteServices,
 		"CanReadServiceEquipment":    authz.CanReadServiceEquipment,
 		"CanWriteServiceEquipment":   authz.CanWriteServiceEquipment,
-		"CanReadProvisioning":        authz.CanReadProvisioning,
-		"CanWriteProvisioning":       authz.CanWriteProvisioning,
+		"CanReadWorkflow":        authz.CanReadWorkflow,
+		"CanWriteWorkflow":       authz.CanWriteWorkflow,
 		"CanReadAccessNetwork":       authz.CanReadAccessNetwork,
 		"CanWriteAccessNetwork":      authz.CanWriteAccessNetwork,
 		"CanReadAccessTopology":      authz.CanReadAccessTopology,
