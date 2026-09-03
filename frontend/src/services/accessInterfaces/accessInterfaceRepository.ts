@@ -77,6 +77,35 @@ export async function createAccessInterface(input: CreateAccessInterfaceInput): 
   return fromDto(dto)
 }
 
+export interface UpdateAccessInterfaceInput {
+  technology: AccessInterface['technology']
+  name: string
+  status: AccessInterface['status']
+  description: string
+  /**
+   * Not user-editable (see AccessInterfaceFormDialog.vue -- no PON Port
+   * picker exists in this workspace). Callers pass the Access
+   * Interface's current ponPortId through unchanged: PUT replaces every
+   * mutable column (see internal/accessinterface/postgres's Update), so
+   * omitting it here would silently move the interface to no PON Port.
+   */
+  ponPortId: string
+}
+
+export async function updateAccessInterface(id: string, input: UpdateAccessInterfaceInput): Promise<AccessInterface> {
+  const dto = await apiFetch<AccessInterfaceDto>(`/access-interfaces/${id}`, {
+    method: 'PUT',
+    body: {
+      pon_port_id: input.ponPortId,
+      technology: input.technology,
+      name: input.name,
+      status: input.status,
+      description: input.description,
+    },
+  })
+  return fromDto(dto)
+}
+
 /**
  * Deletes the AccessInterface identified by id. access_interfaces.id is
  * referenced by access_attachments.access_interface_id ON DELETE

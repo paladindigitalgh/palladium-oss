@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import BaseModal from '@/components/base/BaseModal.vue'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-import { createAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
+import { createAccessInterface, updateAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { AccessInterface } from '@/types/accessInterface'
 
-const props = defineProps<{ open: boolean; ponPortId: string }>()
+/**
+ * Dual-mode: create when `accessInterface` is absent, edit when present
+ * -- mirrors DeviceFormDialog.vue. `ponPortId` (the parent prop, needed
+ * for create) is ignored in edit mode -- the Access Interface being
+ * edited already has one, and moving it to a different PON Port is a
+ * bigger operation than this dialog does.
+ */
+const props = defineProps<{ open: boolean; ponPortId: string; accessInterface?: AccessInterface | null }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', accessInterface: AccessInterface): void
+  (event: 'updated', accessInterface: AccessInterface): void
 }>()
 
 const technology = ref<AccessInterface['technology']>('GPON')
@@ -41,8 +49,29 @@ function reset() {
   error.value = null
 }
 
+function populateFrom(accessInterface: AccessInterface) {
+  technology.value = accessInterface.technology
+  name.value = accessInterface.name
+  status.value = accessInterface.status
+  description.value = accessInterface.description
+  error.value = null
+}
+
+// Fields are (re)populated every time the dialog opens, from
+// `accessInterface` when editing or blank when creating -- not just
+// once on mount, since the same mounted dialog instance is reused
+// across opens.
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    if (props.accessInterface) populateFrom(props.accessInterface)
+    else reset()
+  },
+  { immediate: true },
+)
+
 function close() {
-  reset()
   emit('close')
 }
 
@@ -50,17 +79,29 @@ async function handleSubmit() {
   error.value = null
   submitting.value = true
   try {
-    const accessInterface = await createAccessInterface({
-      ponPortId: props.ponPortId,
-      technology: technology.value,
-      name: name.value,
-      status: status.value,
-      description: description.value,
-    })
-    reset()
-    emit('created', accessInterface)
+    if (props.accessInterface) {
+      const updated = await updateAccessInterface(props.accessInterface.id, {
+        technology: technology.value,
+        name: name.value,
+        status: status.value,
+        description: description.value,
+        ponPortId: props.accessInterface.ponPortId,
+      })
+      emit('updated', updated)
+    } else {
+      const accessInterface = await createAccessInterface({
+        ponPortId: props.ponPortId,
+        technology: technology.value,
+        name: name.value,
+        status: status.value,
+        description: description.value,
+      })
+      reset()
+      emit('created', accessInterface)
+    }
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'The access interface could not be created.'
+    error.value =
+      err instanceof ApiError ? err.message : `The access interface could not be ${props.accessInterface ? 'saved' : 'created'}.`
   } finally {
     submitting.value = false
   }
@@ -68,7 +109,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <BaseModal :open="open" title="Add Access Interface" @close="close">
+  <BaseModal :open="open" :title="accessInterface ? 'Edit Access Interface' : 'Add Access Interface'" @close="close">
     <form class="access-interface-form" @submit.prevent="handleSubmit">
       <BaseInput v-model="name" label="Name" required />
       <BaseSelect v-model="technology" label="Technology" :options="technologyOptions" />
@@ -80,7 +121,7 @@ async function handleSubmit() {
       <div class="access-interface-form__actions">
         <BaseButton type="button" variant="secondary" :disabled="submitting" @click="close">Cancel</BaseButton>
         <BaseButton type="submit" variant="primary" :disabled="submitting">
-          {{ submitting ? 'Adding…' : 'Add Access Interface' }}
+          {{ submitting ? 'Saving…' : accessInterface ? 'Save Changes' : 'Add Access Interface' }}
         </BaseButton>
       </div>
     </form>

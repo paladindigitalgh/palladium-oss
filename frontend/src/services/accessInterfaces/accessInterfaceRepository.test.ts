@@ -5,6 +5,7 @@ import {
   listAccessInterfacesByPONPortId,
   getAccessInterfaceById,
   createAccessInterface,
+  updateAccessInterface,
   deleteAccessInterface,
 } from './accessInterfaceRepository'
 
@@ -99,6 +100,25 @@ describe('createAccessInterface', () => {
     expect(apiFetch).toHaveBeenCalledWith('/access-interfaces/', {
       method: 'POST',
       body: { pon_port_id: 'pp1', technology: 'GPON', name: 'AI-1', status: 'Active', description: 'Primary GPON interface' },
+    })
+  })
+})
+
+describe('updateAccessInterface', () => {
+  it('sends a PUT with the request body in the API wire shape, passing through ponPortId unchanged', async () => {
+    apiFetch.mockResolvedValue(accessInterfaceDto({ id: 'ai1', name: 'AI-1 Renamed' }))
+
+    await updateAccessInterface('ai1', {
+      technology: 'XGSPON',
+      name: 'AI-1 Renamed',
+      status: 'Disabled',
+      description: 'Updated',
+      ponPortId: 'pp1',
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith('/access-interfaces/ai1', {
+      method: 'PUT',
+      body: { pon_port_id: 'pp1', technology: 'XGSPON', name: 'AI-1 Renamed', status: 'Disabled', description: 'Updated' },
     })
   })
 })

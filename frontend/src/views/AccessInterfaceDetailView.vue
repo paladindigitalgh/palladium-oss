@@ -13,6 +13,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import AccessInterfaceFormDialog from '@/components/dialogs/AccessInterfaceFormDialog.vue'
 import AttachAccessAttachmentDialog from '@/components/dialogs/AttachAccessAttachmentDialog.vue'
 import DetachAccessAttachmentDialog from '@/components/dialogs/DetachAccessAttachmentDialog.vue'
 import { getAccessInterfaceById, deleteAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
@@ -117,6 +118,15 @@ function handleAttachmentDetached(updated: AccessAttachment) {
   detachTarget.value = null
 }
 
+// --- Edit Access Interface ---
+
+const showEditDialog = ref(false)
+
+function handleAccessInterfaceUpdated(updated: AccessInterface) {
+  accessInterface.value = updated
+  showEditDialog.value = false
+}
+
 // --- Delete Access Interface ---
 
 const showDeleteDialog = ref(false)
@@ -165,6 +175,7 @@ async function confirmDeleteAccessInterface() {
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
+            <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit Access Interface</BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">
               Delete Access Interface
             </BaseButton>
@@ -172,6 +183,14 @@ async function confirmDeleteAccessInterface() {
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
+
+    <AccessInterfaceFormDialog
+      :open="showEditDialog"
+      :pon-port-id="accessInterface.ponPortId"
+      :access-interface="accessInterface"
+      @close="showEditDialog = false"
+      @updated="handleAccessInterfaceUpdated"
+    />
 
     <ConfirmationDialog
       :open="showDeleteDialog"
