@@ -46,6 +46,7 @@ type Dependencies struct {
 	Version                  string
 	Commit                   string
 	SiteHandler              *httpapi.SiteHandler
+	DeviceHandler            *httpapi.DeviceHandler
 	CustomerHandler          *customerhttpapi.CustomerHandler
 	LocationHandler          *locationhttpapi.LocationHandler
 	CatalogHandler           *cataloghttpapi.CatalogHandler
@@ -140,6 +141,26 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.SiteHandler.Create)
 				r.Put("/{id}", deps.SiteHandler.Update)
 				r.Delete("/{id}", deps.SiteHandler.Delete)
+			})
+		})
+
+		// /devices uses the exact same shape as /sites above, reusing the
+		// same RequireInventoryRead/RequireInventoryWrite capabilities —
+		// Device is Inventory, the same as Site, not a domain of its own.
+		r.Route("/devices", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryRead())
+				r.Get("/", deps.DeviceHandler.List)
+				r.Get("/{id}", deps.DeviceHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryWrite())
+				r.Post("/", deps.DeviceHandler.Create)
+				r.Put("/{id}", deps.DeviceHandler.Update)
+				r.Delete("/{id}", deps.DeviceHandler.Delete)
 			})
 		})
 

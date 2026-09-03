@@ -226,6 +226,122 @@ func TestRouterAdministratorCanWriteSites(t *testing.T) {
 	}
 }
 
+// stubDeviceService satisfies whatever interface httpapi.DeviceHandler
+// needs structurally, the same technique stubSiteService above uses.
+type stubDeviceService struct{}
+
+func (stubDeviceService) Get(context.Context, uuid.UUID) (inventory.Device, error) {
+	return inventory.Device{}, apperror.NotFound("device not found")
+}
+func (stubDeviceService) List(context.Context) ([]inventory.Device, error) { return nil, nil }
+func (stubDeviceService) Create(_ context.Context, d inventory.Device) (inventory.Device, error) {
+	return d, nil
+}
+func (stubDeviceService) Update(_ context.Context, d inventory.Device) (inventory.Device, error) {
+	return d, nil
+}
+func (stubDeviceService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithDevices mirrors newRouterWithSites exactly, one entity
+// over in the same Inventory hierarchy: it proves /api/v1/devices is
+// wired up behind both auth.Middleware and authz.Middleware in the real
+// production router, with RequireInventoryRead/RequireInventoryWrite
+// applied to the right HTTP methods — the same capabilities /sites uses,
+// since Device is Inventory, not a domain of its own.
+func newRouterWithDevices(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:        logger,
+		Version:       "test",
+		Commit:        "test",
+		DeviceHandler: httpapi.NewDeviceHandler(stubDeviceService{}),
+		Tokens:        tokens,
+		Authz:         authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validDeviceBody = `{"name":"Test Device","manufacturer":"Calix","model":"716GE","serial_number":"CXNK00112233","status":"InStock"}`
+
+func TestRouterRejectsUnauthenticatedDeviceRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDevices(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/devices/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadDevices is goal 7's "Viewer can read
+// inventory", proven through the real, fully wired router.
+func TestRouterViewerCanReadDevices(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDevices(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/devices/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteDevices is goal 7's "Viewer cannot modify
+// inventory", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteDevices(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDevices(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/devices/", strings.NewReader(validDeviceBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteDevices is goal 7's "Operator can modify
+// inventory", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteDevices(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDevices(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/devices/", strings.NewReader(validDeviceBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteDevices is goal 7's "Administrator can
+// modify inventory", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteDevices(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithDevices(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/devices/", strings.NewReader(validDeviceBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
 // stubCustomerService satisfies whatever interface
 // customerhttpapi.CustomerHandler needs structurally, the same technique
 // stubSiteService above uses.

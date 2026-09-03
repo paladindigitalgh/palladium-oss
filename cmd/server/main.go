@@ -145,15 +145,21 @@ func run() error {
 		database.NewHealthChecker(pool),
 	}
 
-	// Site is the only Inventory entity with an HTTP surface so far (see
-	// this milestone's scope); Building, Room, Rack, and Device follow the
-	// same repository -> service -> handler chain once their own
-	// endpoints exist. clock.New() and id.New() are shared across
-	// repositories deliberately: they are stateless, so there is no
-	// reason for each repository to hold its own instance.
+	// Site and Device are the only Inventory entities with an HTTP surface
+	// so far; Building and Room follow the same repository -> service ->
+	// handler chain once their own endpoints exist. clock.New() and
+	// id.New() are shared across repositories deliberately: they are
+	// stateless, so there is no reason for each repository to hold its
+	// own instance.
 	siteRepo := inventorypostgres.NewSiteRepository(pool, clock.New(), id.New())
 	siteService := service.NewSiteService(siteRepo)
 	siteHandler := httpapi.NewSiteHandler(siteService)
+
+	// Device follows the exact same repository -> service -> handler
+	// chain as Site, one entity over in the same Inventory hierarchy.
+	deviceRepo := inventorypostgres.NewDeviceRepository(pool, clock.New(), id.New())
+	deviceService := service.NewDeviceService(deviceRepo)
+	deviceHandler := httpapi.NewDeviceHandler(deviceService)
 
 	// Customer follows the exact same repository -> service -> handler
 	// chain as Site, one domain package over (internal/customer instead
@@ -344,6 +350,7 @@ func run() error {
 		Version:                  version.Version,
 		Commit:                   version.Commit,
 		SiteHandler:              siteHandler,
+		DeviceHandler:            deviceHandler,
 		CustomerHandler:          customerHandler,
 		LocationHandler:          locationHandler,
 		CatalogHandler:           catalogHandler,
