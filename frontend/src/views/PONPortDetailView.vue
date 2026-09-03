@@ -13,6 +13,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import PONPortFormDialog from '@/components/dialogs/PONPortFormDialog.vue'
 import AccessInterfaceFormDialog from '@/components/dialogs/AccessInterfaceFormDialog.vue'
 import { getPONPortById, deletePONPort } from '@/services/ponPorts/ponPortRepository'
 import { getOLTById } from '@/services/olts/oltRepository'
@@ -134,6 +135,15 @@ async function confirmDeleteAccessInterface() {
   }
 }
 
+// --- Edit PON Port ---
+
+const showEditDialog = ref(false)
+
+function handlePONPortUpdated(updated: PONPort) {
+  ponPort.value = updated
+  showEditDialog.value = false
+}
+
 // --- Delete PON Port ---
 
 const showDeleteDialog = ref(false)
@@ -174,11 +184,20 @@ async function confirmDeletePONPort() {
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
+            <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit PON Port</BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete PON Port</BaseButton>
           </template>
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
+
+    <PONPortFormDialog
+      :open="showEditDialog"
+      :olt-id="ponPort.oltId"
+      :pon-port="ponPort"
+      @close="showEditDialog = false"
+      @updated="handlePONPortUpdated"
+    />
 
     <ConfirmationDialog
       :open="showDeleteDialog"

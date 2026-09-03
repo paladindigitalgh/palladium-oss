@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
-import { listPONPorts, listPONPortsByOLTId, getPONPortById, createPONPort, deletePONPort } from './ponPortRepository'
+import { listPONPorts, listPONPortsByOLTId, getPONPortById, createPONPort, updatePONPort, deletePONPort } from './ponPortRepository'
 
 /** Mirrors oltRepository.test.ts's shape exactly -- list/listByParent/get-by-id-direct/create/delete, no client-side sort or pagination. */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
@@ -85,6 +85,19 @@ describe('createPONPort', () => {
     expect(apiFetch).toHaveBeenCalledWith('/pon-ports/', {
       method: 'POST',
       body: { olt_id: 'olt1', port_number: 3, description: 'Rack 2 PON port 3' },
+    })
+  })
+})
+
+describe('updatePONPort', () => {
+  it('sends a PUT with the request body in the API wire shape, passing through oltId unchanged', async () => {
+    apiFetch.mockResolvedValue(ponPortDto({ id: 'pp1', port_number: 7 }))
+
+    await updatePONPort('pp1', { portNumber: 7, description: 'Updated', oltId: 'olt1' })
+
+    expect(apiFetch).toHaveBeenCalledWith('/pon-ports/pp1', {
+      method: 'PUT',
+      body: { olt_id: 'olt1', port_number: 7, description: 'Updated' },
     })
   })
 })

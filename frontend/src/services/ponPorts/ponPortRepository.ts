@@ -64,6 +64,27 @@ export async function createPONPort(input: CreatePONPortInput): Promise<PONPort>
   return fromDto(dto)
 }
 
+export interface UpdatePONPortInput {
+  portNumber: number
+  description: string
+  /**
+   * Not user-editable (see PONPortFormDialog.vue -- no OLT picker exists
+   * in this workspace). Callers pass the PON Port's current oltId through
+   * unchanged: PUT replaces every mutable column (see
+   * internal/ponport/postgres's Update), so omitting it here would
+   * silently move the port to no OLT.
+   */
+  oltId: string
+}
+
+export async function updatePONPort(id: string, input: UpdatePONPortInput): Promise<PONPort> {
+  const dto = await apiFetch<PONPortDto>(`/pon-ports/${id}`, {
+    method: 'PUT',
+    body: { olt_id: input.oltId, port_number: input.portNumber, description: input.description },
+  })
+  return fromDto(dto)
+}
+
 /**
  * Deletes the PONPort identified by id. pon_ports.id is referenced by
  * access_interfaces.pon_port_id ON DELETE RESTRICT, so this throws an

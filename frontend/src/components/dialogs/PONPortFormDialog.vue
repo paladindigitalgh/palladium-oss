@@ -1,16 +1,24 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import BaseModal from '@/components/base/BaseModal.vue'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-import { createPONPort } from '@/services/ponPorts/ponPortRepository'
+import { createPONPort, updatePONPort } from '@/services/ponPorts/ponPortRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { PONPort } from '@/types/ponPort'
 
-const props = defineProps<{ open: boolean; oltId: string }>()
+/**
+ * Dual-mode: create when `ponPort` is absent, edit when present --
+ * mirrors DeviceFormDialog.vue. `oltId` (the parent prop, needed for
+ * create) is ignored in edit mode -- the PON Port being edited already
+ * has one, and moving a PON Port to a different OLT is a bigger
+ * operation than this dialog does.
+ */
+const props = defineProps<{ open: boolean; oltId: string; ponPort?: PONPort | null }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', ponPort: PONPort): void
+  (event: 'updated', ponPort: PONPort): void
 }>()
 
 const portNumber = ref('')
@@ -24,8 +32,26 @@ function reset() {
   error.value = null
 }
 
+function populateFrom(ponPort: PONPort) {
+  portNumber.value = String(ponPort.portNumber)
+  description.value = ponPort.description
+  error.value = null
+}
+
+// Fields are (re)populated every time the dialog opens, from `ponPort`
+// when editing or blank when creating -- not just once on mount, since
+// the same mounted dialog instance is reused across opens.
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    if (props.ponPort) populateFrom(props.ponPort)
+    else reset()
+  },
+  { immediate: true },
+)
+
 function close() {
-  reset()
   emit('close')
 }
 
@@ -33,15 +59,24 @@ async function handleSubmit() {
   error.value = null
   submitting.value = true
   try {
-    const ponPort = await createPONPort({
-      oltId: props.oltId,
-      portNumber: Number(portNumber.value),
-      description: description.value,
-    })
-    reset()
-    emit('created', ponPort)
+    if (props.ponPort) {
+      const updated = await updatePONPort(props.ponPort.id, {
+        portNumber: Number(portNumber.value),
+        description: description.value,
+        oltId: props.ponPort.oltId,
+      })
+      emit('updated', updated)
+    } else {
+      const ponPort = await createPONPort({
+        oltId: props.oltId,
+        portNumber: Number(portNumber.value),
+        description: description.value,
+      })
+      reset()
+      emit('created', ponPort)
+    }
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'The PON port could not be created.'
+    error.value = err instanceof ApiError ? err.message : `The PON port could not be ${props.ponPort ? 'saved' : 'created'}.`
   } finally {
     submitting.value = false
   }
@@ -49,7 +84,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <BaseModal :open="open" title="Add PON Port" @close="close">
+  <BaseModal :open="open" :title="ponPort ? 'Edit PON Port' : 'Add PON Port'" @close="close">
     <form class="pon-port-form" @submit.prevent="handleSubmit">
       <BaseInput v-model="portNumber" label="Port Number" required />
       <BaseInput v-model="description" label="Description" />
@@ -59,7 +94,7 @@ async function handleSubmit() {
       <div class="pon-port-form__actions">
         <BaseButton type="button" variant="secondary" :disabled="submitting" @click="close">Cancel</BaseButton>
         <BaseButton type="submit" variant="primary" :disabled="submitting">
-          {{ submitting ? 'Adding…' : 'Add PON Port' }}
+          {{ submitting ? 'Saving…' : ponPort ? 'Save Changes' : 'Add PON Port' }}
         </BaseButton>
       </div>
     </form>
