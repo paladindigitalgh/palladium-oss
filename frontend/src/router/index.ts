@@ -107,6 +107,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/AccessInterfaceDetailView.vue'),
   },
   {
+    // The Site Detail Workspace, root of the Inventory hierarchy --
+    // reached from the Inventory Collection View, same pattern as
+    // /customers/:id above.
+    path: '/inventory/:id',
+    name: 'site-detail',
+    component: () => import('@/views/SiteDetailView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),
