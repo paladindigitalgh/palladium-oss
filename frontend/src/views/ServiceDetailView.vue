@@ -18,6 +18,7 @@ import { getLocationById } from '@/services/locations/locationRepository'
 import { getCustomerById } from '@/services/customers/customerRepository'
 import { listServiceEquipmentByServiceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { getDeviceById } from '@/services/devices/deviceRepository'
+import { getActiveAccessAttachmentByServiceEquipmentId } from '@/services/accessAttachments/accessAttachmentRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { listWorkflowInstancesByServiceId, runWorkflow } from '@/services/workflow/workflowRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
@@ -27,6 +28,7 @@ import type { Location } from '@/types/location'
 import type { Customer } from '@/types/customer'
 import type { Device } from '@/types/device'
 import type { ServiceEquipment } from '@/types/serviceEquipment'
+import type { AccessAttachment } from '@/types/accessAttachment'
 import type { TimelineEvent } from '@/types/timelineEvent'
 import type { WorkflowDefinitionName, WorkflowInstance } from '@/types/workflowInstance'
 
@@ -43,7 +45,10 @@ import type { WorkflowDefinitionName, WorkflowInstance } from '@/types/workflowI
  * Network/VLAN detail) are removed rather than faked. Equipment shows
  * the real, lean Service Equipment assignment, with each row's Device
  * resolved on demand -- one apiFetch per unique deviceId, not embedded
- * on ServiceEquipment itself (see types/serviceEquipment.ts).
+ * on ServiceEquipment itself (see types/serviceEquipment.ts). Each row
+ * also cross-links to the Network workspace when the equipment has an
+ * active AccessAttachment, the same on-demand resolve-by-id pattern
+ * devicesById already uses, one level further down the stack.
  */
 const route = useRoute()
 const router = useRouter()
@@ -53,6 +58,7 @@ const location = ref<Location | null>(null)
 const customer = ref<Customer | null>(null)
 const equipment = ref<ServiceEquipment[]>([])
 const devicesById = ref<Map<string, Device>>(new Map())
+const activeAttachmentByEquipmentId = ref<Map<string, AccessAttachment>>(new Map())
 const timeline = ref<TimelineEvent[]>([])
 const workflowHistory = ref<WorkflowInstance[]>([])
 const loading = ref(true)
@@ -69,6 +75,7 @@ async function load(id: string) {
   customer.value = null
   equipment.value = []
   devicesById.value = new Map()
+  activeAttachmentByEquipmentId.value = new Map()
   timeline.value = []
   workflowHistory.value = []
 
@@ -103,6 +110,16 @@ async function load(id: string) {
     if (device) byId.set(deviceId, device)
   })
   devicesById.value = byId
+
+  const attachments = await Promise.all(
+    relatedEquipment.map((item) => getActiveAccessAttachmentByServiceEquipmentId(item.id)),
+  )
+  const attachmentByEquipmentId = new Map<string, AccessAttachment>()
+  relatedEquipment.forEach((item, index) => {
+    const attachment = attachments[index]
+    if (attachment) attachmentByEquipmentId.set(item.id, attachment)
+  })
+  activeAttachmentByEquipmentId.value = attachmentByEquipmentId
 
   loading.value = false
 }
@@ -284,11 +301,20 @@ const workflowColumns: SimpleTableColumn[] = [
       >
         <template #cell-role="{ row }">{{ row.role }}</template>
         <template #cell-device="{ row }">
-          <span v-if="devicesById.get(row.deviceId)">
-            {{ devicesById.get(row.deviceId)!.manufacturer }} {{ devicesById.get(row.deviceId)!.model }} —
-            {{ devicesById.get(row.deviceId)!.serialNumber }}
-          </span>
-          <span v-else class="cell-mono">{{ row.deviceId }}</span>
+          <div class="equipment-cell">
+            <span v-if="devicesById.get(row.deviceId)">
+              {{ devicesById.get(row.deviceId)!.manufacturer }} {{ devicesById.get(row.deviceId)!.model }} —
+              {{ devicesById.get(row.deviceId)!.serialNumber }}
+            </span>
+            <span v-else class="cell-mono">{{ row.deviceId }}</span>
+            <RouterLink
+              v-if="activeAttachmentByEquipmentId.get(row.id)"
+              :to="`/network/access-interfaces/${activeAttachmentByEquipmentId.get(row.id)!.accessInterfaceId}`"
+              class="equipment-cell__link"
+            >
+              View Access Interface
+            </RouterLink>
+          </div>
         </template>
         <template #cell-installed="{ row }">{{ row.installedAt ? formatDate(row.installedAt) : 'Not yet installed' }}</template>
       </SimpleTable>
@@ -323,6 +349,17 @@ const workflowColumns: SimpleTableColumn[] = [
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
+}
+
+.equipment-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.equipment-cell__link {
+  font-size: var(--font-size-xs);
+  color: var(--color-brand);
 }
 
 .service-description {
