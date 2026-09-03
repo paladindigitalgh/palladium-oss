@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { listLocations, listLocationsByCustomerId, getLocationById, createLocation, deleteLocation } from './locationRepository'
+import { listLocations, listLocationsByCustomerId, getLocationById, createLocation, updateLocation, deleteLocation } from './locationRepository'
 
 /**
  * Unlike customer/service/device, this repository has no client-side
@@ -83,7 +83,7 @@ describe('getLocationById', () => {
 })
 
 describe('createLocation', () => {
-  it('sends the request body in the API wire shape, always with an empty description', async () => {
+  it('sends the request body in the API wire shape', async () => {
     apiFetch.mockResolvedValue(locationDto({ id: 'new' }))
 
     await createLocation({
@@ -97,6 +97,7 @@ describe('createLocation', () => {
       state: 'IL',
       postalCode: '62704',
       country: 'US',
+      description: 'New warehouse',
     })
 
     expect(apiFetch).toHaveBeenCalledWith('/locations/', {
@@ -112,7 +113,44 @@ describe('createLocation', () => {
         state: 'IL',
         postal_code: '62704',
         country: 'US',
-        description: '',
+        description: 'New warehouse',
+      },
+    })
+  })
+})
+
+describe('updateLocation', () => {
+  it('sends a PUT with the request body in the API wire shape', async () => {
+    apiFetch.mockResolvedValue(locationDto({ id: 'l1', name: 'Renamed Office' }))
+
+    await updateLocation('l1', {
+      customerId: 'c1',
+      name: 'Renamed Office',
+      type: 'Office',
+      status: 'Inactive',
+      address1: '789 New St',
+      address2: '',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62704',
+      country: 'US',
+      description: 'Updated',
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith('/locations/l1', {
+      method: 'PUT',
+      body: {
+        customer_id: 'c1',
+        name: 'Renamed Office',
+        type: 'Office',
+        status: 'Inactive',
+        address1: '789 New St',
+        address2: '',
+        city: 'Springfield',
+        state: 'IL',
+        postal_code: '62704',
+        country: 'US',
+        description: 'Updated',
       },
     })
   })

@@ -68,6 +68,7 @@ export interface CreateLocationInput {
   state: string
   postalCode: string
   country: string
+  description: string
 }
 
 export async function createLocation(input: CreateLocationInput): Promise<Location> {
@@ -84,7 +85,41 @@ export async function createLocation(input: CreateLocationInput): Promise<Locati
       state: input.state,
       postal_code: input.postalCode,
       country: input.country,
-      description: '',
+      description: input.description,
+    },
+  })
+  return fromDto(dto)
+}
+
+export interface UpdateLocationInput {
+  customerId: string
+  name: string
+  type: Location['type']
+  status: Location['status']
+  address1: string
+  address2: string
+  city: string
+  state: string
+  postalCode: string
+  country: string
+  description: string
+}
+
+export async function updateLocation(id: string, input: UpdateLocationInput): Promise<Location> {
+  const dto = await apiFetch<LocationDto>(`/locations/${id}`, {
+    method: 'PUT',
+    body: {
+      customer_id: input.customerId,
+      name: input.name,
+      type: input.type,
+      status: input.status,
+      address1: input.address1,
+      address2: input.address2,
+      city: input.city,
+      state: input.state,
+      postal_code: input.postalCode,
+      country: input.country,
+      description: input.description,
     },
   })
   return fromDto(dto)

@@ -152,13 +152,20 @@ async function confirmDeleteCustomer() {
   }
 }
 
-// --- Add/Remove Location ---
+// --- Add/Edit/Remove Location ---
 
 const showLocationForm = ref(false)
 
 function handleLocationCreated(location: Location) {
   showLocationForm.value = false
   locations.value = [...locations.value, location]
+}
+
+const locationEditTarget = ref<Location | null>(null)
+
+function handleLocationUpdated(updated: Location) {
+  locations.value = locations.value.map((location) => (location.id === updated.id ? updated : location))
+  locationEditTarget.value = null
 }
 
 const locationDeleteTarget = ref<Location | null>(null)
@@ -294,6 +301,14 @@ const locationOptions = computed(() => locations.value.map((location) => ({ valu
         @created="handleLocationCreated"
       />
 
+      <LocationFormDialog
+        :open="locationEditTarget !== null"
+        :customer-id="customer.id"
+        :location="locationEditTarget"
+        @close="locationEditTarget = null"
+        @updated="handleLocationUpdated"
+      />
+
       <ConfirmationDialog
         :open="locationDeleteTarget !== null"
         title="Remove Location"
@@ -322,6 +337,7 @@ const locationOptions = computed(() => locations.value.map((location) => ({ valu
         <template #cell-type="{ row }">{{ row.type }}</template>
         <template #cell-status="{ row }">{{ row.status }}</template>
         <template #cell-actions="{ row }">
+          <BaseButton variant="ghost" size="sm" @click="locationEditTarget = row">Edit</BaseButton>
           <BaseButton variant="ghost" size="sm" @click="locationDeleteTarget = row">Remove</BaseButton>
         </template>
       </SimpleTable>
