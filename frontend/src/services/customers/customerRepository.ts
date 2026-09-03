@@ -110,6 +110,21 @@ export async function createCustomer(input: CreateCustomerInput): Promise<Custom
   return fromDto(dto)
 }
 
+export interface UpdateCustomerInput {
+  name: string
+  customerType: Customer['customerType']
+  status: Customer['status']
+  description: string
+}
+
+export async function updateCustomer(id: string, input: UpdateCustomerInput): Promise<Customer> {
+  const dto = await apiFetch<CustomerDto>(`/customers/${id}`, {
+    method: 'PUT',
+    body: { name: input.name, customer_type: input.customerType, status: input.status, description: input.description },
+  })
+  return fromDto(dto)
+}
+
 /**
  * Deletes the Customer identified by id. customers.id is referenced by
  * locations.customer_id ON DELETE RESTRICT, so this throws an ApiError

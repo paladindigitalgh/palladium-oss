@@ -13,6 +13,7 @@ import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import CustomerFormDialog from '@/components/dialogs/CustomerFormDialog.vue'
 import LocationFormDialog from '@/components/dialogs/LocationFormDialog.vue'
 import ServiceFormDialog from '@/components/dialogs/ServiceFormDialog.vue'
 import { getCustomerById, deleteCustomer } from '@/services/customers/customerRepository'
@@ -30,16 +31,14 @@ import type { TimelineEvent } from '@/types/timelineEvent'
  * The Customer Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
  * section 8, "Customer Workspace"), backed by the real backend.
  *
- * Sections that depended on concepts the backend does not model yet
- * (Contacts, Alerts) or on the mock Device dataset (Devices, since
- * Device intentionally stays on mock data this milestone) are removed
- * rather than faked. Locations and Services are real, resolved on
- * demand (docs/03-DOMAIN-MODEL.md: a Customer owns Services through
- * Locations, and equipment is associated through Services -- never
- * embedded on Customer itself). Timeline is real Events
- * (docs/02-DESIGN-PRINCIPLES.md principle 10).
+ * Sections that depended on concepts the backend does not model at all
+ * (Contacts, Alerts) are removed rather than faked. Locations and
+ * Services are real, resolved on demand (docs/03-DOMAIN-MODEL.md: a
+ * Customer owns Services through Locations, and equipment is associated
+ * through Services -- never embedded on Customer itself). Timeline is
+ * real Events (docs/02-DESIGN-PRINCIPLES.md principle 10).
  *
- * Create/delete lets an operator build up (and tear down) a test
+ * Create/edit/delete lets an operator build up (and tear down) a test
  * customer the same way a real onboarding would: customer, then
  * location, then service. Deletes go through the backend's real foreign
  * key restrictions (customers <- locations <- services) rather than
@@ -120,6 +119,15 @@ function openService(service: Service) {
 const timelineEntries = computed(() =>
   timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
 )
+
+// --- Edit Customer ---
+
+const showEditCustomerDialog = ref(false)
+
+function handleCustomerUpdated(updated: Customer) {
+  customer.value = updated
+  showEditCustomerDialog.value = false
+}
 
 // --- Delete Customer ---
 
@@ -241,6 +249,7 @@ const locationOptions = computed(() => locations.value.map((location) => ({ valu
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
+            <BaseButton variant="secondary" size="sm" @click="showEditCustomerDialog = true">Edit Customer</BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteCustomerDialog = true">
               Delete Customer
             </BaseButton>
@@ -248,6 +257,13 @@ const locationOptions = computed(() => locations.value.map((location) => ({ valu
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
+
+    <CustomerFormDialog
+      :open="showEditCustomerDialog"
+      :customer="customer"
+      @close="showEditCustomerDialog = false"
+      @updated="handleCustomerUpdated"
+    />
 
     <ConfirmationDialog
       :open="showDeleteCustomerDialog"

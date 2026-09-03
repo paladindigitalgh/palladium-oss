@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
-import { listCustomers, getCustomerById, createCustomer, deleteCustomer } from './customerRepository'
+import { listCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer } from './customerRepository'
 
 /**
  * The reference test for every *Repository.ts module in this codebase
@@ -114,6 +114,19 @@ describe('createCustomer', () => {
     expect(apiFetch).toHaveBeenCalledWith('/customers/', {
       method: 'POST',
       body: { name: 'Acme', customer_type: 'Business', status: 'Active', description: 'A widget maker' },
+    })
+  })
+})
+
+describe('updateCustomer', () => {
+  it('sends a PUT with the request body in the API wire shape', async () => {
+    apiFetch.mockResolvedValue(customerDto({ id: 'c1', name: 'Acme Renamed' }))
+
+    await updateCustomer('c1', { name: 'Acme Renamed', customerType: 'Business', status: 'Inactive', description: 'Updated' })
+
+    expect(apiFetch).toHaveBeenCalledWith('/customers/c1', {
+      method: 'PUT',
+      body: { name: 'Acme Renamed', customer_type: 'Business', status: 'Inactive', description: 'Updated' },
     })
   })
 })
