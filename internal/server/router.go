@@ -473,6 +473,7 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Use(auth.Middleware(deps.Tokens))
 			r.Use(deps.Authz.RequireEventRead())
 			r.Get("/", deps.EventHandler.List)
+			r.Get("/recent", deps.EventHandler.ListRecent)
 		})
 
 		// /authentication-methods gets its own dedicated capability pair

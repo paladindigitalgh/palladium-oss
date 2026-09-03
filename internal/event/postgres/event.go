@@ -88,6 +88,39 @@ func (r *EventRepository) ListByEntity(ctx context.Context, entityType string, e
 	return events, nil
 }
 
+// ListRecent returns the limit most recently created Events across every
+// entity, newest first — see EventRepository.ListRecent's doc comment
+// for why this is a distinct, bounded query rather than ListByEntity
+// with the WHERE clause dropped.
+func (r *EventRepository) ListRecent(ctx context.Context, limit int) ([]event.Event, error) {
+	const query = `
+		SELECT id, entity_type, entity_id, type, message, metadata, actor_user_id, created_at
+		FROM events
+		ORDER BY created_at DESC
+		LIMIT $1
+	`
+
+	rows, err := r.db.Query(ctx, query, limit)
+	if err != nil {
+		return nil, translateError("list recent events", err)
+	}
+	defer rows.Close()
+
+	events := []event.Event{}
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, translateError("scan event row", err)
+		}
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translateError("list recent events", err)
+	}
+
+	return events, nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }
