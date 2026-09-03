@@ -83,6 +83,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/AccessNetworkDetailView.vue'),
   },
   {
+    // The OLT Detail Workspace -- reached from an Access Network Detail
+    // Workspace's OLTs section, same pattern as /network/:id above.
+    path: '/network/olts/:id',
+    name: 'olt-detail',
+    component: () => import('@/views/OLTDetailView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),

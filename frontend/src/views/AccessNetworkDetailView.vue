@@ -12,8 +12,9 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import OLTFormDialog from '@/components/dialogs/OLTFormDialog.vue'
 import { getAccessNetworkById, deleteAccessNetwork } from '@/services/accessNetworks/accessNetworkRepository'
-import { listOLTsByAccessNetworkId } from '@/services/olts/oltRepository'
+import { listOLTsByAccessNetworkId, deleteOLT } from '@/services/olts/oltRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
@@ -25,13 +26,9 @@ import type { TimelineEvent } from '@/types/timelineEvent'
  * The Access Network Detail Workspace, root of the access-network
  * hierarchy (AccessNetwork -> OLT -> PONPort -> AccessInterface ->
  * AccessAttachment). Mirrors CustomerDetailView.vue's shape -- Summary,
- * a nested-resource section, Timeline, delete-with-conflict-handling.
- *
- * The OLTs section is read-only for now (list only, no Add/Remove, no
- * row click) -- OLTFormDialog.vue and OLTDetailView.vue land in the next
- * commit, which is what actually wires this section up, the same way
- * NetworkCollectionView.vue shipped list-only before this commit added
- * somewhere for its rows to go.
+ * a nested OLTs section (add/remove/open, same treatment
+ * CustomerDetailView gives Locations/Services), Timeline,
+ * delete-with-conflict-handling.
  */
 const route = useRoute()
 const router = useRouter()
@@ -82,11 +79,48 @@ const summaryFacts = computed<Fact[]>(() => {
 const oltColumns: SimpleTableColumn[] = [
   { key: 'name', label: 'OLT' },
   { key: 'vendor', label: 'Vendor / Model' },
+  { key: 'actions', label: '' },
 ]
+
+function openOLT(olt: OLT) {
+  router.push(`/network/olts/${olt.id}`)
+}
 
 const timelineEntries = computed(() =>
   timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
 )
+
+// --- Add/Remove OLT ---
+
+const showOLTForm = ref(false)
+
+function handleOLTCreated(olt: OLT) {
+  showOLTForm.value = false
+  olts.value = [...olts.value, olt]
+}
+
+const oltDeleteTarget = ref<OLT | null>(null)
+const oltDeletePending = ref(false)
+const oltDeleteError = ref<string | null>(null)
+
+async function confirmDeleteOLT() {
+  const target = oltDeleteTarget.value
+  if (!target) return
+  oltDeletePending.value = true
+  oltDeleteError.value = null
+  try {
+    await deleteOLT(target.id)
+    olts.value = olts.value.filter((olt) => olt.id !== target.id)
+    oltDeleteTarget.value = null
+  } catch (err) {
+    oltDeleteError.value =
+      err instanceof ApiError && err.kind === 'conflict'
+        ? 'This OLT still has PON ports attached — remove those first.'
+        : 'The OLT could not be deleted.'
+  } finally {
+    oltDeletePending.value = false
+  }
+}
 
 // --- Delete Access Network ---
 
@@ -161,9 +195,43 @@ async function confirmDeleteAccessNetwork() {
     </SectionCard>
 
     <SectionCard title="OLTs" icon="network" :badge="olts.length">
-      <SimpleTable :columns="oltColumns" :rows="olts" :row-key="(olt) => olt.id" empty-icon="network" empty-title="No OLTs on file">
+      <div class="section-toolbar">
+        <BaseButton variant="secondary" size="sm" @click="showOLTForm = true">Add OLT</BaseButton>
+      </div>
+
+      <OLTFormDialog
+        :open="showOLTForm"
+        :access-network-id="accessNetwork.id"
+        @close="showOLTForm = false"
+        @created="handleOLTCreated"
+      />
+
+      <ConfirmationDialog
+        :open="oltDeleteTarget !== null"
+        title="Remove OLT"
+        :description="`Remove ${oltDeleteTarget?.name}? This cannot be undone.`"
+        confirm-label="Remove OLT"
+        destructive
+        :pending="oltDeletePending"
+        :error="oltDeleteError"
+        @confirm="confirmDeleteOLT"
+        @cancel="oltDeleteTarget = null"
+      />
+
+      <SimpleTable
+        :columns="oltColumns"
+        :rows="olts"
+        :row-key="(olt) => olt.id"
+        clickable
+        empty-icon="network"
+        empty-title="No OLTs on file"
+        @row-click="openOLT"
+      >
         <template #cell-name="{ row }">{{ row.name }}</template>
         <template #cell-vendor="{ row }">{{ row.vendor }} {{ row.model }}</template>
+        <template #cell-actions="{ row }">
+          <BaseButton variant="ghost" size="sm" @click.stop="oltDeleteTarget = row">Remove</BaseButton>
+        </template>
       </SimpleTable>
     </SectionCard>
 
@@ -182,5 +250,12 @@ async function confirmDeleteAccessNetwork() {
   margin-top: var(--space-4);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+}
+
+.section-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 </style>
