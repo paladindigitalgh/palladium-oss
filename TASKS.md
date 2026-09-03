@@ -58,7 +58,7 @@ Hierarchy is Site -> Building -> Room -> Rack -> Device (internal/inventory).
 - [ ] VLANs
 - [ ] IP pools
 
-Backend covers AccessNetwork -> OLT -> PONPort -> AccessInterface -> AccessAttachment, full CRUD. Frontend Network workspace is in progress.
+Covers AccessNetwork -> OLT -> PONPort -> AccessInterface -> AccessAttachment, full CRUD, both backend and frontend (Network Collection View + a Detail Workspace per level, Attach/Detach for equipment).
 
 ---
 
@@ -110,6 +110,7 @@ Only a simulated mock plugin (internal/plugin/mock) exists today; no real vendor
 - [x] Inventory UI (Device workspace; Building/Room/Rack have no UI, matching Phase 3)
 - [x] Customer UI
 - [x] Workflow UI (Provision/Suspend/Resume actions + workflow history on the Service Detail Workspace; no dedicated workflow-instance browser)
+- [x] Network UI (AccessNetwork -> OLT -> PONPort -> AccessInterface, plus Attach/Detach for equipment)
 - [x] Frontend test suite (Vitest + @vue/test-utils)
 
 ---
