@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
-import { listOLTs, listOLTsByAccessNetworkId, getOLTById, createOLT, deleteOLT } from './oltRepository'
+import { listOLTs, listOLTsByAccessNetworkId, getOLTById, createOLT, updateOLT, deleteOLT } from './oltRepository'
 
 /**
  * Like locationRepository.test.ts, this has no client-side search/sort/
@@ -109,6 +109,35 @@ describe('createOLT', () => {
         management_ip_address: '10.0.0.1',
         description: 'Core site OLT',
         connection_profile_id: null,
+      },
+    })
+  })
+})
+
+describe('updateOLT', () => {
+  it('sends a PUT with the request body in the API wire shape, passing through accessNetworkId/connectionProfileId unchanged', async () => {
+    apiFetch.mockResolvedValue(oltDto({ id: 'olt1', name: 'OLT-Core-1 Renamed' }))
+
+    await updateOLT('olt1', {
+      name: 'OLT-Core-1 Renamed',
+      vendor: 'Calix',
+      model: 'E7-2',
+      managementIpAddress: '10.0.0.2',
+      description: 'Updated',
+      accessNetworkId: 'an1',
+      connectionProfileId: 'cp1',
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith('/olts/olt1', {
+      method: 'PUT',
+      body: {
+        access_network_id: 'an1',
+        name: 'OLT-Core-1 Renamed',
+        vendor: 'Calix',
+        model: 'E7-2',
+        management_ip_address: '10.0.0.2',
+        description: 'Updated',
+        connection_profile_id: 'cp1',
       },
     })
   })

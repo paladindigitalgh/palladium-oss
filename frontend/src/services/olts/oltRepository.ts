@@ -90,6 +90,41 @@ export async function createOLT(input: CreateOLTInput): Promise<OLT> {
   return fromDto(dto)
 }
 
+export interface UpdateOLTInput {
+  name: string
+  vendor: OLT['vendor']
+  model: string
+  managementIpAddress: string
+  description: string
+  /**
+   * Not user-editable (see OLTFormDialog.vue -- no accessNetwork picker
+   * or connectionProfile picker exist in this workspace yet). Callers
+   * pass the OLT's current accessNetworkId/connectionProfileId through
+   * unchanged: PUT replaces every mutable column (see
+   * internal/olt/postgres's Update), so omitting them here would
+   * silently move the OLT to no access network and unassign a real
+   * connection profile.
+   */
+  accessNetworkId: string
+  connectionProfileId: string | null
+}
+
+export async function updateOLT(id: string, input: UpdateOLTInput): Promise<OLT> {
+  const dto = await apiFetch<OLTDto>(`/olts/${id}`, {
+    method: 'PUT',
+    body: {
+      access_network_id: input.accessNetworkId,
+      name: input.name,
+      vendor: input.vendor,
+      model: input.model,
+      management_ip_address: input.managementIpAddress,
+      description: input.description,
+      connection_profile_id: input.connectionProfileId,
+    },
+  })
+  return fromDto(dto)
+}
+
 /**
  * Deletes the OLT identified by id. olts.id is referenced by
  * pon_ports.olt_id ON DELETE RESTRICT, so this throws an ApiError with

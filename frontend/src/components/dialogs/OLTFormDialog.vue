@@ -1,17 +1,27 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import BaseModal from '@/components/base/BaseModal.vue'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-import { createOLT } from '@/services/olts/oltRepository'
+import { createOLT, updateOLT } from '@/services/olts/oltRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { OLT } from '@/types/olt'
 
-const props = defineProps<{ open: boolean; accessNetworkId: string }>()
+/**
+ * Dual-mode: create when `olt` is absent, edit when present -- mirrors
+ * DeviceFormDialog.vue. `accessNetworkId` (the parent prop, needed for
+ * create) is ignored in edit mode -- the OLT being edited already has
+ * one, and moving an OLT to a different Access Network is a bigger
+ * operation than this dialog does. connectionProfileId is never a form
+ * field (no picker exists) and is passed through unchanged on update,
+ * the same reasoning as DeviceFormDialog.vue's rackId passthrough.
+ */
+const props = defineProps<{ open: boolean; accessNetworkId: string; olt?: OLT | null }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', olt: OLT): void
+  (event: 'updated', olt: OLT): void
 }>()
 
 const name = ref('')
@@ -39,8 +49,29 @@ function reset() {
   error.value = null
 }
 
+function populateFrom(olt: OLT) {
+  name.value = olt.name
+  vendor.value = olt.vendor
+  model.value = olt.model
+  managementIpAddress.value = olt.managementIpAddress
+  description.value = olt.description
+  error.value = null
+}
+
+// Fields are (re)populated every time the dialog opens, from `olt` when
+// editing or blank when creating -- not just once on mount, since the
+// same mounted dialog instance is reused across opens.
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    if (props.olt) populateFrom(props.olt)
+    else reset()
+  },
+  { immediate: true },
+)
+
 function close() {
-  reset()
   emit('close')
 }
 
@@ -48,18 +79,31 @@ async function handleSubmit() {
   error.value = null
   submitting.value = true
   try {
-    const olt = await createOLT({
-      accessNetworkId: props.accessNetworkId,
-      name: name.value,
-      vendor: vendor.value,
-      model: model.value,
-      managementIpAddress: managementIpAddress.value,
-      description: description.value,
-    })
-    reset()
-    emit('created', olt)
+    if (props.olt) {
+      const updated = await updateOLT(props.olt.id, {
+        name: name.value,
+        vendor: vendor.value,
+        model: model.value,
+        managementIpAddress: managementIpAddress.value,
+        description: description.value,
+        accessNetworkId: props.olt.accessNetworkId,
+        connectionProfileId: props.olt.connectionProfileId,
+      })
+      emit('updated', updated)
+    } else {
+      const olt = await createOLT({
+        accessNetworkId: props.accessNetworkId,
+        name: name.value,
+        vendor: vendor.value,
+        model: model.value,
+        managementIpAddress: managementIpAddress.value,
+        description: description.value,
+      })
+      reset()
+      emit('created', olt)
+    }
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'The OLT could not be created.'
+    error.value = err instanceof ApiError ? err.message : `The OLT could not be ${props.olt ? 'saved' : 'created'}.`
   } finally {
     submitting.value = false
   }
@@ -67,7 +111,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <BaseModal :open="open" title="Add OLT" @close="close">
+  <BaseModal :open="open" :title="olt ? 'Edit OLT' : 'Add OLT'" @close="close">
     <form class="olt-form" @submit.prevent="handleSubmit">
       <BaseInput v-model="name" label="Name" required />
       <BaseSelect v-model="vendor" label="Vendor" :options="vendorOptions" />
@@ -80,7 +124,7 @@ async function handleSubmit() {
       <div class="olt-form__actions">
         <BaseButton type="button" variant="secondary" :disabled="submitting" @click="close">Cancel</BaseButton>
         <BaseButton type="submit" variant="primary" :disabled="submitting">
-          {{ submitting ? 'Adding…' : 'Add OLT' }}
+          {{ submitting ? 'Saving…' : olt ? 'Save Changes' : 'Add OLT' }}
         </BaseButton>
       </div>
     </form>

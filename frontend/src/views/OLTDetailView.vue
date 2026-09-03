@@ -13,6 +13,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import OLTFormDialog from '@/components/dialogs/OLTFormDialog.vue'
 import PONPortFormDialog from '@/components/dialogs/PONPortFormDialog.vue'
 import { getOLTById, deleteOLT } from '@/services/olts/oltRepository'
 import { getAccessNetworkById } from '@/services/accessNetworks/accessNetworkRepository'
@@ -139,6 +140,15 @@ async function confirmDeletePONPort() {
   }
 }
 
+// --- Edit OLT ---
+
+const showEditDialog = ref(false)
+
+function handleOLTUpdated(updated: OLT) {
+  olt.value = updated
+  showEditDialog.value = false
+}
+
 // --- Delete OLT ---
 
 const showDeleteDialog = ref(false)
@@ -179,11 +189,20 @@ async function confirmDeleteOLT() {
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
+            <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit OLT</BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete OLT</BaseButton>
           </template>
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
+
+    <OLTFormDialog
+      :open="showEditDialog"
+      :access-network-id="olt.accessNetworkId"
+      :olt="olt"
+      @close="showEditDialog = false"
+      @updated="handleOLTUpdated"
+    />
 
     <ConfirmationDialog
       :open="showDeleteDialog"
