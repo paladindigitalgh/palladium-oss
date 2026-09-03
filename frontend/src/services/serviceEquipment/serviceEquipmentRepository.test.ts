@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { listServiceEquipmentByServiceId, listServiceEquipmentByDeviceId } from './serviceEquipmentRepository'
+import { listServiceEquipment, listServiceEquipmentByServiceId, listServiceEquipmentByDeviceId } from './serviceEquipmentRepository'
 
 /** Both functions fetch the same full /service-equipment/ list and filter client-side by a different field -- see this file's own doc comment. */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
@@ -21,6 +21,18 @@ function equipmentDto(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   apiFetch.mockReset()
+})
+
+describe('listServiceEquipment', () => {
+  it('maps every piece of equipment from the DTO, unfiltered', async () => {
+    apiFetch.mockResolvedValue({
+      service_equipment: [equipmentDto({ id: 'se1', service_id: 's1' }), equipmentDto({ id: 'se2', service_id: 's2' })],
+    })
+
+    const result = await listServiceEquipment()
+
+    expect(result.map((item) => item.id)).toEqual(['se1', 'se2'])
+  })
 })
 
 describe('listServiceEquipmentByServiceId', () => {

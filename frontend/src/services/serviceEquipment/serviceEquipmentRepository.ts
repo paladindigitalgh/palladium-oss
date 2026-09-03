@@ -25,17 +25,25 @@ function fromDto(dto: ServiceEquipmentDto): ServiceEquipment {
 
 /**
  * GET /service-equipment has no server-side filtering (see
- * internal/serviceequipment/httpapi), so "a service's equipment" is
- * resolved by fetching the full list once and filtering client-side --
- * the same pattern locationRepository.ts uses.
+ * internal/serviceequipment/httpapi), so every list below fetches the
+ * full set once and filters client-side, the same pattern
+ * locationRepository.ts uses. listServiceEquipment is the one place that
+ * actually calls apiFetch -- added for AttachAccessAttachmentDialog.vue's
+ * equipment picker and the Service Detail cross-link, which both need
+ * every piece of equipment, not one service's or device's.
  */
-export async function listServiceEquipmentByServiceId(serviceId: string): Promise<ServiceEquipment[]> {
+export async function listServiceEquipment(): Promise<ServiceEquipment[]> {
   const { service_equipment: equipment } = await apiFetch<{ service_equipment: ServiceEquipmentDto[] }>('/service-equipment/')
-  return equipment.map(fromDto).filter((item) => item.serviceId === serviceId)
+  return equipment.map(fromDto)
+}
+
+export async function listServiceEquipmentByServiceId(serviceId: string): Promise<ServiceEquipment[]> {
+  const equipment = await listServiceEquipment()
+  return equipment.filter((item) => item.serviceId === serviceId)
 }
 
 /** Same as listServiceEquipmentByServiceId, filtered by deviceId instead -- which Service(s), if any, a given Device currently fulfills. */
 export async function listServiceEquipmentByDeviceId(deviceId: string): Promise<ServiceEquipment[]> {
-  const { service_equipment: equipment } = await apiFetch<{ service_equipment: ServiceEquipmentDto[] }>('/service-equipment/')
-  return equipment.map(fromDto).filter((item) => item.deviceId === deviceId)
+  const equipment = await listServiceEquipment()
+  return equipment.filter((item) => item.deviceId === deviceId)
 }
