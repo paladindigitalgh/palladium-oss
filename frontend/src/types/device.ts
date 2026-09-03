@@ -1,4 +1,4 @@
-import type { ServiceTechnology } from './customer'
+import type { ServiceTechnology } from './mockCustomer'
 import type { ActivityEntry } from './activity'
 import type { Note } from './note'
 

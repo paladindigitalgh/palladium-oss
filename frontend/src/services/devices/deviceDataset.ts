@@ -1,4 +1,4 @@
-import type { AssetStatus } from '@/types/customer'
+import type { AssetStatus } from '@/types/mockCustomer'
 import type { ActivityEntry } from '@/types/activity'
 import type { Note } from '@/types/note'
 import type { Device, DeviceStatus } from '@/types/device'

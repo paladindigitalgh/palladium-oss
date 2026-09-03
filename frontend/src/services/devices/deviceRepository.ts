@@ -1,5 +1,5 @@
 import type { Device, DeviceStatus, DeviceType } from '@/types/device'
-import type { ServiceTechnology } from '@/types/customer'
+import type { ServiceTechnology } from '@/types/mockCustomer'
 import { DEVICES } from './deviceDataset'
 
 /**

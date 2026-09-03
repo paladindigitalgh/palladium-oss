@@ -1,24 +1,41 @@
-import type { Customer, CustomerStatus, CustomerType, ServiceTechnology } from '@/types/customer'
-import { CUSTOMERS } from './customerDataset'
+import type { Customer } from '@/types/customer'
+import { apiFetch, ApiError } from '@/services/api/httpClient'
 
 /**
- * The mock Customer data source. This is written and consumed as a
- * legitimate service-layer boundary, not a placeholder array a component
- * reaches into: CustomerCollectionView (and later the Customer Detail
- * Workspace) only ever call listCustomers/getCustomerById/
- * listAvailableCities, exactly the shape a real HTTP-backed
- * implementation would expose. Replacing the body of this file with
- * `fetch('/api/v1/customers?...')` calls should require no changes
- * outside this file.
+ * The real Customer data source, replacing the mock dataset this file
+ * used to read from. GET /customers has no server-side filtering (see
+ * internal/customer/httpapi), so search/sort/pagination happen
+ * client-side over the fetched list -- the same shape the Customer
+ * Collection Workspace already expected, just backed by a real fetch.
  */
+
+interface CustomerDto {
+  id: string
+  name: string
+  customer_type: Customer['customerType']
+  status: Customer['status']
+  description: string
+  created_at: string
+  updated_at: string
+}
+
+function fromDto(dto: CustomerDto): Customer {
+  return {
+    id: dto.id,
+    name: dto.name,
+    customerType: dto.customer_type,
+    status: dto.status,
+    description: dto.description,
+    createdAt: dto.created_at,
+    updatedAt: dto.updated_at,
+  }
+}
 
 export interface CustomerListQuery {
   search?: string
-  status?: CustomerStatus | 'all'
-  serviceTechnology?: ServiceTechnology | 'any'
-  customerType?: CustomerType | 'all'
-  city?: string | 'all'
-  sortKey?: 'customer' | 'location' | 'primaryService'
+  status?: Customer['status'] | 'all'
+  customerType?: Customer['customerType'] | 'all'
+  sortKey?: 'name' | 'status'
   sortDirection?: 'asc' | 'desc'
   page?: number
   pageSize?: number
@@ -29,102 +46,77 @@ export interface CustomerListResult {
   total: number
 }
 
-// A real backend has network latency; simulating a small amount here
-// keeps the Collection Workspace's loading state genuinely exercised
-// during development instead of only in theory.
-const SIMULATED_LATENCY_MS = 250
-
-function simulateLatency(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, SIMULATED_LATENCY_MS))
-}
-
 function matchesSearch(customer: Customer, term: string): boolean {
   const needle = term.trim().toLowerCase()
   if (!needle) return true
-  return (
-    customer.name.toLowerCase().includes(needle) ||
-    customer.id.toLowerCase().includes(needle) ||
-    customer.address.toLowerCase().includes(needle) ||
-    customer.city.toLowerCase().includes(needle)
-  )
+  return customer.name.toLowerCase().includes(needle) || customer.id.toLowerCase().includes(needle)
 }
 
-function compareCustomers(
-  sortKey: NonNullable<CustomerListQuery['sortKey']>,
-  sortDirection: NonNullable<CustomerListQuery['sortDirection']>,
-) {
-  const direction = sortDirection === 'desc' ? -1 : 1
+function compareCustomers(sortKey: NonNullable<CustomerListQuery['sortKey']>, direction: number) {
   return (a: Customer, b: Customer): number => {
-    let comparison = 0
-    switch (sortKey) {
-      case 'location':
-        comparison = a.city.localeCompare(b.city) || a.name.localeCompare(b.name)
-        break
-      case 'primaryService':
-        comparison =
-          a.services[0].technology.localeCompare(b.services[0].technology) ||
-          a.services[0].tier.localeCompare(b.services[0].tier)
-        break
-      case 'customer':
-      default:
-        comparison = a.name.localeCompare(b.name)
-    }
+    const comparison = sortKey === 'status' ? a.status.localeCompare(b.status) : a.name.localeCompare(b.name)
     return comparison * direction
   }
 }
 
-/** Simulates a paginated, filtered, sorted customer list endpoint. */
+/** Fetches every Customer and applies search/filter/sort/pagination client-side. */
 export async function listCustomers(query: CustomerListQuery = {}): Promise<CustomerListResult> {
-  await simulateLatency()
-
   const {
     search = '',
-    status = 'active',
-    serviceTechnology = 'any',
+    status = 'all',
     customerType = 'all',
-    city = 'all',
-    sortKey = 'customer',
+    sortKey = 'name',
     sortDirection = 'asc',
     page = 1,
     pageSize = 15,
   } = query
 
-  let results = CUSTOMERS.filter((customer) => matchesSearch(customer, search))
+  const { customers } = await apiFetch<{ customers: CustomerDto[] }>('/customers/')
+  let results = customers.map(fromDto).filter((customer) => matchesSearch(customer, search))
 
-  if (status !== 'all') {
-    results = results.filter((customer) => customer.status === status)
-  }
-  if (serviceTechnology !== 'any') {
-    results = results.filter((customer) => customer.services.some((service) => service.technology === serviceTechnology))
-  }
-  if (customerType !== 'all') {
-    results = results.filter((customer) => customer.type === customerType)
-  }
-  if (city !== 'all') {
-    results = results.filter((customer) => customer.city === city)
-  }
+  if (status !== 'all') results = results.filter((customer) => customer.status === status)
+  if (customerType !== 'all') results = results.filter((customer) => customer.customerType === customerType)
 
-  results = results.slice().sort(compareCustomers(sortKey, sortDirection))
+  results = results.slice().sort(compareCustomers(sortKey, sortDirection === 'desc' ? -1 : 1))
 
   const total = results.length
   const start = (page - 1) * pageSize
-  const items = results.slice(start, start + pageSize)
-
-  return { items, total }
+  return { items: results.slice(start, start + pageSize), total }
 }
 
-/** Simulates a single-resource fetch endpoint. Returns null rather than throwing when not found. */
+/** Fetches a single Customer, returning null (not throwing) when it does not exist. */
 export async function getCustomerById(id: string): Promise<Customer | null> {
-  await simulateLatency()
-  return CUSTOMERS.find((customer) => customer.id === id) ?? null
+  try {
+    const dto = await apiFetch<CustomerDto>(`/customers/${id}`)
+    return fromDto(dto)
+  } catch (err) {
+    if (err instanceof ApiError && err.kind === 'not_found') return null
+    throw err
+  }
+}
+
+export interface CreateCustomerInput {
+  name: string
+  customerType: Customer['customerType']
+  status: Customer['status']
+  description: string
+}
+
+export async function createCustomer(input: CreateCustomerInput): Promise<Customer> {
+  const dto = await apiFetch<CustomerDto>('/customers/', {
+    method: 'POST',
+    body: { name: input.name, customer_type: input.customerType, status: input.status, description: input.description },
+  })
+  return fromDto(dto)
 }
 
 /**
- * Distinct cities present in the dataset, for the Location filter.
- * Synchronous: this is small, static reference data (closer to an enum
- * than a paginated resource), so it does not need the same async/loading
- * treatment as listCustomers.
+ * Deletes the Customer identified by id. customers.id is referenced by
+ * locations.customer_id ON DELETE RESTRICT, so this throws an ApiError
+ * with kind "conflict" if the customer still has any Location -- callers
+ * should catch that and explain it, not treat it as an unexpected
+ * failure.
  */
-export function listAvailableCities(): string[] {
-  return Array.from(new Set(CUSTOMERS.map((customer) => customer.city))).sort((a, b) => a.localeCompare(b))
+export async function deleteCustomer(id: string): Promise<void> {
+  await apiFetch<void>(`/customers/${id}`, { method: 'DELETE' })
 }

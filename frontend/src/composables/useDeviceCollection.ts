@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 import type { DeviceStatus, DeviceType } from '@/types/device'
-import type { ServiceTechnology } from '@/types/customer'
+import type { ServiceTechnology } from '@/types/mockCustomer'
 import { listDevices, listAvailableLocations, type DeviceListQuery, type DeviceListResult } from '@/services/devices/deviceRepository'
 import type { Device } from '@/types/device'
 

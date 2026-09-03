@@ -8,66 +8,88 @@ import SectionCard from '@/components/data-display/SectionCard.vue'
 import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
 import RelationshipCard from '@/components/data-display/RelationshipCard.vue'
 import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/SimpleTable.vue'
-import ActivityList from '@/components/data-display/ActivityList.vue'
 import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
-import NotesList from '@/components/data-display/NotesList.vue'
-import BaseBadge from '@/components/base/BaseBadge.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
-import { getServiceById } from '@/services/services/serviceRepository'
+import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import { getServiceById, deleteService } from '@/services/services/serviceRepository'
+import { getLocationById } from '@/services/locations/locationRepository'
 import { getCustomerById } from '@/services/customers/customerRepository'
-import { listDevicesByServiceId } from '@/services/devices/deviceRepository'
+import { listServiceEquipmentByServiceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
+import { listEvents } from '@/services/events/eventRepository'
+import { listWorkflowInstancesByServiceId, runWorkflow } from '@/services/workflow/workflowRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
-import type { Service, ServiceCategory } from '@/types/service'
-import type { Customer, CustomerStatus, ServiceStatus } from '@/types/customer'
-import type { Device, DeviceStatus } from '@/types/device'
+import { ApiError } from '@/services/api/httpClient'
+import type { Service } from '@/types/service'
+import type { Location } from '@/types/location'
+import type { Customer } from '@/types/customer'
+import type { ServiceEquipment } from '@/types/serviceEquipment'
+import type { TimelineEvent } from '@/types/timelineEvent'
+import type { WorkflowDefinitionName, WorkflowInstance } from '@/types/workflowInstance'
 
 /**
  * The Service Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
- * section 9, "Service Workspace"): answers "what is being delivered?",
- * distinct from Customer ("who receives service?") and Device ("what
- * equipment exists?"). Read-only this milestone -- no editing,
- * provisioning, or destructive actions, same header-actions treatment as
- * Customer/Device Detail (disabled with a reason).
+ * section 9, "Service Workspace"), backed by the real backend -- this is
+ * where the Workflow Engine loop is actually exercised: Provision,
+ * Suspend, and Resume run a real WorkflowInstance against
+ * internal/plugin/mock's simulated vendor (docs/05-WORKFLOW-ENGINE.md),
+ * and the Service's own Status updates when it succeeds (see
+ * internal/workflow/engine's Execute).
  *
- * Completes the relationship triangle: the Customer card and every
- * Devices row navigate to their own canonical Detail Workspace, and
- * Customer Detail's Services rows / Device Detail's Assignment card both
- * now navigate here in turn. Neither the related customer nor the
- * related devices are stored on Service itself (services/services/
- * serviceDataset.ts never carries them) -- both are resolved on demand
- * once the service is known, the same pattern Device Detail already
- * uses for its own Assignment section.
+ * Sections that depended on mock-only concepts (Provisioning Profile,
+ * Network/VLAN detail, and the Devices section, since Device stays on
+ * mock data this milestone) are removed rather than faked. Equipment
+ * shows the real, lean Service Equipment assignment instead.
  */
 const route = useRoute()
 const router = useRouter()
 
 const service = ref<Service | null>(null)
-const relatedCustomer = ref<Customer | null>(null)
-const relatedDevices = ref<Device[]>([])
+const location = ref<Location | null>(null)
+const customer = ref<Customer | null>(null)
+const equipment = ref<ServiceEquipment[]>([])
+const timeline = ref<TimelineEvent[]>([])
+const workflowHistory = ref<WorkflowInstance[]>([])
 const loading = ref(true)
 const notFound = ref(false)
+const actionPending = ref(false)
+const actionError = ref<string | null>(null)
 
 async function load(id: string) {
   loading.value = true
   notFound.value = false
+  actionError.value = null
   service.value = null
-  relatedCustomer.value = null
-  relatedDevices.value = []
+  location.value = null
+  customer.value = null
+  equipment.value = []
+  timeline.value = []
+  workflowHistory.value = []
 
   const result = await getServiceById(id)
-  if (result) {
-    service.value = result
-    const [customer, devices] = await Promise.all([
-      getCustomerById(result.customerId),
-      listDevicesByServiceId(result.id),
-    ])
-    relatedCustomer.value = customer
-    relatedDevices.value = devices
-  } else {
+  if (!result) {
     notFound.value = true
+    loading.value = false
+    return
   }
+  service.value = result
+
+  const [relatedLocation, relatedEquipment, events, history] = await Promise.all([
+    getLocationById(result.locationId),
+    listServiceEquipmentByServiceId(result.id),
+    listEvents('service', result.id),
+    listWorkflowInstancesByServiceId(result.id),
+  ])
+  location.value = relatedLocation
+  equipment.value = relatedEquipment
+  timeline.value = events
+  workflowHistory.value = history
+
+  if (relatedLocation) {
+    customer.value = await getCustomerById(relatedLocation.customerId)
+  }
+
   loading.value = false
 }
 
@@ -77,144 +99,88 @@ watch(
   (id) => load(id as string),
 )
 
-const STATUS_LABELS: Record<ServiceStatus, string> = {
-  active: 'Active',
-  provisioning: 'Provisioning',
-  suspended: 'Suspended',
-  cancelled: 'Cancelled',
-}
-
-const STATUS_VARIANTS: Record<ServiceStatus, 'success' | 'info' | 'warning' | 'error'> = {
-  active: 'success',
-  provisioning: 'info',
-  suspended: 'warning',
-  cancelled: 'error',
-}
-
-const CATEGORY_LABELS: Record<ServiceCategory, string> = {
-  internet: 'Internet',
-  'internet-static-ipv4': 'Internet + Static IPv4',
-  'internet-ipv6': 'Internet + IPv6',
-  'business-internet': 'Business Internet',
-}
-
-const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
-  active: 'Active',
-  suspended: 'Suspended',
-  pending: 'Pending',
-  cancelled: 'Cancelled',
-}
-
-const DEVICE_STATUS_LABELS: Record<DeviceStatus, string> = {
-  online: 'Online',
-  offline: 'Offline',
-  warning: 'Warning',
-  provisioning: 'Provisioning',
-}
-
-const DEVICE_STATUS_VARIANTS: Record<DeviceStatus, 'success' | 'error' | 'warning' | 'info'> = {
-  online: 'success',
-  offline: 'error',
-  warning: 'warning',
-  provisioning: 'info',
-}
-
-const DEVICE_STATUS_RANK: Record<DeviceStatus, number> = { offline: 0, warning: 1, provisioning: 2, online: 3 }
-const DEVICE_OPERATIONAL_LABELS: Record<DeviceStatus, string> = {
-  online: 'Operational',
-  warning: 'Degraded',
-  offline: 'Unreachable',
-  provisioning: 'Provisioning',
-}
-
-function provisioningStateLabel(status: ServiceStatus): string {
-  switch (status) {
-    case 'provisioning':
-      return 'Pending Activation'
-    case 'active':
-      return 'Fully Provisioned'
-    case 'suspended':
-      return 'Provisioned (Suspended)'
-    case 'cancelled':
-      return 'Deprovisioned'
-  }
-}
-
-const operationalState = computed(() => {
-  if (relatedDevices.value.length === 0) return 'Unknown'
-  const worst = relatedDevices.value.reduce((worst, device) =>
-    DEVICE_STATUS_RANK[device.status] < DEVICE_STATUS_RANK[worst.status] ? device : worst,
-  )
-  return DEVICE_OPERATIONAL_LABELS[worst.status]
-})
-
 const summaryFacts = computed<Fact[]>(() => {
   const s = service.value
   if (!s) return []
-  return [
-    { icon: 'network', label: 'Technology', value: s.technology === 'gpon' ? 'GPON' : 'XGS-PON' },
-    { icon: 'services', label: 'Service Type', value: CATEGORY_LABELS[s.category] },
-    { icon: 'clock', label: 'Provisioned', value: formatDate(s.provisionedDate) },
-    { icon: 'clock', label: 'Activation Date', value: s.activationDate ? formatDate(s.activationDate) : 'Not yet activated' },
-    { icon: 'health', label: 'Current Status', value: STATUS_LABELS[s.status] },
-  ]
-})
-
-const provisioningFacts = computed<Fact[]>(() => {
-  const s = service.value
-  if (!s) return []
-  return [
-    { icon: 'tasks', label: 'Provisioning Profile', value: s.provisioningProfile },
-    { icon: 'network', label: 'Bandwidth Profile', value: s.bandwidthProfile },
-    { icon: 'user', label: 'Authentication Profile', value: s.authenticationProfile },
-    { icon: 'inventory', label: 'Configuration Profile', value: s.configurationProfile },
-  ]
-})
-
-const networkFacts = computed<Fact[]>(() => {
-  const s = service.value
-  if (!s) return []
-  const facts: Fact[] = []
-  if (s.oltId) facts.push({ icon: 'network', label: 'OLT', value: s.oltId })
-  if (s.ponPort) facts.push({ icon: 'network', label: 'PON Port', value: s.ponPort })
-  if (s.serviceVlan !== undefined) facts.push({ icon: 'network', label: 'Service VLAN', value: String(s.serviceVlan) })
-  if (s.managementVlan !== undefined) {
-    facts.push({ icon: 'network', label: 'Management VLAN', value: String(s.managementVlan) })
-  }
-  if (s.ipv4Address) facts.push({ icon: 'network', label: 'IPv4', value: s.ipv4Address })
-  if (s.ipv6Address) facts.push({ icon: 'network', label: 'IPv6', value: s.ipv6Address })
-  if (s.gateway) facts.push({ icon: 'network', label: 'Gateway', value: s.gateway })
+  const facts: Fact[] = [{ icon: 'health', label: 'Status', value: s.status }]
+  if (s.activatedAt) facts.push({ icon: 'clock', label: 'Activated', value: formatDate(s.activatedAt) })
+  if (s.suspendedAt) facts.push({ icon: 'clock', label: 'Suspended', value: formatDate(s.suspendedAt) })
+  if (s.disconnectedAt) facts.push({ icon: 'clock', label: 'Disconnected', value: formatDate(s.disconnectedAt) })
+  facts.push({ icon: 'clock', label: 'Last Updated', value: formatDate(s.updatedAt) })
   return facts
 })
 
-const statusFacts = computed<Fact[]>(() => {
-  const s = service.value
-  if (!s) return []
-  return [
-    { icon: 'health', label: 'Operational State', value: operationalState.value },
-    { icon: 'tasks', label: 'Provisioning State', value: provisioningStateLabel(s.status) },
-    { icon: 'clock', label: 'Last Successful Synchronization', value: s.lastSync },
-  ]
-})
-
-const deviceColumns: SimpleTableColumn[] = [
-  { key: 'device', label: 'Device' },
+const equipmentColumns: SimpleTableColumn[] = [
   { key: 'role', label: 'Role' },
-  { key: 'status', label: 'Status' },
-  { key: 'serial', label: 'Serial' },
+  { key: 'device', label: 'Device' },
+  { key: 'installed', label: 'Installed' },
 ]
 
-function deviceRowKey(device: Device): string {
-  return device.id
+/**
+ * Which workflow the primary action button runs, derived from the
+ * Service's current Status -- exactly what internal/workflow/engine's
+ * serviceStatusAfter maps back, so the button offered here always
+ * matches a transition the engine will actually accept.
+ */
+const primaryAction = computed<{ label: string; definition: WorkflowDefinitionName } | null>(() => {
+  switch (service.value?.status) {
+    case 'Pending':
+      return { label: 'Provision Service', definition: 'provision-service' }
+    case 'Active':
+      return { label: 'Suspend Service', definition: 'suspend-service' }
+    case 'Suspended':
+      return { label: 'Resume Service', definition: 'resume-service' }
+    default:
+      return null
+  }
+})
+
+async function runAction(definition: WorkflowDefinitionName) {
+  if (!service.value) return
+  actionPending.value = true
+  actionError.value = null
+  try {
+    await runWorkflow(service.value.id, definition)
+    await load(service.value.id)
+  } catch (err) {
+    actionError.value = err instanceof ApiError ? err.message : 'The workflow could not be executed.'
+  } finally {
+    actionPending.value = false
+  }
 }
 
-function deviceRowLabel(device: Device): string {
-  return `Open ${device.model}`
+const timelineEntries = computed(() =>
+  timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
+)
+
+// --- Delete Service ---
+
+const showDeleteDialog = ref(false)
+const deletePending = ref(false)
+const deleteError = ref<string | null>(null)
+
+async function confirmDeleteService() {
+  if (!service.value) return
+  deletePending.value = true
+  deleteError.value = null
+  try {
+    await deleteService(service.value.id)
+    router.push(customer.value ? `/customers/${customer.value.id}` : '/services')
+  } catch (err) {
+    deleteError.value =
+      err instanceof ApiError && err.kind === 'conflict'
+        ? 'This service still has equipment or workflow history attached — remove those first.'
+        : 'The service could not be deleted.'
+  } finally {
+    deletePending.value = false
+  }
 }
 
-function openDevice(device: Device) {
-  router.push(`/devices/${device.id}`)
-}
+const workflowColumns: SimpleTableColumn[] = [
+  { key: 'definition', label: 'Workflow' },
+  { key: 'status', label: 'Status' },
+  { key: 'started', label: 'Started' },
+]
 </script>
 
 <template>
@@ -233,105 +199,97 @@ function openDevice(device: Device) {
 
   <DetailWorkspace v-else-if="service">
     <WorkspaceHeader
-      :title="service.tier"
-      :subtitle="CATEGORY_LABELS[service.category]"
-      :status="{ label: STATUS_LABELS[service.status], variant: STATUS_VARIANTS[service.status] }"
-      :metadata="[`Service #${service.id}`, service.serviceAddress]"
+      :title="`Service ${service.id}`"
+      :status="{ label: service.status, variant: service.status === 'Active' ? 'success' : 'neutral' }"
     >
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
-            <BaseButton
-              variant="ghost"
-              size="sm"
-              disabled
-              disabled-reason="Workflow actions are not yet implemented."
-            >
-              Run Diagnostics
-            </BaseButton>
+            <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete Service</BaseButton>
           </template>
-          <template #primary>
+          <template v-if="primaryAction" #primary>
             <BaseButton
               variant="primary"
               size="sm"
-              disabled
-              disabled-reason="Workflow actions are not yet implemented."
+              :disabled="actionPending"
+              :disabled-reason="actionPending ? 'Running…' : undefined"
+              @click="runAction(primaryAction.definition)"
             >
-              Suspend Service
+              {{ actionPending ? 'Running…' : primaryAction.label }}
             </BaseButton>
           </template>
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
 
+    <ConfirmationDialog
+      :open="showDeleteDialog"
+      title="Delete Service"
+      :description="`Permanently delete service ${service.id}? This cannot be undone.`"
+      confirm-label="Delete Service"
+      destructive
+      :pending="deletePending"
+      :error="deleteError"
+      @confirm="confirmDeleteService"
+      @cancel="showDeleteDialog = false"
+    />
+
+    <p v-if="actionError" class="action-error" role="alert">{{ actionError }}</p>
+
     <SectionCard title="Summary" icon="services">
       <FactGrid :facts="summaryFacts" />
+      <p v-if="service.description" class="service-description">{{ service.description }}</p>
     </SectionCard>
 
     <SectionCard title="Customer" icon="customers">
       <RelationshipCard
+        v-if="customer"
         eyebrow="Customer"
-        :title="service.customerName"
-        :meta="
-          relatedCustomer
-            ? `${relatedCustomer.type === 'business' ? 'Business' : 'Residential'} · ${CUSTOMER_STATUS_LABELS[relatedCustomer.status]}`
-            : undefined
-        "
-        :to="`/customers/${service.customerId}`"
+        :title="customer.name"
+        :meta="`${customer.customerType} · ${customer.status}`"
+        :to="`/customers/${customer.id}`"
         action-label="View Customer"
       />
+      <p v-else class="no-relationship">No customer on file for this service's location.</p>
     </SectionCard>
 
-    <SectionCard title="Devices" icon="devices" :badge="relatedDevices.length">
+    <SectionCard title="Location" icon="location">
+      <p v-if="location" class="location-summary">
+        {{ location.name }} — {{ location.address1 }}, {{ location.city }}, {{ location.state }} {{ location.postalCode }}
+      </p>
+      <p v-else class="no-relationship">No location on file for this service.</p>
+    </SectionCard>
+
+    <SectionCard title="Equipment" icon="devices" :badge="equipment.length">
       <SimpleTable
-        :columns="deviceColumns"
-        :rows="relatedDevices"
-        :row-key="deviceRowKey"
-        :row-label="deviceRowLabel"
-        clickable
+        :columns="equipmentColumns"
+        :rows="equipment"
+        :row-key="(item) => item.id"
         empty-icon="devices"
-        empty-title="No devices delivering this service"
-        @row-click="openDevice"
+        empty-title="No equipment assigned"
       >
-        <template #cell-device="{ row }">
-          <span class="cell-strong">{{ row.model }}</span>
-        </template>
-        <template #cell-role="{ row }">
-          {{ row.type }}
-        </template>
-        <template #cell-status="{ row }">
-          <BaseBadge :variant="DEVICE_STATUS_VARIANTS[row.status as DeviceStatus]">{{
-            DEVICE_STATUS_LABELS[row.status as DeviceStatus]
-          }}</BaseBadge>
-        </template>
-        <template #cell-serial="{ row }">
-          <span class="cell-mono">{{ row.serialNumber }}</span>
-        </template>
+        <template #cell-role="{ row }">{{ row.role }}</template>
+        <template #cell-device="{ row }"><span class="cell-mono">{{ row.deviceId }}</span></template>
+        <template #cell-installed="{ row }">{{ row.installedAt ? formatDate(row.installedAt) : 'Not yet installed' }}</template>
       </SimpleTable>
     </SectionCard>
 
-    <SectionCard title="Provisioning" icon="tasks">
-      <FactGrid :facts="provisioningFacts" />
+    <SectionCard title="Workflow History" icon="tasks" :badge="workflowHistory.length">
+      <SimpleTable
+        :columns="workflowColumns"
+        :rows="workflowHistory"
+        :row-key="(instance) => instance.id"
+        empty-icon="tasks"
+        empty-title="No workflows have run against this service yet"
+      >
+        <template #cell-definition="{ row }">{{ row.definitionName }}</template>
+        <template #cell-status="{ row }">{{ row.status }}</template>
+        <template #cell-started="{ row }">{{ row.startedAt ? formatDate(row.startedAt) : '—' }}</template>
+      </SimpleTable>
     </SectionCard>
 
-    <SectionCard title="Network" icon="network">
-      <FactGrid :facts="networkFacts" />
-    </SectionCard>
-
-    <SectionCard title="Status" icon="health">
-      <FactGrid :facts="statusFacts" />
-    </SectionCard>
-
-    <SectionCard title="Recent Activity" icon="clock">
-      <ActivityList :entries="service.activity" />
-    </SectionCard>
-
-    <SectionCard title="Timeline">
-      <TimelineEntries :entries="service.timeline" />
-    </SectionCard>
-
-    <SectionCard title="Notes">
-      <NotesList :notes="service.notes" />
+    <SectionCard title="Timeline" icon="history">
+      <TimelineEntries :entries="timelineEntries" />
     </SectionCard>
   </DetailWorkspace>
 </template>
@@ -341,14 +299,30 @@ function openDevice(device: Device) {
   padding: var(--space-6);
 }
 
-.cell-strong {
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-primary);
-}
-
 .cell-mono {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
+}
+
+.service-description {
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.no-relationship {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.location-summary {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.action-error {
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
 }
 </style>

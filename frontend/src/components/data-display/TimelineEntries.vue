@@ -23,9 +23,9 @@ withDefaults(
 <template>
   <BaseEmptyState
     v-if="entries.length === 0"
-    icon="clock"
-    title="No activity yet"
-    description="Events will appear here as they happen."
+    icon="history"
+    title="No timeline history yet"
+    description="A complete operational history will appear here as events happen."
   />
   <ol v-else class="timeline-entries">
     <li v-for="entry in entries" :key="entry.id" class="timeline-entries__entry">

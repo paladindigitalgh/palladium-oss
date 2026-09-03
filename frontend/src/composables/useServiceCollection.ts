@@ -1,8 +1,6 @@
 import { ref, watch } from 'vue'
-import type { CustomerType, ServiceStatus, ServiceTechnology } from '@/types/customer'
-import type { ServiceCategory } from '@/types/service'
 import type { Service } from '@/types/service'
-import { listServices, type ServiceListQuery, type ServiceListResult } from '@/services/services/serviceRepository'
+import { listServices, type ServiceListQuery } from '@/services/services/serviceRepository'
 
 export type ServiceSortKey = NonNullable<ServiceListQuery['sortKey']>
 export type ServiceSortDirection = NonNullable<ServiceListQuery['sortDirection']>
@@ -11,18 +9,15 @@ const PAGE_SIZE = 15
 
 /**
  * Owns state and query orchestration for the Service Collection
- * Workspace -- mirrors composables/useCustomerCollection.ts and
- * useDeviceCollection.ts exactly (same reset-on-filter-change behavior,
- * same requestId race guard against serviceRepository's simulated
- * latency).
+ * Workspace, mirroring useCustomerCollection.ts. Trimmed to the filters
+ * the real Service domain actually supports (status only) -- the
+ * mock-era technology/category/customer-type filters had no backend
+ * equivalent and are gone, not faked.
  */
 export function useServiceCollection() {
   const search = ref('')
-  const status = ref<ServiceStatus | 'all'>('all')
-  const technology = ref<ServiceTechnology | 'any'>('any')
-  const category = ref<ServiceCategory | 'all'>('all')
-  const customerType = ref<CustomerType | 'all'>('all')
-  const sortKey = ref<ServiceSortKey>('service')
+  const status = ref<Service['status'] | 'all'>('all')
+  const sortKey = ref<ServiceSortKey>('id')
   const sortDirection = ref<ServiceSortDirection>('asc')
   const page = ref(1)
 
@@ -39,12 +34,9 @@ export function useServiceCollection() {
     error.value = false
 
     try {
-      const result: ServiceListResult = await listServices({
+      const result = await listServices({
         search: search.value,
         status: status.value,
-        technology: technology.value,
-        category: category.value,
-        customerType: customerType.value,
         sortKey: sortKey.value,
         sortDirection: sortDirection.value,
         page: page.value,
@@ -72,7 +64,7 @@ export function useServiceCollection() {
   }
 
   watch(
-    [search, status, technology, category, customerType, sortKey, sortDirection],
+    [search, status, sortKey, sortDirection],
     () => {
       page.value = 1
       fetchServices()
@@ -85,9 +77,6 @@ export function useServiceCollection() {
   return {
     search,
     status,
-    technology,
-    category,
-    customerType,
     sortKey,
     sortDirection,
     toggleSort,

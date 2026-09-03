@@ -8,7 +8,7 @@ import type {
   CustomerType,
   ServiceStatus,
   ServiceTechnology,
-} from '@/types/customer'
+} from '@/types/mockCustomer'
 import type { ActivityEntry } from '@/types/activity'
 import type { Note } from '@/types/note'
 import { createPrng } from '@/lib/prng'

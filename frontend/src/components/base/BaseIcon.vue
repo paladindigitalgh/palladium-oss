@@ -28,6 +28,9 @@ import {
   ListFilter,
   MapPin,
   ChevronsUpDown,
+  History,
+  StickyNote,
+  Settings2,
 } from '@lucide/vue'
 
 /**
@@ -78,6 +81,9 @@ export type IconName =
   | 'filter'
   | 'location'
   | 'sort'
+  | 'history'
+  | 'notes'
+  | 'settings'
 
 // Typed as Vue's generic `Component`, not Lucide's own icon type -- even
 // this internal map stays library-agnostic, so nothing here nudges a
@@ -110,6 +116,9 @@ const ICONS: Record<IconName, Component> = {
   filter: ListFilter,
   location: MapPin,
   sort: ChevronsUpDown,
+  history: History,
+  notes: StickyNote,
+  settings: Settings2,
 }
 
 defineOptions({ inheritAttrs: false })

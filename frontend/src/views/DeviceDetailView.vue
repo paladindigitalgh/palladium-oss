@@ -15,10 +15,10 @@ import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import { getDeviceById } from '@/services/devices/deviceRepository'
-import { getCustomerById } from '@/services/customers/customerRepository'
+import { CUSTOMERS } from '@/services/customers/customerDataset'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import type { Device, DeviceStatus } from '@/types/device'
-import type { Customer, CustomerStatus, ServiceStatus } from '@/types/customer'
+import type { Customer, CustomerStatus, ServiceStatus } from '@/types/mockCustomer'
 
 /**
  * The Device Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
@@ -57,7 +57,12 @@ async function load(id: string) {
   if (result) {
     device.value = result
     if (result.assignedCustomerId) {
-      relatedCustomer.value = await getCustomerById(result.assignedCustomerId)
+      // Device stays on mock data (see this file's own doc comment) --
+      // this reads the mock Customer/Service/Asset dataset directly
+      // rather than through customerRepository.ts, which now calls the
+      // real Customer API and has no knowledge of this mock device's
+      // fabricated assignedCustomerId.
+      relatedCustomer.value = CUSTOMERS.find((c) => c.id === result.assignedCustomerId) ?? null
     }
   } else {
     notFound.value = true
@@ -131,7 +136,6 @@ function formatUptime(seconds: number): string {
   const minutes = Math.floor((seconds % 3600) / 60)
   return `${hours}h ${minutes}m`
 }
-
 
 const summaryFacts = computed<Fact[]>(() => {
   const d = device.value
@@ -286,7 +290,7 @@ const configFacts = computed<Fact[]>(() => {
       <FactGrid :facts="statusFacts" />
     </SectionCard>
 
-    <SectionCard title="Configuration">
+    <SectionCard title="Configuration" icon="settings">
       <FactGrid :facts="configFacts" />
     </SectionCard>
 
@@ -294,11 +298,11 @@ const configFacts = computed<Fact[]>(() => {
       <ActivityList :entries="device.activity" />
     </SectionCard>
 
-    <SectionCard title="Timeline">
+    <SectionCard title="Timeline" icon="history">
       <TimelineEntries :entries="device.timeline" />
     </SectionCard>
 
-    <SectionCard title="Notes">
+    <SectionCard title="Notes" icon="notes">
       <NotesList :notes="device.notes" />
     </SectionCard>
   </DetailWorkspace>

@@ -1,38 +1,33 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
+import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import BaseCard from '@/components/base/BaseCard.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
-import BaseBadge from '@/components/base/BaseBadge.vue'
+import BaseButton from '@/components/base/BaseButton.vue'
 import CollectionToolbar from '@/components/data-display/CollectionToolbar.vue'
 import DataTable, { type DataTableColumn } from '@/components/data-display/DataTable.vue'
+import CustomerFormDialog from '@/components/dialogs/CustomerFormDialog.vue'
 import type { Customer } from '@/types/customer'
+import type { Location } from '@/types/location'
 import { useCustomerCollection, type CustomerSortKey } from '@/composables/useCustomerCollection'
+import { listLocations } from '@/services/locations/locationRepository'
 
 /**
  * The Customer Collection View (docs/09-WORKSPACE-SPECIFICATIONS.md,
- * "Collection View & Detail View"): discovery only. It exists to help an
- * operator find a customer and open that customer's Detail Workspace --
- * not to summarize account health or duplicate what the Detail Workspace
- * will show. Three columns, per that document's own example ("Customers:
- * Customer, Location, Primary Service"), and nothing else.
- *
- * This is a plain page, not a DetailWorkspace: a Collection View has no
- * single selected object and no sections
- * (docs/11-COMPONENT-ARCHITECTURE.md, "Workspace Architecture": "An
- * Entity Workspace's Collection View is a different, simpler shape --
- * typically a DataTable plus search/filter/sort controls").
+ * "Collection View & Detail View"): discovery only. Backed by the real
+ * Customer API. "Location" is resolved by fetching every Location once
+ * and indexing by customerId, the same client-side-join pattern
+ * locationRepository.ts documents -- there is no server-side "customer's
+ * primary location" query yet.
  */
 const router = useRouter()
 
 const {
   search,
   status,
-  serviceTechnology,
   customerType,
-  city,
-  cities,
   sortKey,
   sortDirection,
   toggleSort,
@@ -43,40 +38,37 @@ const {
   loading,
 } = useCustomerCollection()
 
+const locationsByCustomerId = ref<Map<string, Location>>(new Map())
+
+onMounted(async () => {
+  const locations = await listLocations()
+  const byCustomer = new Map<string, Location>()
+  for (const location of locations) {
+    if (!byCustomer.has(location.customerId)) byCustomer.set(location.customerId, location)
+  }
+  locationsByCustomerId.value = byCustomer
+})
+
 const columns: DataTableColumn[] = [
   { key: 'customer', label: 'Customer', sortable: true },
-  { key: 'location', label: 'Location', sortable: true },
-  { key: 'primaryService', label: 'Primary Service', sortable: true },
+  { key: 'location', label: 'Location' },
+  { key: 'status', label: 'Status', sortable: true },
 ]
 
 const statusOptions = [
-  { value: 'active', label: 'Active' },
-  { value: 'suspended', label: 'Suspended' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'cancelled', label: 'Cancelled' },
   { value: 'all', label: 'All Statuses' },
-]
-
-const serviceOptions = [
-  { value: 'any', label: 'Any' },
-  { value: 'gpon', label: 'GPON' },
-  { value: 'xgs-pon', label: 'XGS-PON' },
+  { value: 'Active', label: 'Active' },
+  { value: 'Inactive', label: 'Inactive' },
+  { value: 'Archived', label: 'Archived' },
 ]
 
 const typeOptions = [
   { value: 'all', label: 'All Types' },
-  { value: 'residential', label: 'Residential' },
-  { value: 'business', label: 'Business' },
+  { value: 'Residential', label: 'Residential' },
+  { value: 'Business', label: 'Business' },
+  { value: 'Government', label: 'Government' },
+  { value: 'Internal', label: 'Internal' },
 ]
-
-const cityOptions = computed(() => [
-  { value: 'all', label: 'All Locations' },
-  ...cities.map((option) => ({ value: option, label: option })),
-])
-
-function customerTypeLabel(customer: Customer): string {
-  return customer.type === 'business' ? 'Business' : 'Residential'
-}
 
 function rowLabel(customer: Customer): string {
   return `Open ${customer.name}`
@@ -89,17 +81,36 @@ function openCustomer(customer: Customer) {
 function handleSort(key: string) {
   toggleSort(key as CustomerSortKey)
 }
+
+const showNewCustomerDialog = ref(false)
+
+function handleCustomerCreated(customer: Customer) {
+  showNewCustomerDialog.value = false
+  router.push(`/customers/${customer.id}`)
+}
 </script>
 
 <template>
   <div class="customer-collection-view">
-    <WorkspaceHeader title="Customers" subtitle="Search, filter, and open a customer workspace." />
+    <WorkspaceHeader title="Customers" subtitle="Search, filter, and open a customer workspace.">
+      <template #actions>
+        <WorkspaceActions>
+          <template #primary>
+            <BaseButton variant="primary" size="sm" @click="showNewCustomerDialog = true">New Customer</BaseButton>
+          </template>
+        </WorkspaceActions>
+      </template>
+    </WorkspaceHeader>
 
-    <CollectionToolbar v-model:search="search" search-placeholder="Search by name, customer ID, or address">
+    <CustomerFormDialog
+      :open="showNewCustomerDialog"
+      @close="showNewCustomerDialog = false"
+      @created="handleCustomerCreated"
+    />
+
+    <CollectionToolbar v-model:search="search" search-placeholder="Search by name or customer ID">
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
-      <BaseSelect v-model="serviceTechnology" label="Service Type" :options="serviceOptions" />
       <BaseSelect v-model="customerType" label="Customer Type" :options="typeOptions" />
-      <BaseSelect v-model="city" label="Location" :options="cityOptions" />
     </CollectionToolbar>
 
     <BaseCard :padded="false">
@@ -123,25 +134,19 @@ function handleSort(key: string) {
         <template #cell-customer="{ row }">
           <div class="customer-cell">
             <span class="customer-cell__name">{{ row.name }}</span>
-            <span class="customer-cell__meta">
-              {{ row.id }}
-              <BaseBadge variant="neutral">{{ customerTypeLabel(row) }}</BaseBadge>
-            </span>
+            <span class="customer-cell__meta">{{ row.id }} · {{ row.customerType }}</span>
           </div>
         </template>
 
         <template #cell-location="{ row }">
-          <div class="location-cell">
-            <span class="location-cell__city">{{ row.city }}, {{ row.state }}</span>
-            <span class="location-cell__address">{{ row.address }}</span>
-          </div>
+          <span v-if="locationsByCustomerId.get(row.id)" class="location-cell">
+            {{ locationsByCustomerId.get(row.id)!.city }}, {{ locationsByCustomerId.get(row.id)!.state }}
+          </span>
+          <span v-else class="location-cell location-cell--empty">No location on file</span>
         </template>
 
-        <template #cell-primaryService="{ row }">
-          <div class="service-cell">
-            <span class="service-cell__tier">{{ row.services[0].tier }}</span>
-            <BaseBadge variant="info">{{ row.services[0].technology === 'gpon' ? 'GPON' : 'XGS-PON' }}</BaseBadge>
-          </div>
+        <template #cell-status="{ row }">
+          {{ row.status }}
         </template>
       </DataTable>
     </BaseCard>
@@ -155,9 +160,7 @@ function handleSort(key: string) {
   gap: var(--space-5);
 }
 
-.customer-cell,
-.location-cell,
-.service-cell {
+.customer-cell {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -169,29 +172,15 @@ function handleSort(key: string) {
 }
 
 .customer-cell__meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
 
-.location-cell__city {
+.location-cell {
   color: var(--color-text-primary);
 }
 
-.location-cell__address {
-  font-size: var(--font-size-xs);
+.location-cell--empty {
   color: var(--color-text-muted);
-}
-
-.service-cell {
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.service-cell__tier {
-  color: var(--color-text-primary);
 }
 </style>
