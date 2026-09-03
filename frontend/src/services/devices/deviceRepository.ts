@@ -73,6 +73,12 @@ async function listAllDevices(): Promise<Device[]> {
   return devices.map(fromDto)
 }
 
+/** Returns every Device racked in the given Rack, for RackDetailView.vue's read-only Devices section. */
+export async function listDevicesByRackId(rackId: string): Promise<Device[]> {
+  const devices = await listAllDevices()
+  return devices.filter((device) => device.rackId === rackId)
+}
+
 /** Fetches every Device and applies search/filter/sort/pagination client-side. */
 export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceListResult> {
   const { search = '', status = 'all', sortKey = 'name', sortDirection = 'asc', page = 1, pageSize = 15 } = query

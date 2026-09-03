@@ -5,6 +5,7 @@ import DetailWorkspace from '@/components/workspace/DetailWorkspace.vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import SectionCard from '@/components/data-display/SectionCard.vue'
+import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/SimpleTable.vue'
 import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
 import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
 import RelationshipCard from '@/components/data-display/RelationshipCard.vue'
@@ -13,27 +14,30 @@ import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
 import RoomFormDialog from '@/components/dialogs/RoomFormDialog.vue'
+import RackFormDialog from '@/components/dialogs/RackFormDialog.vue'
 import { getRoomById, deleteRoom } from '@/services/rooms/roomRepository'
 import { getBuildingById } from '@/services/buildings/buildingRepository'
+import { listRacksByRoomId, deleteRack } from '@/services/racks/rackRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { Room } from '@/types/room'
 import type { Building } from '@/types/building'
+import type { Rack } from '@/types/rack'
 import type { TimelineEvent } from '@/types/timelineEvent'
 
 /**
  * The Room Detail Workspace. Mirrors BuildingDetailView.vue's shape for
- * the single-relation Building section and delete-with-conflict-handling.
- * The Racks section is added in a follow-up commit alongside
- * RackFormDialog/rackRepository.ts, the same staging BuildingDetailView.vue's
- * own Rooms section used relative to SiteDetailView.vue.
+ * the single-relation Building section, a nested Racks section
+ * (add/remove/open, same treatment BuildingDetailView gives Rooms), and
+ * delete-with-conflict-handling.
  */
 const route = useRoute()
 const router = useRouter()
 
 const room = ref<Room | null>(null)
 const building = ref<Building | null>(null)
+const racks = ref<Rack[]>([])
 const timeline = ref<TimelineEvent[]>([])
 const loading = ref(true)
 const notFound = ref(false)
@@ -43,6 +47,7 @@ async function load(id: string) {
   notFound.value = false
   room.value = null
   building.value = null
+  racks.value = []
   timeline.value = []
 
   const result = await getRoomById(id)
@@ -53,8 +58,13 @@ async function load(id: string) {
   }
   room.value = result
 
-  const [relatedBuilding, events] = await Promise.all([getBuildingById(result.buildingId), listEvents('room', id)])
+  const [relatedBuilding, roomRacks, events] = await Promise.all([
+    getBuildingById(result.buildingId),
+    listRacksByRoomId(id),
+    listEvents('room', id),
+  ])
   building.value = relatedBuilding
+  racks.value = roomRacks
   timeline.value = events
 
   loading.value = false
@@ -75,9 +85,50 @@ const summaryFacts = computed<Fact[]>(() => {
   ]
 })
 
+const rackColumns: SimpleTableColumn[] = [
+  { key: 'name', label: 'Rack' },
+  { key: 'actions', label: '' },
+]
+
+function openRack(rack: Rack) {
+  router.push(`/inventory/racks/${rack.id}`)
+}
+
 const timelineEntries = computed(() =>
   timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
 )
+
+// --- Add/Remove Rack ---
+
+const showRackForm = ref(false)
+
+function handleRackCreated(rack: Rack) {
+  showRackForm.value = false
+  racks.value = [...racks.value, rack]
+}
+
+const rackDeleteTarget = ref<Rack | null>(null)
+const rackDeletePending = ref(false)
+const rackDeleteError = ref<string | null>(null)
+
+async function confirmDeleteRack() {
+  const target = rackDeleteTarget.value
+  if (!target) return
+  rackDeletePending.value = true
+  rackDeleteError.value = null
+  try {
+    await deleteRack(target.id)
+    racks.value = racks.value.filter((rack) => rack.id !== target.id)
+    rackDeleteTarget.value = null
+  } catch (err) {
+    rackDeleteError.value =
+      err instanceof ApiError && err.kind === 'conflict'
+        ? 'This rack still has devices attached — remove those first.'
+        : 'The rack could not be deleted.'
+  } finally {
+    rackDeletePending.value = false
+  }
+}
 
 // --- Edit Room ---
 
@@ -174,6 +225,46 @@ async function confirmDeleteRoom() {
       <p v-else class="no-relationship">No building on file for this room.</p>
     </SectionCard>
 
+    <SectionCard title="Racks" icon="inventory" :badge="racks.length">
+      <div class="section-toolbar">
+        <BaseButton variant="secondary" size="sm" @click="showRackForm = true">Add Rack</BaseButton>
+      </div>
+
+      <RackFormDialog
+        :open="showRackForm"
+        :room-id="room.id"
+        @close="showRackForm = false"
+        @created="handleRackCreated"
+      />
+
+      <ConfirmationDialog
+        :open="rackDeleteTarget !== null"
+        title="Remove Rack"
+        :description="`Remove ${rackDeleteTarget?.name}? This cannot be undone.`"
+        confirm-label="Remove Rack"
+        destructive
+        :pending="rackDeletePending"
+        :error="rackDeleteError"
+        @confirm="confirmDeleteRack"
+        @cancel="rackDeleteTarget = null"
+      />
+
+      <SimpleTable
+        :columns="rackColumns"
+        :rows="racks"
+        :row-key="(rack) => rack.id"
+        clickable
+        empty-icon="inventory"
+        empty-title="No racks on file"
+        @row-click="openRack"
+      >
+        <template #cell-name="{ row }">{{ row.name }}</template>
+        <template #cell-actions="{ row }">
+          <BaseButton variant="ghost" size="sm" @click.stop="rackDeleteTarget = row">Remove</BaseButton>
+        </template>
+      </SimpleTable>
+    </SectionCard>
+
     <SectionCard title="Timeline" icon="history">
       <TimelineEntries :entries="timelineEntries" />
     </SectionCard>
@@ -194,5 +285,12 @@ async function confirmDeleteRoom() {
 .no-relationship {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
+}
+
+.section-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 </style>

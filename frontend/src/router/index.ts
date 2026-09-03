@@ -131,6 +131,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/RoomDetailView.vue'),
   },
   {
+    // The Rack Detail Workspace -- reached from a Room Detail Workspace's
+    // Racks section, same pattern as /inventory/rooms/:id above.
+    path: '/inventory/racks/:id',
+    name: 'rack-detail',
+    component: () => import('@/views/RackDetailView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),

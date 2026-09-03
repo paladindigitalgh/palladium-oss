@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
-import { listDevices, getDeviceById, createDevice, updateDevice, deleteDevice } from './deviceRepository'
+import { listDevices, listDevicesByRackId, getDeviceById, createDevice, updateDevice, deleteDevice } from './deviceRepository'
 
 /** Mirrors customerRepository.test.ts's shape exactly -- see that file. */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
@@ -82,6 +82,23 @@ describe('listDevices', () => {
 
     expect(result.total).toBe(20)
     expect(result.items).toHaveLength(5)
+  })
+})
+
+describe('listDevicesByRackId', () => {
+  it('returns only devices racked in the given rack', async () => {
+    apiFetch.mockResolvedValue({
+      devices: [
+        deviceDto({ id: 'd1', rack_id: 'rack-1' }),
+        deviceDto({ id: 'd2', rack_id: 'rack-2' }),
+        deviceDto({ id: 'd3', rack_id: null }),
+        deviceDto({ id: 'd4', rack_id: 'rack-1' }),
+      ],
+    })
+
+    const result = await listDevicesByRackId('rack-1')
+
+    expect(result.map((d) => d.id)).toEqual(['d1', 'd4'])
   })
 })
 
