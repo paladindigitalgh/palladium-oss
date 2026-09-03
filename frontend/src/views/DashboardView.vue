@@ -6,76 +6,95 @@ import StatisticCard from '@/components/data-display/StatisticCard.vue'
 import DashboardWidget from '@/components/dashboard/DashboardWidget.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BasePropertyGrid from '@/components/base/BasePropertyGrid.vue'
-import BaseIcon from '@/components/base/BaseIcon.vue'
+import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
+import BaseErrorState from '@/components/base/BaseErrorState.vue'
+import BaseButton from '@/components/base/BaseButton.vue'
 import ActivityList from '@/components/data-display/ActivityList.vue'
+import { useDashboard } from '@/composables/useDashboard'
+import { formatDisplayDate as formatDate } from '@/lib/dates'
+import type { IconName } from '@/components/base/BaseIcon.vue'
+
+interface StatCard {
+  label: string
+  value: string
+  icon: IconName
+  variant: 'success' | 'warning' | 'error' | 'info' | 'neutral'
+}
 
 /**
- * Milestone 2: the first real workspace. Everything below this line is
- * placeholder data, not a live query -- see the PLACEHOLDER_* constants.
+ * Backed by the real API via useDashboard.ts -- every stat and widget
+ * below is a live query, not the placeholder data this view shipped
+ * with through Milestone 2. Two things from the original speculative
+ * design are deliberately absent, not just unfinished:
  *
- * This view does not use DetailWorkspace
- * (components/workspace/DetailWorkspace.vue). This is not a deviation:
- * docs/11-COMPONENT-ARCHITECTURE.md ("Workspace Archetypes") and
- * docs/09-WORKSPACE-SPECIFICATIONS.md (section 4, same name) document
- * Dashboard as Palladium's one Landing Workspace, and DetailWorkspace is
- * the standard for Entity Workspaces (Customers, Services, Devices,
- * Network, Inventory, Explorer, Administration, and their detail-level
- * workspaces like Customer, Service, Device, OLT, Site), which manage a
- * selected object broken into collapsible sections. Dashboard has no
- * selected object and no sections: its layout is a four-card summary row
- * plus a full-width 2x2 widget grid, so there is nothing for
- * DetailWorkspace's Contents navigation to list, and no object for a
- * SectionCard to describe.
+ * - "Active Alerts" (a stat card and a widget): no alert concept exists
+ *   anywhere in the domain model, and per CLAUDE.md, Palladium is not a
+ *   monitoring platform -- the same reason Alarms/Performance sections
+ *   were already dropped from the Device and Service Detail Workspaces.
+ * - "System Health": /healthz and /readyz exist, but are mounted outside
+ *   /api/v1 (unauthenticated, a different base path than every other
+ *   endpoint this frontend calls through apiFetch). Wiring one stat to a
+ *   separate fetch mechanism isn't worth what it buys; a fourth real
+ *   domain stat (Devices) takes its place instead.
  *
- * WorkspaceHeader is still reused for the title/subtitle region, so the
- * page-heading treatment stays consistent with every other workspace.
+ * "Network Overview" no longer shows online/active ratios ("16/16
+ * Active") -- that is telemetry Palladium does not have. It shows real
+ * counts instead, including the one genuinely real status split
+ * available at this level: Access Interfaces by Active/Disabled, an
+ * administrative field, not live telemetry.
  */
 const route = useRoute()
 const subtitle = computed(() =>
   typeof route.meta.description === 'string' ? route.meta.description : undefined,
 )
 
-// PLACEHOLDER DATA -- Milestone 2 ships static placeholder values, not a
-// live query. Every value below is illustrative and must be replaced by
-// real data once the Dashboard has something to read from.
-const PLACEHOLDER_STATS = [
-  { label: 'System Health', value: 'Healthy', icon: 'health', variant: 'success' },
-  { label: 'Customers', value: '247', icon: 'customers', variant: 'neutral' },
-  { label: 'Active Alerts', value: '0', icon: 'alert', variant: 'success' },
-  { label: 'Pending Tasks', value: '2', icon: 'tasks', variant: 'neutral' },
-] as const
+const { loading, error, stats, networkOverview, recentActivity, pendingTasks, retry } = useDashboard()
 
-const PLACEHOLDER_ACTIVITY = [
-  { id: 'activity-1', label: 'Customer provisioned', timestamp: '2 minutes ago' },
-  { id: 'activity-2', label: 'ONU registered', timestamp: '14 minutes ago' },
-  { id: 'activity-3', label: 'Firmware upgrade completed', timestamp: '1 hour ago' },
-  { id: 'activity-4', label: 'Inventory assigned', timestamp: '3 hours ago' },
-  { id: 'activity-5', label: 'Service upgraded', timestamp: 'Yesterday' },
-] as const
+const statCards = computed<StatCard[]>(() => [
+  { label: 'Customers', value: String(stats.value.customers), icon: 'customers', variant: 'neutral' },
+  { label: 'Active Services', value: String(stats.value.activeServices), icon: 'services', variant: 'neutral' },
+  { label: 'Devices', value: String(stats.value.devices), icon: 'devices', variant: 'neutral' },
+  {
+    label: 'Pending Tasks',
+    value: String(stats.value.pendingTasks),
+    icon: 'tasks',
+    // docs/08-DESIGN-SYSTEM.md section 3: "calm under normal operation,
+    // visually emphatic only when action is required" -- zero pending
+    // tasks is the calm state, any at all is the one worth a glance.
+    variant: stats.value.pendingTasks > 0 ? 'warning' : 'success',
+  },
+])
 
-const PLACEHOLDER_NETWORK_OVERVIEW = [
-  { label: 'OLTs', value: '1 / 1 Online' },
-  { label: 'PON Ports', value: '16 / 16 Active' },
-  { label: 'ONUs', value: '247 Online' },
-  { label: 'Core Services', value: 'Healthy' },
-]
+const activityEntries = computed(() =>
+  recentActivity.value.map((event) => ({ id: event.id, label: event.message, timestamp: formatDate(event.createdAt) })),
+)
 
-// Two items, matching the "Pending Tasks: 2" summary card above -- see
-// this milestone's summary for why the count is deliberately kept
-// consistent with the card rather than the spec's three-item example.
-const PLACEHOLDER_TASKS = [
-  { id: 'task-1', label: 'Firmware upgrade scheduled' },
-  { id: 'task-2', label: 'Provisioning awaiting approval' },
-]
+const networkProperties = computed(() => [
+  { label: 'Access Networks', value: String(networkOverview.value.accessNetworks) },
+  { label: 'OLTs', value: String(networkOverview.value.olts) },
+  { label: 'PON Ports', value: String(networkOverview.value.ponPorts) },
+  { label: 'Access Interfaces (Active)', value: String(networkOverview.value.activeInterfaces) },
+  { label: 'Access Interfaces (Disabled)', value: String(networkOverview.value.disabledInterfaces) },
+])
 </script>
 
 <template>
-  <div class="dashboard-view">
+  <div v-if="loading" class="dashboard-view__status">
+    <BaseLoadingState :lines="8" />
+  </div>
+
+  <div v-else-if="error" class="dashboard-view__status">
+    <BaseErrorState title="Dashboard could not be loaded" description="Something went wrong fetching the latest data.">
+      <BaseButton variant="secondary" @click="retry">Retry</BaseButton>
+    </BaseErrorState>
+  </div>
+
+  <div v-else class="dashboard-view">
     <WorkspaceHeader title="Dashboard" :subtitle="subtitle" />
 
     <div class="dashboard-view__stats">
       <StatisticCard
-        v-for="stat in PLACEHOLDER_STATS"
+        v-for="stat in statCards"
         :key="stat.label"
         :label="stat.label"
         :value="stat.value"
@@ -85,27 +104,26 @@ const PLACEHOLDER_TASKS = [
     </div>
 
     <div class="dashboard-view__widgets">
-      <DashboardWidget title="Active Alerts" icon="alert" view-all-to="/explorer">
-        <BaseEmptyState
-          icon="check"
-          title="No active alerts"
-          description="The network is operating normally."
-        />
-      </DashboardWidget>
-
       <DashboardWidget title="Recent Activity" icon="clock" view-all-to="/explorer">
-        <ActivityList :entries="PLACEHOLDER_ACTIVITY" />
+        <ActivityList :entries="activityEntries" />
       </DashboardWidget>
 
       <DashboardWidget title="Network Overview" icon="network" view-all-to="/network">
-        <BasePropertyGrid :properties="PLACEHOLDER_NETWORK_OVERVIEW" />
+        <BasePropertyGrid :properties="networkProperties" />
       </DashboardWidget>
 
       <DashboardWidget title="Pending Tasks" icon="tasks" view-all-to="/administration">
-        <ul class="dashboard-view__tasks">
-          <li v-for="task in PLACEHOLDER_TASKS" :key="task.id" class="dashboard-view__task-item">
-            <BaseIcon name="clock" size="sm" class="dashboard-view__task-icon" />
-            <span>{{ task.label }}</span>
+        <BaseEmptyState
+          v-if="pendingTasks.length === 0"
+          icon="check"
+          title="Nothing pending"
+          description="Every workflow has run to completion."
+        />
+        <ul v-else class="dashboard-view__tasks">
+          <li v-for="task in pendingTasks" :key="task.id" class="dashboard-view__task-item">
+            <RouterLink :to="`/services/${task.serviceId}`" class="dashboard-view__task-link">
+              {{ task.definitionName }} — {{ task.status }}
+            </RouterLink>
           </li>
         </ul>
       </DashboardWidget>
@@ -120,6 +138,10 @@ const PLACEHOLDER_TASKS = [
   gap: var(--space-5);
 }
 
+.dashboard-view__status {
+  padding: var(--space-6);
+}
+
 .dashboard-view__stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -128,7 +150,7 @@ const PLACEHOLDER_TASKS = [
 
 .dashboard-view__widgets {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
 }
 
@@ -138,13 +160,9 @@ const PLACEHOLDER_TASKS = [
 }
 
 .dashboard-view__task-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--color-border);
   font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
 }
 
 .dashboard-view__task-item:last-child {
@@ -152,8 +170,19 @@ const PLACEHOLDER_TASKS = [
   padding-bottom: 0;
 }
 
-.dashboard-view__task-icon {
-  color: var(--color-text-muted);
+.dashboard-view__task-link {
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.dashboard-view__task-link:hover {
+  color: var(--color-brand);
+}
+
+@media (max-width: 1200px) {
+  .dashboard-view__widgets {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 960px) {

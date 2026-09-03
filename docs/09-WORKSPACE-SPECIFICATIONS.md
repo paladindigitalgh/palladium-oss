@@ -351,39 +351,64 @@ It answers one question:
 
 ## Header
 
-The header should include:
+`WorkspaceHeader` with a title and subtitle only — no organization
+selector, global search, current time, active-workflow indicator, or
+notification center. None of those exist anywhere in this app yet (no
+multi-tenant concept, no global search, no notifications); the header
+does not simulate having them.
 
--   Organization selector
--   Global search
--   Current time
--   Active workflow indicator
--   Notification center
+## Stats
 
-## Primary Panels
+Four `StatisticCard`s, each a real query, not a mock number:
 
--   Network Health
--   Active Alarms
--   Running Workflows
--   Recently Modified Services
--   Recent Customer Activity
--   Device Health Summary
--   Capacity Overview
--   Quick Actions
+-   Customers — total count.
+-   Active Services — count with status `Active`.
+-   Devices — total count.
+-   Pending Tasks — count of `WorkflowInstance`s with status `Pending`
+    or `Failed`. `warning` variant when non-zero, `neutral` when zero
+    (docs/08-DESIGN-SYSTEM.md section 3: calm under normal operation,
+    visually emphatic only when action is required).
+
+A "System Health" stat was considered and deliberately left out:
+`/healthz`/`/readyz` exist but are mounted outside `/api/v1`
+(unauthenticated, a different base path than every other endpoint this
+frontend calls), and wiring one stat to a separate fetch mechanism was
+not worth what it would buy.
+
+## Widgets
+
+Three `DashboardWidget`s, each backed by `useDashboard.ts`:
+
+-   **Recent Activity** — the most recent Events system-wide (`GET
+    /api/v1/events/recent`, a small, deliberately bounded addition to
+    the Event domain — see `internal/event/httpapi`'s own doc comment
+    for why this is a different, safe shape from the per-entity
+    `/events` endpoint, which stays unbounded-refused by design).
+-   **Network Overview** — real counts: Access Networks, OLTs, PON
+    Ports, and Access Interfaces split by Active/Disabled (a real
+    administrative field, not live telemetry). No online/active ratios
+    — Palladium has no telemetry to report one.
+-   **Pending Tasks** — the actual Pending/Failed `WorkflowInstance`s
+    behind the stat above, each linking to its Service.
+
+"Active Alerts" (a stat and a widget in earlier drafts of this
+document) does not exist and will not: no alert concept exists
+anywhere in the domain model, and per CLAUDE.md, Palladium is not a
+monitoring platform. Same reasoning that already excludes
+Alarms/Performance sections from the Device and Service Detail
+Workspaces.
 
 ## Primary Actions
 
--   Launch global search
--   Open workflows
--   View alarms
--   Create customer
--   Provision service
--   Replace ONU
--   Open administration
+None today — the Dashboard is read-only. `Create Customer` /
+`Provision Service` / etc. live on their own workspaces, reached via
+global navigation, not launched from here.
 
 ## Design Principle
 
 The Dashboard should summarize operations, not replace dedicated
-workspaces.
+workspaces. Every panel above is real data or absent — nothing on this
+page is illustrative.
 
 # 8. Customer Workspace
 
