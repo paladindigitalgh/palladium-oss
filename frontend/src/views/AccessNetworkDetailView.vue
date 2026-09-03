@@ -1,0 +1,186 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import DetailWorkspace from '@/components/workspace/DetailWorkspace.vue'
+import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
+import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
+import SectionCard from '@/components/data-display/SectionCard.vue'
+import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/SimpleTable.vue'
+import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
+import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
+import BaseButton from '@/components/base/BaseButton.vue'
+import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
+import BaseErrorState from '@/components/base/BaseErrorState.vue'
+import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import { getAccessNetworkById, deleteAccessNetwork } from '@/services/accessNetworks/accessNetworkRepository'
+import { listOLTsByAccessNetworkId } from '@/services/olts/oltRepository'
+import { listEvents } from '@/services/events/eventRepository'
+import { formatDisplayDate as formatDate } from '@/lib/dates'
+import { ApiError } from '@/services/api/httpClient'
+import type { AccessNetwork } from '@/types/accessNetwork'
+import type { OLT } from '@/types/olt'
+import type { TimelineEvent } from '@/types/timelineEvent'
+
+/**
+ * The Access Network Detail Workspace, root of the access-network
+ * hierarchy (AccessNetwork -> OLT -> PONPort -> AccessInterface ->
+ * AccessAttachment). Mirrors CustomerDetailView.vue's shape -- Summary,
+ * a nested-resource section, Timeline, delete-with-conflict-handling.
+ *
+ * The OLTs section is read-only for now (list only, no Add/Remove, no
+ * row click) -- OLTFormDialog.vue and OLTDetailView.vue land in the next
+ * commit, which is what actually wires this section up, the same way
+ * NetworkCollectionView.vue shipped list-only before this commit added
+ * somewhere for its rows to go.
+ */
+const route = useRoute()
+const router = useRouter()
+
+const accessNetwork = ref<AccessNetwork | null>(null)
+const olts = ref<OLT[]>([])
+const timeline = ref<TimelineEvent[]>([])
+const loading = ref(true)
+const notFound = ref(false)
+
+async function load(id: string) {
+  loading.value = true
+  notFound.value = false
+  accessNetwork.value = null
+  olts.value = []
+  timeline.value = []
+
+  const result = await getAccessNetworkById(id)
+  if (!result) {
+    notFound.value = true
+    loading.value = false
+    return
+  }
+  accessNetwork.value = result
+
+  const [accessNetworkOLTs, events] = await Promise.all([listOLTsByAccessNetworkId(id), listEvents('access_network', id)])
+  olts.value = accessNetworkOLTs
+  timeline.value = events
+
+  loading.value = false
+}
+
+onMounted(() => load(route.params.id as string))
+watch(
+  () => route.params.id,
+  (id) => load(id as string),
+)
+
+const summaryFacts = computed<Fact[]>(() => {
+  const a = accessNetwork.value
+  if (!a) return []
+  return [
+    { icon: 'health', label: 'Status', value: a.status },
+    { icon: 'clock', label: 'Created', value: formatDate(a.createdAt) },
+  ]
+})
+
+const oltColumns: SimpleTableColumn[] = [
+  { key: 'name', label: 'OLT' },
+  { key: 'vendor', label: 'Vendor / Model' },
+]
+
+const timelineEntries = computed(() =>
+  timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
+)
+
+// --- Delete Access Network ---
+
+const showDeleteDialog = ref(false)
+const deletePending = ref(false)
+const deleteError = ref<string | null>(null)
+
+async function confirmDeleteAccessNetwork() {
+  if (!accessNetwork.value) return
+  deletePending.value = true
+  deleteError.value = null
+  try {
+    await deleteAccessNetwork(accessNetwork.value.id)
+    router.push('/network')
+  } catch (err) {
+    deleteError.value =
+      err instanceof ApiError && err.kind === 'conflict'
+        ? 'This access network still has OLTs attached — remove those first.'
+        : 'The access network could not be deleted.'
+  } finally {
+    deletePending.value = false
+  }
+}
+</script>
+
+<template>
+  <div v-if="loading" class="access-network-detail-view__status">
+    <BaseLoadingState :lines="8" />
+  </div>
+
+  <div v-else-if="notFound" class="access-network-detail-view__status">
+    <BaseErrorState
+      title="Access network not found"
+      description="This access network may have been removed, or the link may be out of date."
+    >
+      <BaseButton variant="secondary" @click="router.push('/network')">Back to Network</BaseButton>
+    </BaseErrorState>
+  </div>
+
+  <DetailWorkspace v-else-if="accessNetwork">
+    <WorkspaceHeader
+      :title="accessNetwork.name"
+      :status="{ label: accessNetwork.status, variant: accessNetwork.status === 'Active' ? 'success' : 'neutral' }"
+      :metadata="[`Access Network ${accessNetwork.id}`]"
+    >
+      <template #actions>
+        <WorkspaceActions>
+          <template #secondary>
+            <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">
+              Delete Access Network
+            </BaseButton>
+          </template>
+        </WorkspaceActions>
+      </template>
+    </WorkspaceHeader>
+
+    <ConfirmationDialog
+      :open="showDeleteDialog"
+      title="Delete Access Network"
+      :description="`Permanently delete ${accessNetwork.name}? This cannot be undone.`"
+      confirm-label="Delete Access Network"
+      destructive
+      :pending="deletePending"
+      :error="deleteError"
+      @confirm="confirmDeleteAccessNetwork"
+      @cancel="showDeleteDialog = false"
+    />
+
+    <SectionCard title="Summary" icon="network">
+      <FactGrid :facts="summaryFacts" />
+      <p v-if="accessNetwork.description" class="access-network-description">{{ accessNetwork.description }}</p>
+    </SectionCard>
+
+    <SectionCard title="OLTs" icon="network" :badge="olts.length">
+      <SimpleTable :columns="oltColumns" :rows="olts" :row-key="(olt) => olt.id" empty-icon="network" empty-title="No OLTs on file">
+        <template #cell-name="{ row }">{{ row.name }}</template>
+        <template #cell-vendor="{ row }">{{ row.vendor }} {{ row.model }}</template>
+      </SimpleTable>
+    </SectionCard>
+
+    <SectionCard title="Timeline" icon="history">
+      <TimelineEntries :entries="timelineEntries" />
+    </SectionCard>
+  </DetailWorkspace>
+</template>
+
+<style scoped>
+.access-network-detail-view__status {
+  padding: var(--space-6);
+}
+
+.access-network-description {
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+</style>

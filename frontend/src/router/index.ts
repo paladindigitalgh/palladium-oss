@@ -75,6 +75,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/ServiceDetailView.vue'),
   },
   {
+    // The Access Network Detail Workspace, root of the access-network
+    // hierarchy -- reached from the Network Collection View, same
+    // pattern as /customers/:id above.
+    path: '/network/:id',
+    name: 'access-network-detail',
+    component: () => import('@/views/AccessNetworkDetailView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),

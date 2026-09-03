@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
+import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import BaseCard from '@/components/base/BaseCard.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseBadge from '@/components/base/BaseBadge.vue'
+import BaseButton from '@/components/base/BaseButton.vue'
 import CollectionToolbar from '@/components/data-display/CollectionToolbar.vue'
 import DataTable, { type DataTableColumn } from '@/components/data-display/DataTable.vue'
+import AccessNetworkFormDialog from '@/components/dialogs/AccessNetworkFormDialog.vue'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
-import type { AccessNetworkStatus } from '@/types/accessNetwork'
+import type { AccessNetwork, AccessNetworkStatus } from '@/types/accessNetwork'
 import { useAccessNetworkCollection, type AccessNetworkSortKey } from '@/composables/useAccessNetworkCollection'
 
 /**
@@ -15,10 +20,10 @@ import { useAccessNetworkCollection, type AccessNetworkSortKey } from '@/composa
  * AccessAttachment, docs/03-DOMAIN-MODEL.md), built entirely from the
  * same Collection Workspace components DeviceCollectionView.vue
  * introduced -- nothing network-specific lives in those components, only
- * in this view and its own composable/repository. Create and row-click
- * navigation land in the next commit alongside AccessNetworkDetailView.vue
- * -- there is nowhere for a row click to go yet.
+ * in this view and its own composable/repository.
  */
+const router = useRouter()
+
 const { search, status, sortKey, sortDirection, toggleSort, page, pageSize, accessNetworks, total, loading } =
   useAccessNetworkCollection()
 
@@ -39,14 +44,43 @@ const STATUS_VARIANTS: Record<AccessNetworkStatus, 'success' | 'neutral'> = {
   Inactive: 'neutral',
 }
 
+function rowLabel(accessNetwork: AccessNetwork): string {
+  return `Open ${accessNetwork.name}`
+}
+
+function openAccessNetwork(accessNetwork: AccessNetwork) {
+  router.push(`/network/${accessNetwork.id}`)
+}
+
 function handleSort(key: string) {
   toggleSort(key as AccessNetworkSortKey)
+}
+
+const showNewAccessNetworkDialog = ref(false)
+
+function handleAccessNetworkCreated(accessNetwork: AccessNetwork) {
+  showNewAccessNetworkDialog.value = false
+  router.push(`/network/${accessNetwork.id}`)
 }
 </script>
 
 <template>
   <div class="network-collection-view">
-    <WorkspaceHeader title="Network" subtitle="Search access networks, OLTs, and PON ports." />
+    <WorkspaceHeader title="Network" subtitle="Search access networks, OLTs, and PON ports.">
+      <template #actions>
+        <WorkspaceActions>
+          <template #primary>
+            <BaseButton variant="primary" size="sm" @click="showNewAccessNetworkDialog = true">New Access Network</BaseButton>
+          </template>
+        </WorkspaceActions>
+      </template>
+    </WorkspaceHeader>
+
+    <AccessNetworkFormDialog
+      :open="showNewAccessNetworkDialog"
+      @close="showNewAccessNetworkDialog = false"
+      @created="handleAccessNetworkCreated"
+    />
 
     <CollectionToolbar v-model:search="search" search-placeholder="Search by name or access network ID">
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
@@ -57,6 +91,7 @@ function handleSort(key: string) {
         :columns="columns"
         :rows="accessNetworks"
         :row-key="(accessNetwork) => accessNetwork.id"
+        :row-label="rowLabel"
         :loading="loading"
         :sort-key="sortKey"
         :sort-direction="sortDirection"
@@ -65,6 +100,7 @@ function handleSort(key: string) {
         :total="total"
         empty-title="No access networks match these filters"
         empty-description="Try a different search term or clearing a filter."
+        @row-click="openAccessNetwork"
         @sort="handleSort"
         @update:page="(next) => (page = next)"
       >
