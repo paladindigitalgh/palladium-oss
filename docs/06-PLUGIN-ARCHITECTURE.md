@@ -22,6 +22,29 @@ plugin system.
 
 ------------------------------------------------------------------------
 
+## Implementation Status (v1)
+
+Everything below this line describes the target design. What exists
+today (see `internal/plugin/`) is a deliberately minimal slice of it:
+
+-   A `Plugin` (`internal/plugin/plugin.go`) is just
+    `Name()/Vendor()/Capabilities()/Execute()`. There is no
+    manifest-based discovery, no Driver interface, no Transport
+    abstraction, no Plugin Context object, and no version/compatibility
+    negotiation.
+-   The `Registry` is an in-memory map. Every plugin registers once at
+    startup, before the HTTP server starts serving requests -- nothing
+    is discovered or loaded at runtime, and there is no hot-swap or
+    marketplace concept.
+-   Only one plugin exists today: `internal/plugin/mock`, a simulated
+    vendor. No real Kontron, Nokia, Calix, Adtran, or MikroTik
+    integration has been built yet.
+
+Treat the rest of this document as where the plugin system is headed,
+not a description of `internal/plugin/` as it stands.
+
+------------------------------------------------------------------------
+
 # Table of Contents
 
 1.  Purpose

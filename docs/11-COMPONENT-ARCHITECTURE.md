@@ -71,14 +71,20 @@ replacing or modifying core UI components.
 ``` text
 App
 └── AppShell
-    ├── Sidebar
+    ├── AppSidebar
     ├── TopNavigation
-    ├── GlobalSearch
-    ├── NotificationCenter
-    ├── WorkflowDrawer
-    ├── CommandPalette
+    │   ├── Breadcrumbs
+    │   ├── GlobalSearch
+    │   ├── NotificationCenter
+    │   └── UserMenu
     └── WorkspaceHost
 ```
+
+`AppSidebar`, `Breadcrumbs`, and `TopNavigation` live under `components/navigation/`;
+`GlobalSearch`, `NotificationCenter`, and `UserMenu` live under `components/app/`
+(TopNavigation composes them rather than AppShell rendering them as flat
+siblings). `CommandPalette` and `WorkflowDrawer` do not exist -- no
+command palette or drawer has been built anywhere in the app.
 
 The AppShell should remain persistent throughout the lifetime of the
 application. Only the WorkspaceHost changes as users navigate.
@@ -266,40 +272,48 @@ Chronological history including:
 
 ## Forms
 
--   FormLayout
--   PropertyEditor
--   AddressEditor
--   CustomerSelector
--   DeviceSelector
--   WorkflowSelector
+There is no intermediate form-layout or field-editor component. Every
+create/edit form is built directly from two primitives --
+`BaseInput` and `BaseSelect` (see "Base Components") -- composed inline
+inside a `dialogs/*FormDialog.vue` component:
+
+-   CustomerFormDialog
+-   DeviceFormDialog (the one dual-mode create/edit dialog; every other
+    `*FormDialog` is create-only)
+-   LocationFormDialog
+-   ServiceFormDialog
 
 ## Actions
 
--   ActionMenu
--   ConfirmationDialog
--   BulkActionToolbar
--   WorkflowLauncher
+-   ConfirmationDialog -- the shared confirm/cancel dialog every delete
+    in the app goes through
+-   Workflow launching has no dedicated component: the Service Detail
+    Workspace's primary action button (Provision/Suspend/Resume) is a
+    plain `BaseButton` whose label and target workflow definition follow
+    the Service's current status. `ActionMenu`, `BulkActionToolbar`, and
+    a dedicated `WorkflowLauncher` component do not exist.
 
 ------------------------------------------------------------------------
 
 # Domain Components
 
-Domain components should primarily configure shared components.
+The app took a more reuse-oriented path than a per-domain card for every
+entity: one generic `RelationshipCard` (`components/data-display/`)
+handles every cross-entity link -- a Service Detail Workspace's Customer
+section, a Device Detail Workspace's Assignment section, a Customer
+Detail Workspace's rows into Locations/Services, and so on -- rather than
+`CustomerCard`, `ServiceCard`, `DeviceCard`, or similar per-domain
+components, none of which exist.
 
-Examples:
+`RelationshipCard` takes `eyebrow`, `title`, an optional `meta` line, and
+an optional `to` route: given `to`, it renders a real `RouterLink` to the
+related object's own Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
+"Canonical Detail Views"); without `to`, it renders as a plain
+non-interactive block instead of a dead link -- for a relationship that
+exists conceptually but has nowhere to navigate to yet.
 
-``` text
-CustomerCard
-ServiceCard
-DeviceCard
-ONUCard
-OLTCard
-SplitterCard
-WorkflowCard
-PluginCard
-```
-
-Avoid embedding business logic inside these components.
+Avoid embedding business logic inside domain-specific usages of shared
+components.
 
 ------------------------------------------------------------------------
 
@@ -383,11 +397,17 @@ Low-level UI primitives.
 
 Examples:
 
+-   BaseBadge
 -   BaseButton
 -   BaseCard
+-   BaseEmptyState
+-   BaseErrorState
 -   BaseIcon
 -   BaseInput
+-   BaseLoadingState
 -   BaseModal
+-   BasePropertyGrid
+-   BaseSelect
 
 ### BaseIcon and the Icon Library
 
@@ -429,11 +449,14 @@ Examples:
 
 ## Domain Components
 
-Examples:
+In practice this category is thin -- see "Domain Components" above for
+why (`RelationshipCard` covers the cross-entity-link case a per-domain
+`CustomerCard`/`DeviceCard` would otherwise exist for). A domain
+component is warranted only for something genuinely entity-specific with
+no shared shape to reuse, e.g.:
 
--   CustomerCard
--   DeviceSummary
--   WorkflowStatus
+-   DeviceFormDialog (dialogs/, not domain/ -- see "Recommended Folder
+    Structure")
 
 ## Plugin Components
 
@@ -450,25 +473,29 @@ Examples:
 ``` text
 src/
 ├── components/
-│   ├── app/
-│   ├── base/
-│   ├── navigation/
-│   ├── workspace/
+│   ├── app/           # GlobalSearch, NotificationCenter, UserMenu
+│   ├── base/           # BaseButton, BaseInput, BaseModal, ...
 │   ├── dashboard/
-│   ├── data-display/
-│   ├── forms/
-│   ├── dialogs/
-│   ├── customer/
-│   ├── service/
-│   ├── device/
-│   ├── workflow/
-│   └── plugin/
+│   ├── data-display/    # DataTable, SectionCard, RelationshipCard, ...
+│   ├── dialogs/         # every *FormDialog + ConfirmationDialog
+│   ├── navigation/       # AppSidebar, TopNavigation, Breadcrumbs
+│   └── workspace/       # DetailWorkspace, WorkspaceHeader, ...
 ├── composables/
-├── services/
-├── stores/
+├── lib/
 ├── router/
+├── services/            # one directory per domain's *Repository.ts
+├── styles/
+├── types/
 └── views/
 ```
+
+Components are organized by **type**, not by domain (no `customer/`,
+`service/`, `device/`, `workflow/`, or `plugin/` subdirectory) --
+consistent with "Domain Components" above, which favors one generic
+`RelationshipCard` over per-domain components. There is no `stores/`
+directory: state that isn't server data lives in `composables/` as
+module-scope singletons (see "State Ownership" below and
+`composables/useAuth.ts` for the pattern).
 
 ------------------------------------------------------------------------
 

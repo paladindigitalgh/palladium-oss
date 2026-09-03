@@ -30,8 +30,8 @@ ownership, and relationships.
 3.  Core Domain Concepts
 4.  Customer
 5.  Service
-6.  Asset
-7.  Equipment Assignment
+6.  Device
+7.  Service Equipment
 8.  Site
 9.  Relationship Overview
 
@@ -94,8 +94,8 @@ The core domain of Palladium consists of the following primary entities.
 
 -   Customer
 -   Service
--   Asset
--   Equipment Assignment
+-   Device
+-   Service Equipment
 -   Site
 -   Workflow
 -   Event
@@ -161,43 +161,48 @@ Services use equipment.
 Keeping these concepts separate greatly simplifies long-term system
 evolution.
 
-# 6. Asset
+# 6. Device
 
-An Asset represents a managed piece of physical network equipment that
+A Device represents a managed piece of physical equipment that
 Palladium is capable of identifying, tracking, and operating.
 
-Version 1 recognizes three primary asset types:
+Device is deliberately generic and vendor-agnostic. It carries no
+type/subtype distinction — Manufacturer, Model, and Serial Number are
+plain fields on the one Device concept, not a taxonomy of device kinds.
+Function- and vendor-specific concepts (OLTs, routers, switches, cards,
+ports, splitters, ...) are out of scope for Device itself; they are
+either their own domain (see OLT below) or belong to a future,
+more-specific model layered on top of Device once one is needed.
 
--   OLT
--   ONU
--   Router
-
-Future asset types may be added without changing the core domain model.
+Note: OLT is **not** a kind of Device. It is a separate domain rooted at
+Access Network (Access Network → OLT → PON Port → Access Interface →
+Access Attachment) with no relationship to Device or Site at all — see
+the Site section below.
 
 ## Responsibilities
 
-An Asset is responsible for maintaining:
+A Device is responsible for maintaining:
 
 -   Identity
--   Vendor
+-   Manufacturer
 -   Model
 -   Serial number
+-   Asset tag
 -   Operational status
--   Physical location
+-   Physical location (optional — a Device may exist unracked)
 -   Current assignment
 
-Assets exist independently of customers.
+Devices exist independently of customers.
 
-An ONU sitting on a shelf is still an asset.
-
-A router awaiting deployment is still an asset.
+A Device sitting in a warehouse, not yet racked or assigned, is still a
+Device.
 
 ------------------------------------------------------------------------
 
-# 7. Equipment Assignment
+# 7. Service Equipment
 
-Equipment Assignment represents the relationship between a Service and
-one or more Assets.
+Service Equipment represents the relationship between a Service and one
+or more Devices.
 
 This entity exists because equipment assignments change over time while
 the equipment itself remains the same.
@@ -215,16 +220,16 @@ its lifecycle.
 
 ## Responsibilities
 
-Equipment Assignment records:
+Service Equipment records:
 
 -   Assigned service
--   Assigned asset
+-   Assigned device
 -   Assignment date
 -   Removal date
 -   Assignment reason
 -   Current status
 
-Only one active assignment should exist for a given asset at a time.
+Only one active assignment should exist for a given device at a time.
 
 Historical assignments are never deleted.
 
@@ -242,14 +247,18 @@ Examples include:
 -   Remote Cabinet
 -   Data Center
 
-Sites provide operational context for assets.
+Sites provide operational context for devices, via the Inventory
+hierarchy: Site → Building → Room → Rack → Device.
 
 A Site may contain:
 
--   OLTs
--   Routers
--   Network infrastructure
+-   Buildings, Rooms, and Racks
+-   Devices installed in those Racks
 -   Supporting equipment
+
+Note: OLT does not belong to this hierarchy at all. It lives in a
+separate domain rooted at Access Network, with no relationship to Site
+— see the Device section above.
 
 Customers are not located at Sites.
 
@@ -264,15 +273,21 @@ straightforward.
 
 Customer → owns one or more Services
 
-Service → has one or more Equipment Assignments
+Service → has one or more Service Equipment records
 
-Equipment Assignment → references exactly one Asset
+Service Equipment → references exactly one Device
 
-Asset → belongs to one Site
+Device → optionally belongs to one Site (indirectly, via Rack → Room →
+Building → Site — a Device may also exist unracked, belonging to no
+Site yet)
 
 This structure separates business relationships from physical
 infrastructure, allowing equipment to be reassigned without altering
 customer or service history.
+
+Note: OLT has no place in this relationship chain — it belongs to its
+own Access Network hierarchy, never to a Site, and is never referenced
+by Service Equipment (that always references a Device).
 
 ------------------------------------------------------------------------
 
@@ -361,7 +376,7 @@ Examples include:
 -   Router synchronized
 -   Workflow completed
 -   Workflow failed
--   Asset assigned
+-   Device assigned
 
 Events provide the chronological history of Palladium.
 
@@ -447,8 +462,8 @@ The following responsibilities belong to the core domain:
 
 -   Customers
 -   Services
--   Assets
--   Equipment Assignments
+-   Devices
+-   Service Equipment
 -   Sites
 -   Workflows
 -   Workflow Instances
@@ -477,19 +492,32 @@ Understanding these lifecycles is critical to preserving data integrity.
 
 ## Customer
 
-Prospect → Active → Suspended → Closed
+Active, Inactive, Archived — deliberately a flat, unordered set: a
+Customer's status answers "should this identity currently be treated as
+active," not "where are they in a provisioning workflow." See
+`internal/customer/status.go`.
 
 ## Service
 
-Requested → Provisioning → Active → Suspended → Decommissioned
+Pending → Active → Suspended → Disconnected. This is the typical
+progression, not a code-enforced sequence — `internal/service`'s status
+type has no transition guard of its own; nothing stops a caller from
+setting any valid status directly. The real enforcement lives one layer
+up, in `internal/workflow`: the provision-service/suspend-service/
+resume-service workflow definitions are what an operator actually
+triggers, and each maps to exactly one status change.
 
-## Asset
+## Device
 
-Inventory → Assigned → In Service → Maintenance → Retired
+Ordered → Received → In Stock → Installed → Maintenance → Retired →
+Disposed. Same caveat as Service: this is the expected real-world
+progression of a physical unit, not a code-enforced sequence.
 
 ## Workflow Instance
 
-Pending → Running → Completed \| Failed \| Cancelled
+Pending → Running → Succeeded \| Failed \| Cancelled. Unlike the three
+above, this one **is** code-enforced — see the transition map in
+`internal/workflow/status.go`.
 
 ## Event
 
@@ -506,9 +534,10 @@ The following rules must always remain true.
 
 -   A Customer may own multiple Services.
 -   A Service belongs to exactly one Customer.
--   An Asset may exist without being assigned.
--   An Asset may have only one active Equipment Assignment at a time.
--   Historical Equipment Assignments are never deleted.
+-   A Device may exist without being assigned.
+-   A Device may have only one active Service Equipment assignment at a
+    time.
+-   Historical Service Equipment records are never deleted.
 -   Workflow definitions are immutable once published.
 -   Workflow Instances are permanent historical records.
 -   Events are immutable.

@@ -24,6 +24,30 @@ principles of the Workflow Engine.
 
 ------------------------------------------------------------------------
 
+## Implementation Status (v1)
+
+Everything below this line describes the target design. What exists
+today (see `internal/workflow/`) is a deliberately minimal slice of it:
+
+-   A Definition (`internal/workflow/definition.go`) names exactly
+    **one** `plugin.Capability` -- there is no multi-step pipeline, no
+    rollback strategy, no resource locking, and no definition
+    versioning.
+-   Execution is **synchronous**: creating a WorkflowInstance and then
+    immediately calling `.../execute` runs the whole thing in that one
+    request. There is no job queue, no polling, and no real-time
+    progress streaming.
+-   Retry resets a Failed instance back to Pending once, operator
+    triggered -- there is no automatic backoff.
+-   Six Definitions exist today: `provision-service`,
+    `reprovision-service`, `suspend-service`, `resume-service`,
+    `disconnect-service`, `synchronize-service`.
+
+Treat the rest of this document as where the engine is headed, not a
+description of `internal/workflow/` as it stands.
+
+------------------------------------------------------------------------
+
 # Table of Contents
 
 1.  Purpose

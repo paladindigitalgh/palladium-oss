@@ -86,9 +86,8 @@ Version 1 focuses on:
 -   Service management
 -   OLT management
 -   ONU and router asset management
--   Workflow engine
+-   Workflow engine (including provisioning)
 -   Diagnostics engine
--   Provisioning engine
 -   Explorer (ad hoc query and reporting engine)
 -   Authentication and RBAC
 

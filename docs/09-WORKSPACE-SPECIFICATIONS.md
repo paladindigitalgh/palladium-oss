@@ -193,9 +193,9 @@ Collection Views should **not**:
 The exact columns vary by entity, but every Collection View should
 remain intentionally minimal. For example:
 
-**Customers:** Customer, Location, Primary Service
+**Customers:** Customer, Location, Status
 
-**Devices:** Hostname, Device Type, Status
+**Devices:** Device (name + serial number), Manufacturer / Model, Status, Created
 
 **Inventory:** Asset, Model, Location
 
@@ -270,8 +270,8 @@ consistently across the Customer, Device, Service, Inventory, Network,
 and future Detail Workspaces (see section 4, "Workspace Archetypes," for
 which workspaces those are).
 
-Example (Customer Workspace): Summary, Services, Devices, Contacts,
-Alerts, Activity, Timeline, Notes.
+Example (Customer Workspace): Summary, Locations, Services, Timeline
+(see section 8 for the current, real section list).
 
 ## Workspace Header
 
@@ -394,8 +394,8 @@ a customer relationship.
 
 It should answer:
 
-**"Who is this customer, what services do they have, and what has
-happened recently?"**
+**"Who is this customer, what locations and services do they have, and
+what has happened recently?"**
 
 ## Primary Audience
 
@@ -409,35 +409,45 @@ happened recently?"**
 Display:
 
 -   Customer name
--   Account number
--   Service status
--   Contact information
--   Tags
--   Recent alerts
+-   Customer type (Residential, Business, Government, Internal), as the
+    subtitle
+-   Status
+-   Customer ID, as metadata
+
+A Customer is an identity record only (docs/03-DOMAIN-MODEL.md, section
+4): no account number, contact information, tags, or alerts exist on the
+Customer record itself, so none of these appear in the header.
 
 ## Primary Actions
 
--   Provision service
--   Suspend or restore service
--   Replace ONU
--   Launch diagnostics
--   View invoices (future)
--   Open related workflows
+-   Delete Customer
+-   Add Location
+-   Add Service
+
+Provisioning and suspending a service, and every other workflow-driven
+action, live on the **Service** Workspace (section 9), not here -- a
+Customer can have several Services, each independently provisioned,
+suspended, or resumed.
 
 ## Sections
 
--   Customer Summary
--   Active Services
--   Assigned Equipment
--   Recent Workflows
--   Timeline
--   Notes
--   Related Sites
+-   Summary (status, customer type, created date, description)
+-   Locations -- every Location on the account, with Add/Remove
+-   Services -- every Service across every Location, with Add/Remove;
+    opens the Service Workspace
+-   Timeline -- the Customer's real audit trail (docs/02-DESIGN-PRINCIPLES.md
+    principle 10), sourced from the Event domain
+
+Equipment, workflow history, and diagnostics belong to a Service, not a
+Customer directly (docs/03-DOMAIN-MODEL.md: a Customer owns Services
+through Locations, and equipment is associated through Services) -- see
+those sections on the Service Workspace instead. There is no Notes
+feature in Version 1.
 
 ## Navigation
 
-Every related service, device, or workflow should open its own Workspace
-while preserving the Customer Workspace.
+Every related location or service should open its own Workspace while
+preserving the Customer Workspace.
 
 ------------------------------------------------------------------------
 
@@ -445,42 +455,57 @@ while preserving the Customer Workspace.
 
 ## Purpose
 
-The Service Workspace focuses on a single customer service.
+The Service Workspace focuses on a single customer service. It is where
+the Workflow Engine is actually exercised: provisioning, suspending, and
+resuming a Service each run a real Workflow (05-WORKFLOW-ENGINE.md)
+against the vendor plugin registered for it.
 
 It should answer:
 
-**"Is this service healthy, correctly provisioned, and operating as
-expected?"**
+**"Is this service correctly provisioned, and what has it done?"**
 
 ## Header
 
 Include:
 
 -   Service identifier
--   Customer
--   Technology
 -   Status
--   Provisioned speed
--   Current utilization
+
+A Service record (docs/03-DOMAIN-MODEL.md) is lean: no technology,
+provisioned speed, or utilization field exists on it. Customer and
+Location are shown as their own sections below, not header fields --
+richer service detail (technology, speed tier) belongs to Product and
+Service Profile, neither of which has its own read model yet.
 
 ## Primary Actions
 
--   Change speed profile
--   Suspend service
--   Resume service
--   Run diagnostics
--   Replace ONU
--   View configuration
+-   Delete Service
+-   One dynamic primary action, following the Service's current status:
+    **Provision Service** (Pending), **Suspend Service** (Active), or
+    **Resume Service** (Suspended). Each runs the matching Workflow
+    Definition (provision-service, suspend-service, resume-service --
+    see 05-WORKFLOW-ENGINE.md) and updates the Service's own status when
+    it succeeds.
+
+There is no speed-profile change, diagnostics, or configuration-view
+action in Version 1.
 
 ## Sections
 
--   Service Summary
--   Assigned Equipment
--   Provisioning Details
--   Performance
--   Active Alarms
--   Timeline
--   Running Workflows
+-   Summary (status, activated/suspended/disconnected dates, description)
+-   Customer -- the owning Customer, resolved through the Service's
+    Location
+-   Location -- the Service's Location
+-   Equipment -- the Service's Service Equipment assignments (role,
+    device, installed date)
+-   Workflow History -- every WorkflowInstance run against this Service
+    (definition, status, started date)
+-   Timeline -- the Service's real audit trail, sourced from the Event
+    domain
+
+There are no Performance or Active Alarms sections -- that data is
+monitoring/telemetry, out of scope per CLAUDE.md ("Palladium is NOT... a
+monitoring platform").
 
 ------------------------------------------------------------------------
 
@@ -488,46 +513,46 @@ Include:
 
 ## Purpose
 
-The Device Workspace provides a complete operational view of an
-individual managed device.
+The Device Workspace provides a complete inventory view of an individual
+physical Device: what it is, where it sits in the Rack hierarchy
+(docs/03-DOMAIN-MODEL.md), its lifecycle status, and which Service, if
+any, it currently fulfills.
 
-Supported devices include:
-
--   OLTs
--   ONUs
--   Routers
--   Switches
--   Access Points
--   Future vendor devices
+Device is deliberately generic -- there is no type/subtype field, no
+"OLT" or "ONU" or "Router" distinction (docs/03-DOMAIN-MODEL.md, section
+6). This is not a gap to fill in later: a Device workspace showing
+software version, interfaces, performance, or alarms would be a
+monitoring/NMS feature, and CLAUDE.md is explicit that Palladium is NOT a
+monitoring platform ("Monitoring belongs in Zabbix or other monitoring
+systems"). This workspace's scope stops at inventory and assignment.
 
 ## Header
 
 Display:
 
--   Hostname
--   Vendor
--   Model
--   Serial number
--   Software version
--   Operational status
+-   Device name
+-   Manufacturer and model, as the subtitle
+-   Status (Ordered, Received, In Stock, Installed, Maintenance,
+    Retired, or Disposed -- docs/03-DOMAIN-MODEL.md, section 16)
+-   Serial number, and asset tag when set, as metadata
 
 ## Primary Actions
 
--   Reboot
--   Upgrade firmware
--   Synchronize configuration
--   Run diagnostics
--   Open console (where supported)
+-   Edit Device
+-   Delete Device
 
 ## Sections
 
--   Inventory
--   Interfaces
--   Configuration
--   Performance
--   Alarms
--   Timeline
--   Running Workflows
+-   Summary (manufacturer, model, asset tag, created/updated dates,
+    description)
+-   Assignment -- every active Service Equipment link, each resolving to
+    the Service it fulfills; an empty state when the Device is not
+    currently assigned
+-   Timeline -- the Device's real audit trail, sourced from the Event
+    domain
+
+There are no Interfaces, Configuration, Performance, Alarms, or Running
+Workflows sections -- see this section's Purpose note above.
 
 ------------------------------------------------------------------------
 

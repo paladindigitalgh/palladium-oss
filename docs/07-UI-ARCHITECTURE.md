@@ -142,10 +142,17 @@ Examples include:
 -   Dashboard
 -   Customers
 -   Services
+-   Devices
+-   Network
 -   Inventory
--   Monitoring
--   Workflows
+-   Explorer
 -   Administration
+
+Note: Monitoring is deliberately not a Palladium nav area -- Palladium
+is not a monitoring platform (CLAUDE.md, "What Palladium Is Not").
+Workflow visibility lives inside the relevant Entity Workspace (e.g.
+the Service Detail Workspace's workflow history), not as its own
+top-level nav destination.
 
 Most day-to-day navigation should originate from global search rather
 than menu traversal.

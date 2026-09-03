@@ -19,9 +19,9 @@
 
 - [x] PostgreSQL connection
 - [x] Goose migrations
-- [ ] Base schema
+- [x] Base schema
 - [x] Migration tooling
-- [ ] Repository layer
+- [x] Repository layer
 
 ---
 
@@ -29,7 +29,7 @@
 
 - [x] User model
 - [x] Roles
-- [ ] Permissions
+- [x] Permissions (RBAC capabilities, see internal/authz)
 - [x] JWT
 - [ ] OIDC
 - [x] Login API
@@ -38,11 +38,13 @@
 
 ## Phase 3 — Inventory
 
+Hierarchy is Site -> Building -> Room -> Rack -> Device (internal/inventory).
+
 - [x] Sites
 - [ ] Buildings
-- [ ] Cabinets
+- [ ] Rooms
 - [ ] Racks
-- [ ] Devices
+- [x] Devices
 - [ ] Inventory history
 
 ---
@@ -56,14 +58,16 @@
 - [ ] VLANs
 - [ ] IP pools
 
+Backend covers AccessNetwork -> OLT -> PONPort -> AccessInterface -> AccessAttachment, full CRUD. Frontend Network workspace is in progress.
+
 ---
 
 ## Phase 5 — Customers
 
 - [x] Customers
-- [x] Addresses
+- [x] Locations
 - [ ] Contacts
-- [ ] Service assignments
+- [x] Service Equipment (Service <-> Device assignment)
 
 ---
 
@@ -77,33 +81,36 @@
 
 ## Phase 7 — Workflow Engine
 
-- [ ] Workflow model
-- [ ] Task execution
-- [ ] Job queue
-- [ ] Retry logic
-- [ ] Audit trail
+- [x] Workflow model
+- [x] Task execution (engine dispatches to plugin capabilities)
+- [ ] Job queue (execution is synchronous today, no async queue)
+- [x] Retry logic
+- [x] Audit trail (Event domain)
 
 ---
 
 ## Phase 8 — Plugins
 
-- [ ] Plugin SDK
-- [ ] Plugin loader
-- [ ] Capability discovery
+- [x] Plugin SDK (internal/plugin)
+- [x] Plugin loader (registry)
+- [x] Capability discovery
 - [ ] Kontron plugin
 - [ ] MikroTik plugin
 - [ ] GenieACS plugin
+
+Only a simulated mock plugin (internal/plugin/mock) exists today; no real vendor plugin has been built yet.
 
 ---
 
 ## Phase 9 — Frontend
 
-- [ ] Vue application
-- [ ] Authentication
-- [ ] Dashboard
-- [ ] Inventory UI
-- [ ] Customer UI
-- [ ] Workflow UI
+- [x] Vue application
+- [x] Authentication
+- [ ] Dashboard (still placeholder data throughout, not wired to any real query -- see frontend/src/views/DashboardView.vue)
+- [x] Inventory UI (Device workspace; Building/Room/Rack have no UI, matching Phase 3)
+- [x] Customer UI
+- [x] Workflow UI (Provision/Suspend/Resume actions + workflow history on the Service Detail Workspace; no dedicated workflow-instance browser)
+- [x] Frontend test suite (Vitest + @vue/test-utils)
 
 ---
 

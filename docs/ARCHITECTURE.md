@@ -144,20 +144,13 @@ Palladium models every layer of this hierarchy.
 
 Responsible for all physical assets.
 
-Examples:
+Hierarchy: Site → Building → Room → Rack → Device.
 
-- Buildings
-- Cabinets
-- Racks
-- Shelves
-- Cards
-- OLTs
-- Switches
-- Routers
-- Splitters
-- Fiber
-- ONUs
-- Customer Premise Equipment
+Device is deliberately generic and vendor-agnostic — it carries no
+type/subtype distinction. Vendor- and function-specific equipment
+(OLTs, switches, routers, splitters, fiber, ONUs, ...) either belongs
+to its own domain (see Network below) or to a future, more specific
+model layered on top of Device.
 
 Inventory exists independently of customers.
 
@@ -195,23 +188,15 @@ Services consume inventory.
 
 Responsible for:
 
-- VLANs
-- IP pools
-- OLT ports
+- Access Networks
+- OLTs
 - PON ports
-- Service VLANs
-- VRFs
-- Routing relationships
-
----
-
-## Provisioning
-
-Responsible for executing changes.
-
-Provisioning is never performed directly.
-
-Everything becomes a workflow.
+- Access Interfaces
+- Access Attachments (linking equipment to an Access Interface)
+- VLANs (planned)
+- IP pools (planned)
+- VRFs (planned)
+- Routing relationships (planned)
 
 ---
 
@@ -279,11 +264,7 @@ Workflow Engine
 
 ↓
 
-Execution Queue
-
-↓
-
-Plugin Manager
+Plugin Registry
 
 ↓
 
@@ -470,13 +451,9 @@ Database
 
 - PostgreSQL
 
-Caching / Queue
-
-- Redis
-
 Authentication
 
-- OpenID Connect
+- JWT (OIDC planned — see Security Model)
 
 Deployment
 

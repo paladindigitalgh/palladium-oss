@@ -90,7 +90,7 @@ Examples include:
 -   Customer Workspace
 -   Service Workspace
 -   OLT Workspace
--   Asset Workspace
+-   Device Workspace
 
 ## Context Layer
 
@@ -245,20 +245,25 @@ Examples:
 
 -   `/customers` (Collection View) and `/customers/{id}` (Detail View)
 -   `/services` (Collection View) and `/services/{id}` (Detail View)
--   `/assets` (Collection View) and `/assets/{id}` (Detail View)
--   `/olts` (Collection View) and `/olts/{id}` (Detail View)
+-   `/devices` (Collection View) and `/devices/{id}` (Detail View)
 -   `/workflows` (Collection View) and `/workflows/{id}` (Detail View)
+
+Not every object has a top-level Collection View of its own. OLT, for
+example, is reached only through Access Network (`/network` ->
+`/network/{id}` -> `/network/olts/{id}`) rather than a bare `/olts`
+collection -- it is still a flat, directly-addressable, canonical URL,
+just one nested under the Network workspace rather than its own
+top-level entry point.
 
 A bookmarked URL should always restore the same workspace and context
 whenever practical.
 
-Nested resources should preserve their relationship while remaining
-directly addressable.
-
-Examples:
-
--   `/customers/{id}/services`
--   `/olts/{id}/onus`
+URLs are always flat, never resource-nested (e.g. never
+`/customers/{id}/services/{id}`), matching the canonical-Detail-View
+principle above: an object's URL depends only on the object, never on
+how it was reached. `/services/{id}` is a Service's one true address
+whether it was opened from the Customer that owns it, the Device
+serving it, or a direct search result.
 
 Human-readable URLs are preferred where they do not compromise
 uniqueness.
@@ -353,7 +358,7 @@ Potential future enhancements include:
 
 -   Command Palette with operational actions
 -   Recently Viewed workspaces
--   Favorite Customers, Services, and Assets
+-   Favorite Customers, Services, and Devices
 -   Pinned Workspaces
 -   Workspace templates
 -   Multi-workspace split view
