@@ -126,6 +126,42 @@ export async function createDevice(input: CreateDeviceInput): Promise<Device> {
   return fromDto(dto)
 }
 
+export interface UpdateDeviceInput {
+  name: string
+  manufacturer: string
+  model: string
+  serialNumber: string
+  assetTag: string
+  status: Device['status']
+  description: string
+  /**
+   * Not user-editable (see DeviceFormDialog.vue -- rack assignment has no
+   * UI yet, and this milestone's instruction is "not any IDs or anything
+   * database specific"). Callers pass the device's current rackId through
+   * unchanged: PUT replaces every mutable column (see
+   * internal/inventory/postgres/device.go's Update), so omitting it here
+   * would silently unrack an installed device.
+   */
+  rackId: string | null
+}
+
+export async function updateDevice(id: string, input: UpdateDeviceInput): Promise<Device> {
+  const dto = await apiFetch<DeviceDto>(`/devices/${id}`, {
+    method: 'PUT',
+    body: {
+      name: input.name,
+      manufacturer: input.manufacturer,
+      model: input.model,
+      serial_number: input.serialNumber,
+      asset_tag: input.assetTag,
+      status: input.status,
+      description: input.description,
+      rack_id: input.rackId,
+    },
+  })
+  return fromDto(dto)
+}
+
 /**
  * Deletes the Device identified by id. Device is a leaf in the Inventory
  * hierarchy -- no other table's foreign key can ever block this delete

@@ -13,6 +13,7 @@ import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import DeviceFormDialog from '@/components/dialogs/DeviceFormDialog.vue'
 import { getDeviceById, deleteDevice } from '@/services/devices/deviceRepository'
 import { listServiceEquipmentByDeviceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { getServiceById } from '@/services/services/serviceRepository'
@@ -102,6 +103,15 @@ const headerMetadata = computed<string[]>(() => {
   return entries
 })
 
+// --- Edit Device ---
+
+const showEditDialog = ref(false)
+
+function handleDeviceUpdated(updated: Device) {
+  device.value = updated
+  showEditDialog.value = false
+}
+
 // --- Delete Device ---
 
 const showDeleteDialog = ref(false)
@@ -147,11 +157,14 @@ async function confirmDeleteDevice() {
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
+            <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit Device</BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete Device</BaseButton>
           </template>
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
+
+    <DeviceFormDialog :open="showEditDialog" :device="device" @close="showEditDialog = false" @updated="handleDeviceUpdated" />
 
     <ConfirmationDialog
       :open="showDeleteDialog"
