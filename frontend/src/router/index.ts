@@ -22,6 +22,7 @@ const VIEW_COMPONENTS: Record<string, () => Promise<{ default: Component }>> = {
   devices: () => import('@/views/DeviceCollectionView.vue'),
   services: () => import('@/views/ServiceCollectionView.vue'),
   network: () => import('@/views/NetworkCollectionView.vue'),
+  inventory: () => import('@/views/InventoryCollectionView.vue'),
 }
 
 const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.map((item) => ({

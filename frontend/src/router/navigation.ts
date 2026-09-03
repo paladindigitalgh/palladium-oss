@@ -70,7 +70,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Inventory',
     path: '/inventory',
     icon: 'inventory',
-    description: 'Inventory tracking will appear here.',
+    description: 'Search sites, buildings, rooms, and racks.',
   },
   {
     id: 'explorer',
