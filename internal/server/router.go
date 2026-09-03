@@ -47,6 +47,8 @@ type Dependencies struct {
 	Version                  string
 	Commit                   string
 	SiteHandler              *httpapi.SiteHandler
+	BuildingHandler          *httpapi.BuildingHandler
+	RoomHandler              *httpapi.RoomHandler
 	DeviceHandler            *httpapi.DeviceHandler
 	CustomerHandler          *customerhttpapi.CustomerHandler
 	LocationHandler          *locationhttpapi.LocationHandler
@@ -143,6 +145,44 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.SiteHandler.Create)
 				r.Put("/{id}", deps.SiteHandler.Update)
 				r.Delete("/{id}", deps.SiteHandler.Delete)
+			})
+		})
+
+		// /buildings and /rooms use the exact same shape as /sites above,
+		// reusing the same RequireInventoryRead/RequireInventoryWrite
+		// capabilities — Building and Room are Inventory, the same
+		// hierarchy Site and Device belong to, not domains of their own.
+		r.Route("/buildings", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryRead())
+				r.Get("/", deps.BuildingHandler.List)
+				r.Get("/{id}", deps.BuildingHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryWrite())
+				r.Post("/", deps.BuildingHandler.Create)
+				r.Put("/{id}", deps.BuildingHandler.Update)
+				r.Delete("/{id}", deps.BuildingHandler.Delete)
+			})
+		})
+
+		r.Route("/rooms", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryRead())
+				r.Get("/", deps.RoomHandler.List)
+				r.Get("/{id}", deps.RoomHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryWrite())
+				r.Post("/", deps.RoomHandler.Create)
+				r.Put("/{id}", deps.RoomHandler.Update)
+				r.Delete("/{id}", deps.RoomHandler.Delete)
 			})
 		})
 

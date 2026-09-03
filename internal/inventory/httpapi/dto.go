@@ -3,8 +3,7 @@
 // milestone's goal 1), and never exposes internal/inventory's domain
 // types over the wire — see the DTOs in this file.
 //
-// Site and Device are implemented here. Building and Room follow the
-// same pattern once their own endpoints exist.
+// Site, Building, Room, and Device are implemented here.
 package httpapi
 
 import (
@@ -81,6 +80,124 @@ func newSiteListResponse(sites []inventory.Site) siteListResponse {
 	resp := siteListResponse{Sites: make([]siteResponse, len(sites))}
 	for i, s := range sites {
 		resp.Sites[i] = newSiteResponse(s)
+	}
+	return resp
+}
+
+// buildingRequest is the JSON body for POST /api/v1/buildings and
+// PUT /api/v1/buildings/{id}. See siteRequest for why there is no ID or
+// timestamp field.
+type buildingRequest struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	SiteID      uuid.UUID `json:"site_id"`
+}
+
+// toBuilding converts a request into a domain inventory.Building. id is
+// supplied by the caller, the same way siteRequest.toSite's is.
+func (req buildingRequest) toBuilding(id uuid.UUID) inventory.Building {
+	return inventory.Building{
+		Metadata: inventory.Metadata{
+			ID:          id,
+			Name:        req.Name,
+			Description: req.Description,
+		},
+		SiteID: req.SiteID,
+	}
+}
+
+// buildingResponse is the JSON representation of a Building returned to
+// clients. See siteResponse for why this is a separate type from
+// inventory.Building rather than the domain model exposed directly.
+type buildingResponse struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	SiteID      uuid.UUID `json:"site_id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func newBuildingResponse(building inventory.Building) buildingResponse {
+	return buildingResponse{
+		ID:          building.ID,
+		Name:        building.Name,
+		Description: building.Description,
+		SiteID:      building.SiteID,
+		CreatedAt:   building.CreatedAt,
+		UpdatedAt:   building.UpdatedAt,
+	}
+}
+
+// buildingListResponse wraps a slice of buildings in an object rather
+// than returning a bare JSON array. See siteListResponse for why.
+type buildingListResponse struct {
+	Buildings []buildingResponse `json:"buildings"`
+}
+
+func newBuildingListResponse(buildings []inventory.Building) buildingListResponse {
+	resp := buildingListResponse{Buildings: make([]buildingResponse, len(buildings))}
+	for i, b := range buildings {
+		resp.Buildings[i] = newBuildingResponse(b)
+	}
+	return resp
+}
+
+// roomRequest is the JSON body for POST /api/v1/rooms and
+// PUT /api/v1/rooms/{id}. See siteRequest for why there is no ID or
+// timestamp field.
+type roomRequest struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	BuildingID  uuid.UUID `json:"building_id"`
+}
+
+// toRoom converts a request into a domain inventory.Room. id is supplied
+// by the caller, the same way siteRequest.toSite's is.
+func (req roomRequest) toRoom(id uuid.UUID) inventory.Room {
+	return inventory.Room{
+		Metadata: inventory.Metadata{
+			ID:          id,
+			Name:        req.Name,
+			Description: req.Description,
+		},
+		BuildingID: req.BuildingID,
+	}
+}
+
+// roomResponse is the JSON representation of a Room returned to clients.
+// See siteResponse for why this is a separate type from inventory.Room
+// rather than the domain model exposed directly.
+type roomResponse struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	BuildingID  uuid.UUID `json:"building_id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func newRoomResponse(room inventory.Room) roomResponse {
+	return roomResponse{
+		ID:          room.ID,
+		Name:        room.Name,
+		Description: room.Description,
+		BuildingID:  room.BuildingID,
+		CreatedAt:   room.CreatedAt,
+		UpdatedAt:   room.UpdatedAt,
+	}
+}
+
+// roomListResponse wraps a slice of rooms in an object rather than
+// returning a bare JSON array. See siteListResponse for why.
+type roomListResponse struct {
+	Rooms []roomResponse `json:"rooms"`
+}
+
+func newRoomListResponse(rooms []inventory.Room) roomListResponse {
+	resp := roomListResponse{Rooms: make([]roomResponse, len(rooms))}
+	for i, r := range rooms {
+		resp.Rooms[i] = newRoomResponse(r)
 	}
 	return resp
 }

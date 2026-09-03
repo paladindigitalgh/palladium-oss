@@ -158,6 +158,17 @@ func run() error {
 	siteService := service.NewSiteService(siteRepo)
 	siteHandler := httpapi.NewSiteHandler(siteService)
 
+	// Building and Room follow the exact same repository -> service ->
+	// handler chain as Site, one and two entities over in the same
+	// Inventory hierarchy.
+	buildingRepo := inventorypostgres.NewBuildingRepository(pool, clock.New(), id.New())
+	buildingService := service.NewBuildingService(buildingRepo)
+	buildingHandler := httpapi.NewBuildingHandler(buildingService)
+
+	roomRepo := inventorypostgres.NewRoomRepository(pool, clock.New(), id.New())
+	roomService := service.NewRoomService(roomRepo)
+	roomHandler := httpapi.NewRoomHandler(roomService)
+
 	// Device follows the exact same repository -> service -> handler
 	// chain as Site, one entity over in the same Inventory hierarchy.
 	deviceRepo := inventorypostgres.NewDeviceRepository(pool, clock.New(), id.New())
@@ -360,6 +371,8 @@ func run() error {
 		Version:                  version.Version,
 		Commit:                   version.Commit,
 		SiteHandler:              siteHandler,
+		BuildingHandler:          buildingHandler,
+		RoomHandler:              roomHandler,
 		DeviceHandler:            deviceHandler,
 		CustomerHandler:          customerHandler,
 		LocationHandler:          locationHandler,

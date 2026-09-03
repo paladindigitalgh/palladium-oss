@@ -226,6 +226,238 @@ func TestRouterAdministratorCanWriteSites(t *testing.T) {
 	}
 }
 
+// stubBuildingService satisfies whatever interface httpapi.BuildingHandler
+// needs structurally, the same technique stubSiteService above uses.
+type stubBuildingService struct{}
+
+func (stubBuildingService) Get(context.Context, uuid.UUID) (inventory.Building, error) {
+	return inventory.Building{}, apperror.NotFound("building not found")
+}
+func (stubBuildingService) List(context.Context) ([]inventory.Building, error) { return nil, nil }
+func (stubBuildingService) Create(_ context.Context, b inventory.Building) (inventory.Building, error) {
+	return b, nil
+}
+func (stubBuildingService) Update(_ context.Context, b inventory.Building) (inventory.Building, error) {
+	return b, nil
+}
+func (stubBuildingService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithBuildings mirrors newRouterWithSites exactly, one entity
+// over in the same Inventory hierarchy: it proves /api/v1/buildings is
+// wired up behind both auth.Middleware and authz.Middleware in the real
+// production router, with RequireInventoryRead/RequireInventoryWrite
+// applied to the right HTTP methods — the same capabilities /sites uses,
+// since Building is Inventory, not a domain of its own.
+func newRouterWithBuildings(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:          logger,
+		Version:         "test",
+		Commit:          "test",
+		BuildingHandler: httpapi.NewBuildingHandler(stubBuildingService{}),
+		Tokens:          tokens,
+		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validBuildingBody = `{"name":"Test Building","site_id":"` + "00000000-0000-0000-0000-000000000001" + `"}`
+
+func TestRouterRejectsUnauthenticatedBuildingRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithBuildings(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/buildings/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadBuildings is goal 7's "Viewer can read
+// inventory", proven through the real, fully wired router.
+func TestRouterViewerCanReadBuildings(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithBuildings(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/buildings/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteBuildings is goal 7's "Viewer cannot modify
+// inventory", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteBuildings(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithBuildings(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/buildings/", strings.NewReader(validBuildingBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteBuildings is goal 7's "Operator can modify
+// inventory", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteBuildings(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithBuildings(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/buildings/", strings.NewReader(validBuildingBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteBuildings is goal 7's "Administrator can
+// modify inventory", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteBuildings(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithBuildings(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/buildings/", strings.NewReader(validBuildingBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubRoomService satisfies whatever interface httpapi.RoomHandler needs
+// structurally, the same technique stubSiteService above uses.
+type stubRoomService struct{}
+
+func (stubRoomService) Get(context.Context, uuid.UUID) (inventory.Room, error) {
+	return inventory.Room{}, apperror.NotFound("room not found")
+}
+func (stubRoomService) List(context.Context) ([]inventory.Room, error) { return nil, nil }
+func (stubRoomService) Create(_ context.Context, r inventory.Room) (inventory.Room, error) {
+	return r, nil
+}
+func (stubRoomService) Update(_ context.Context, r inventory.Room) (inventory.Room, error) {
+	return r, nil
+}
+func (stubRoomService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithRooms mirrors newRouterWithSites exactly, two entities
+// over in the same Inventory hierarchy: it proves /api/v1/rooms is wired
+// up behind both auth.Middleware and authz.Middleware in the real
+// production router, with RequireInventoryRead/RequireInventoryWrite
+// applied to the right HTTP methods — the same capabilities /sites uses,
+// since Room is Inventory, not a domain of its own.
+func newRouterWithRooms(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:      logger,
+		Version:     "test",
+		Commit:      "test",
+		RoomHandler: httpapi.NewRoomHandler(stubRoomService{}),
+		Tokens:      tokens,
+		Authz:       authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validRoomBody = `{"name":"Test Room","building_id":"` + "00000000-0000-0000-0000-000000000001" + `"}`
+
+func TestRouterRejectsUnauthenticatedRoomRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRooms(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/rooms/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadRooms is goal 7's "Viewer can read inventory",
+// proven through the real, fully wired router.
+func TestRouterViewerCanReadRooms(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRooms(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rooms/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteRooms is goal 7's "Viewer cannot modify
+// inventory", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteRooms(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRooms(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/", strings.NewReader(validRoomBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteRooms is goal 7's "Operator can modify
+// inventory", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteRooms(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRooms(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/", strings.NewReader(validRoomBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteRooms is goal 7's "Administrator can
+// modify inventory", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteRooms(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRooms(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/", strings.NewReader(validRoomBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
 // stubDeviceService satisfies whatever interface httpapi.DeviceHandler
 // needs structurally, the same technique stubSiteService above uses.
 type stubDeviceService struct{}
