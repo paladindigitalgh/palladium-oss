@@ -3,7 +3,8 @@
 // milestone's goal 1), and never exposes internal/inventory's domain
 // types over the wire — see the DTOs in this file.
 //
-// Site, Building, Room, and Device are implemented here.
+// Every entity in the Inventory hierarchy (Site, Building, Room, Rack,
+// Device) is implemented here.
 package httpapi
 
 import (
@@ -198,6 +199,66 @@ func newRoomListResponse(rooms []inventory.Room) roomListResponse {
 	resp := roomListResponse{Rooms: make([]roomResponse, len(rooms))}
 	for i, r := range rooms {
 		resp.Rooms[i] = newRoomResponse(r)
+	}
+	return resp
+}
+
+// rackRequest is the JSON body for POST /api/v1/racks and
+// PUT /api/v1/racks/{id}. See siteRequest for why there is no ID or
+// timestamp field. RoomID is nullable (*uuid.UUID), mirroring
+// deviceRequest.RackID -- see inventory.Rack's doc comment for why.
+type rackRequest struct {
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	RoomID      *uuid.UUID `json:"room_id"`
+}
+
+// toRack converts a request into a domain inventory.Rack. id is supplied
+// by the caller, the same way siteRequest.toSite's is.
+func (req rackRequest) toRack(id uuid.UUID) inventory.Rack {
+	return inventory.Rack{
+		Metadata: inventory.Metadata{
+			ID:          id,
+			Name:        req.Name,
+			Description: req.Description,
+		},
+		RoomID: req.RoomID,
+	}
+}
+
+// rackResponse is the JSON representation of a Rack returned to clients.
+// See siteResponse for why this is a separate type from inventory.Rack
+// rather than the domain model exposed directly.
+type rackResponse struct {
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	RoomID      *uuid.UUID `json:"room_id"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+func newRackResponse(rack inventory.Rack) rackResponse {
+	return rackResponse{
+		ID:          rack.ID,
+		Name:        rack.Name,
+		Description: rack.Description,
+		RoomID:      rack.RoomID,
+		CreatedAt:   rack.CreatedAt,
+		UpdatedAt:   rack.UpdatedAt,
+	}
+}
+
+// rackListResponse wraps a slice of racks in an object rather than
+// returning a bare JSON array. See siteListResponse for why.
+type rackListResponse struct {
+	Racks []rackResponse `json:"racks"`
+}
+
+func newRackListResponse(racks []inventory.Rack) rackListResponse {
+	resp := rackListResponse{Racks: make([]rackResponse, len(racks))}
+	for i, r := range racks {
+		resp.Racks[i] = newRackResponse(r)
 	}
 	return resp
 }

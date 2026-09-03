@@ -49,6 +49,7 @@ type Dependencies struct {
 	SiteHandler              *httpapi.SiteHandler
 	BuildingHandler          *httpapi.BuildingHandler
 	RoomHandler              *httpapi.RoomHandler
+	RackHandler              *httpapi.RackHandler
 	DeviceHandler            *httpapi.DeviceHandler
 	CustomerHandler          *customerhttpapi.CustomerHandler
 	LocationHandler          *locationhttpapi.LocationHandler
@@ -183,6 +184,27 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.RoomHandler.Create)
 				r.Put("/{id}", deps.RoomHandler.Update)
 				r.Delete("/{id}", deps.RoomHandler.Delete)
+			})
+		})
+
+		// /racks uses the exact same shape as /sites above, reusing the
+		// same RequireInventoryRead/RequireInventoryWrite capabilities —
+		// Rack is Inventory, the same hierarchy Site/Building/Room/Device
+		// belong to, not a domain of its own.
+		r.Route("/racks", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryRead())
+				r.Get("/", deps.RackHandler.List)
+				r.Get("/{id}", deps.RackHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryWrite())
+				r.Post("/", deps.RackHandler.Create)
+				r.Put("/{id}", deps.RackHandler.Update)
+				r.Delete("/{id}", deps.RackHandler.Delete)
 			})
 		})
 

@@ -458,6 +458,122 @@ func TestRouterAdministratorCanWriteRooms(t *testing.T) {
 	}
 }
 
+// stubRackService satisfies whatever interface httpapi.RackHandler needs
+// structurally, the same technique stubSiteService above uses.
+type stubRackService struct{}
+
+func (stubRackService) Get(context.Context, uuid.UUID) (inventory.Rack, error) {
+	return inventory.Rack{}, apperror.NotFound("rack not found")
+}
+func (stubRackService) List(context.Context) ([]inventory.Rack, error) { return nil, nil }
+func (stubRackService) Create(_ context.Context, r inventory.Rack) (inventory.Rack, error) {
+	return r, nil
+}
+func (stubRackService) Update(_ context.Context, r inventory.Rack) (inventory.Rack, error) {
+	return r, nil
+}
+func (stubRackService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithRacks mirrors newRouterWithSites exactly, three entities
+// over in the same Inventory hierarchy: it proves /api/v1/racks is wired
+// up behind both auth.Middleware and authz.Middleware in the real
+// production router, with RequireInventoryRead/RequireInventoryWrite
+// applied to the right HTTP methods — the same capabilities /sites uses,
+// since Rack is Inventory, not a domain of its own.
+func newRouterWithRacks(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:      logger,
+		Version:     "test",
+		Commit:      "test",
+		RackHandler: httpapi.NewRackHandler(stubRackService{}),
+		Tokens:      tokens,
+		Authz:       authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validRackBody = `{"name":"Test Rack"}`
+
+func TestRouterRejectsUnauthenticatedRackRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRacks(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/racks/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadRacks is goal 7's "Viewer can read inventory",
+// proven through the real, fully wired router.
+func TestRouterViewerCanReadRacks(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRacks(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/racks/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteRacks is goal 7's "Viewer cannot modify
+// inventory", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteRacks(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRacks(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/racks/", strings.NewReader(validRackBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteRacks is goal 7's "Operator can modify
+// inventory", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteRacks(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRacks(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/racks/", strings.NewReader(validRackBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteRacks is goal 7's "Administrator can
+// modify inventory", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteRacks(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithRacks(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/racks/", strings.NewReader(validRackBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
 // stubDeviceService satisfies whatever interface httpapi.DeviceHandler
 // needs structurally, the same technique stubSiteService above uses.
 type stubDeviceService struct{}
