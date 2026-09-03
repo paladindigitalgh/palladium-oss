@@ -97,6 +97,20 @@ export async function createAccessNetwork(input: CreateAccessNetworkInput): Prom
   return fromDto(dto)
 }
 
+export interface UpdateAccessNetworkInput {
+  name: string
+  status: AccessNetwork['status']
+  description: string
+}
+
+export async function updateAccessNetwork(id: string, input: UpdateAccessNetworkInput): Promise<AccessNetwork> {
+  const dto = await apiFetch<AccessNetworkDto>(`/access-networks/${id}`, {
+    method: 'PUT',
+    body: { name: input.name, status: input.status, description: input.description },
+  })
+  return fromDto(dto)
+}
+
 /**
  * Deletes the AccessNetwork identified by id. access_networks.id is
  * referenced by olts.access_network_id ON DELETE RESTRICT, so this throws

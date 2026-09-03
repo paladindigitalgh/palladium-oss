@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
-import { listAccessNetworks, getAccessNetworkById, createAccessNetwork, deleteAccessNetwork } from './accessNetworkRepository'
+import {
+  listAccessNetworks,
+  getAccessNetworkById,
+  createAccessNetwork,
+  updateAccessNetwork,
+  deleteAccessNetwork,
+} from './accessNetworkRepository'
 
 /** Mirrors customerRepository.test.ts's shape exactly -- same client-side search/filter/sort/pagination logic, same top-level repository shape. */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
@@ -111,6 +117,19 @@ describe('createAccessNetwork', () => {
     expect(apiFetch).toHaveBeenCalledWith('/access-networks/', {
       method: 'POST',
       body: { name: 'Metro North', status: 'Active', description: 'North metro fiber ring' },
+    })
+  })
+})
+
+describe('updateAccessNetwork', () => {
+  it('sends a PUT with the request body in the API wire shape', async () => {
+    apiFetch.mockResolvedValue(accessNetworkDto({ id: 'an1', name: 'Metro North Renamed' }))
+
+    await updateAccessNetwork('an1', { name: 'Metro North Renamed', status: 'Inactive', description: 'Updated' })
+
+    expect(apiFetch).toHaveBeenCalledWith('/access-networks/an1', {
+      method: 'PUT',
+      body: { name: 'Metro North Renamed', status: 'Inactive', description: 'Updated' },
     })
   })
 })

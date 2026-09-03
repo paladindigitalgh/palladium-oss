@@ -12,6 +12,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import AccessNetworkFormDialog from '@/components/dialogs/AccessNetworkFormDialog.vue'
 import OLTFormDialog from '@/components/dialogs/OLTFormDialog.vue'
 import { getAccessNetworkById, deleteAccessNetwork } from '@/services/accessNetworks/accessNetworkRepository'
 import { listOLTsByAccessNetworkId, deleteOLT } from '@/services/olts/oltRepository'
@@ -122,6 +123,15 @@ async function confirmDeleteOLT() {
   }
 }
 
+// --- Edit Access Network ---
+
+const showEditDialog = ref(false)
+
+function handleAccessNetworkUpdated(updated: AccessNetwork) {
+  accessNetwork.value = updated
+  showEditDialog.value = false
+}
+
 // --- Delete Access Network ---
 
 const showDeleteDialog = ref(false)
@@ -169,6 +179,7 @@ async function confirmDeleteAccessNetwork() {
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
+            <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit Access Network</BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">
               Delete Access Network
             </BaseButton>
@@ -176,6 +187,13 @@ async function confirmDeleteAccessNetwork() {
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
+
+    <AccessNetworkFormDialog
+      :open="showEditDialog"
+      :access-network="accessNetwork"
+      @close="showEditDialog = false"
+      @updated="handleAccessNetworkUpdated"
+    />
 
     <ConfirmationDialog
       :open="showDeleteDialog"
