@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { listWorkflowInstancesByServiceId, runWorkflow } from './workflowRepository'
+import { listAllWorkflowInstances, listWorkflowInstancesByServiceId, runWorkflow } from './workflowRepository'
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 
@@ -47,6 +47,32 @@ describe('listWorkflowInstancesByServiceId', () => {
     const result = await listWorkflowInstancesByServiceId('s1')
 
     expect(result.map((w) => w.id)).toEqual(['w2', 'w3', 'w1'])
+  })
+})
+
+describe('listAllWorkflowInstances', () => {
+  it('fetches every instance system-wide, with no query string', async () => {
+    apiFetch.mockResolvedValue({
+      workflow_instances: [instanceDto({ id: 'w1' }), instanceDto({ id: 'w2', service_id: 's2' })],
+    })
+
+    const result = await listAllWorkflowInstances()
+
+    expect(apiFetch).toHaveBeenCalledWith('/workflow-instances/')
+    expect(result.map((w) => w.id)).toEqual(['w1', 'w2'])
+  })
+
+  it('does not sort -- unlike listWorkflowInstancesByServiceId, callers see API order as-is', async () => {
+    apiFetch.mockResolvedValue({
+      workflow_instances: [
+        instanceDto({ id: 'w1', created_at: '2026-01-01T00:00:00Z' }),
+        instanceDto({ id: 'w2', created_at: '2026-01-03T00:00:00Z' }),
+      ],
+    })
+
+    const result = await listAllWorkflowInstances()
+
+    expect(result.map((w) => w.id)).toEqual(['w1', 'w2'])
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { listEvents } from './eventRepository'
+import { listEvents, listRecentEvents } from './eventRepository'
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 
@@ -58,5 +58,53 @@ describe('listEvents', () => {
     })
     expect(result[1].metadata).toBeNull()
     expect(result[1].actorUserId).toBeNull()
+  })
+})
+
+describe('listRecentEvents', () => {
+  it('defaults to a limit of 20', async () => {
+    apiFetch.mockResolvedValue({ events: [] })
+
+    await listRecentEvents()
+
+    expect(apiFetch).toHaveBeenCalledWith('/events/recent?limit=20')
+  })
+
+  it('passes through an explicit limit', async () => {
+    apiFetch.mockResolvedValue({ events: [] })
+
+    await listRecentEvents(5)
+
+    expect(apiFetch).toHaveBeenCalledWith('/events/recent?limit=5')
+  })
+
+  it('maps the DTO the same way listEvents does', async () => {
+    apiFetch.mockResolvedValue({
+      events: [
+        {
+          id: 'e1',
+          entity_type: 'service',
+          entity_id: 's1',
+          type: 'service.activated',
+          message: 'Service activated',
+          metadata: null,
+          actor_user_id: null,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    })
+
+    const result = await listRecentEvents()
+
+    expect(result[0]).toEqual({
+      id: 'e1',
+      entityType: 'service',
+      entityId: 's1',
+      type: 'service.activated',
+      message: 'Service activated',
+      metadata: null,
+      actorUserId: null,
+      createdAt: '2026-01-01T00:00:00Z',
+    })
   })
 })

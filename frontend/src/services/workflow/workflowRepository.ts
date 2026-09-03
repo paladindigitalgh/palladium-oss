@@ -31,6 +31,12 @@ function fromDto(dto: WorkflowInstanceDto): WorkflowInstance {
   }
 }
 
+/** Fetches every WorkflowInstance system-wide -- the Dashboard's Pending Tasks widget, not scoped to one Service. */
+export async function listAllWorkflowInstances(): Promise<WorkflowInstance[]> {
+  const { workflow_instances: instances } = await apiFetch<{ workflow_instances: WorkflowInstanceDto[] }>('/workflow-instances/')
+  return instances.map(fromDto)
+}
+
 export async function listWorkflowInstancesByServiceId(serviceId: string): Promise<WorkflowInstance[]> {
   const { workflow_instances: instances } = await apiFetch<{ workflow_instances: WorkflowInstanceDto[] }>(
     `/workflow-instances/?service_id=${encodeURIComponent(serviceId)}`,
