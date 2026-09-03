@@ -98,6 +98,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/PONPortDetailView.vue'),
   },
   {
+    // The Access Interface Detail Workspace -- reached from a PON Port
+    // Detail Workspace's Access Interfaces section, same pattern as
+    // /network/pon-ports/:id above.
+    path: '/network/access-interfaces/:id',
+    name: 'access-interface-detail',
+    component: () => import('@/views/AccessInterfaceDetailView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),

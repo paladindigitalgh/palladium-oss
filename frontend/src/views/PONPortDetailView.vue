@@ -13,9 +13,10 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import AccessInterfaceFormDialog from '@/components/dialogs/AccessInterfaceFormDialog.vue'
 import { getPONPortById, deletePONPort } from '@/services/ponPorts/ponPortRepository'
 import { getOLTById } from '@/services/olts/oltRepository'
-import { listAccessInterfacesByPONPortId } from '@/services/accessInterfaces/accessInterfaceRepository'
+import { listAccessInterfacesByPONPortId, deleteAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
@@ -30,10 +31,8 @@ import type { TimelineEvent } from '@/types/timelineEvent'
  * all (see types/ponPort.ts), but it still needs a page of its own
  * since Access Interfaces have to live somewhere. Same shape as
  * OLTDetailView.vue otherwise (single-relation OLT section, nested
- * Access Interfaces section, delete-with-conflict-handling).
- *
- * Access Interfaces is read-only for now -- AccessInterfaceFormDialog.vue
- * and AccessInterfaceDetailView.vue in the next commit wire it up.
+ * Access Interfaces section (add/remove/open), delete-with-conflict-
+ * handling).
  */
 const route = useRoute()
 const router = useRouter()
@@ -92,11 +91,48 @@ const accessInterfaceColumns: SimpleTableColumn[] = [
   { key: 'name', label: 'Access Interface' },
   { key: 'technology', label: 'Technology' },
   { key: 'status', label: 'Status' },
+  { key: 'actions', label: '' },
 ]
+
+function openAccessInterface(accessInterface: AccessInterface) {
+  router.push(`/network/access-interfaces/${accessInterface.id}`)
+}
 
 const timelineEntries = computed(() =>
   timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
 )
+
+// --- Add/Remove Access Interface ---
+
+const showAccessInterfaceForm = ref(false)
+
+function handleAccessInterfaceCreated(accessInterface: AccessInterface) {
+  showAccessInterfaceForm.value = false
+  accessInterfaces.value = [...accessInterfaces.value, accessInterface]
+}
+
+const accessInterfaceDeleteTarget = ref<AccessInterface | null>(null)
+const accessInterfaceDeletePending = ref(false)
+const accessInterfaceDeleteError = ref<string | null>(null)
+
+async function confirmDeleteAccessInterface() {
+  const target = accessInterfaceDeleteTarget.value
+  if (!target) return
+  accessInterfaceDeletePending.value = true
+  accessInterfaceDeleteError.value = null
+  try {
+    await deleteAccessInterface(target.id)
+    accessInterfaces.value = accessInterfaces.value.filter((accessInterface) => accessInterface.id !== target.id)
+    accessInterfaceDeleteTarget.value = null
+  } catch (err) {
+    accessInterfaceDeleteError.value =
+      err instanceof ApiError && err.kind === 'conflict'
+        ? 'This access interface still has attachments — remove those first.'
+        : 'The access interface could not be deleted.'
+  } finally {
+    accessInterfaceDeletePending.value = false
+  }
+}
 
 // --- Delete PON Port ---
 
@@ -167,16 +203,44 @@ async function confirmDeletePONPort() {
     </SectionCard>
 
     <SectionCard title="Access Interfaces" icon="network" :badge="accessInterfaces.length">
+      <div class="section-toolbar">
+        <BaseButton variant="secondary" size="sm" @click="showAccessInterfaceForm = true">Add Access Interface</BaseButton>
+      </div>
+
+      <AccessInterfaceFormDialog
+        :open="showAccessInterfaceForm"
+        :pon-port-id="ponPort.id"
+        @close="showAccessInterfaceForm = false"
+        @created="handleAccessInterfaceCreated"
+      />
+
+      <ConfirmationDialog
+        :open="accessInterfaceDeleteTarget !== null"
+        title="Remove Access Interface"
+        :description="`Remove ${accessInterfaceDeleteTarget?.name}? This cannot be undone.`"
+        confirm-label="Remove Access Interface"
+        destructive
+        :pending="accessInterfaceDeletePending"
+        :error="accessInterfaceDeleteError"
+        @confirm="confirmDeleteAccessInterface"
+        @cancel="accessInterfaceDeleteTarget = null"
+      />
+
       <SimpleTable
         :columns="accessInterfaceColumns"
         :rows="accessInterfaces"
         :row-key="(accessInterface) => accessInterface.id"
+        clickable
         empty-icon="network"
         empty-title="No access interfaces on file"
+        @row-click="openAccessInterface"
       >
         <template #cell-name="{ row }">{{ row.name }}</template>
         <template #cell-technology="{ row }">{{ row.technology }}</template>
         <template #cell-status="{ row }">{{ row.status }}</template>
+        <template #cell-actions="{ row }">
+          <BaseButton variant="ghost" size="sm" @click.stop="accessInterfaceDeleteTarget = row">Remove</BaseButton>
+        </template>
       </SimpleTable>
     </SectionCard>
 
@@ -200,5 +264,12 @@ async function confirmDeletePONPort() {
 .no-relationship {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
+}
+
+.section-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 </style>
