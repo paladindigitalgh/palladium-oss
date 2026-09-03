@@ -13,9 +13,10 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import PONPortFormDialog from '@/components/dialogs/PONPortFormDialog.vue'
 import { getOLTById, deleteOLT } from '@/services/olts/oltRepository'
 import { getAccessNetworkById } from '@/services/accessNetworks/accessNetworkRepository'
-import { listPONPortsByOLTId } from '@/services/ponPorts/ponPortRepository'
+import { listPONPortsByOLTId, deletePONPort } from '@/services/ponPorts/ponPortRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
@@ -28,12 +29,7 @@ import type { TimelineEvent } from '@/types/timelineEvent'
  * The OLT Detail Workspace. Mirrors ServiceDetailView.vue's shape for the
  * single-relation Access Network section (a RelationshipCard, resolved
  * on demand) and CustomerDetailView.vue's shape for the nested PON Ports
- * section and delete-with-conflict-handling.
- *
- * The PON Ports section is read-only for now (list only, no Add/Remove,
- * no row click) -- PONPortFormDialog.vue and PONPortDetailView.vue land
- * in the next commit, the same staged approach the AccessNetwork
- * workspace's OLTs section used one commit ago.
+ * section (add/remove/open) and delete-with-conflict-handling.
  */
 const route = useRoute()
 const router = useRouter()
@@ -100,11 +96,48 @@ const headerMetadata = computed<string[]>(() => {
 const ponPortColumns: SimpleTableColumn[] = [
   { key: 'port', label: 'Port' },
   { key: 'description', label: 'Description' },
+  { key: 'actions', label: '' },
 ]
+
+function openPONPort(ponPort: PONPort) {
+  router.push(`/network/pon-ports/${ponPort.id}`)
+}
 
 const timelineEntries = computed(() =>
   timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
 )
+
+// --- Add/Remove PON Port ---
+
+const showPONPortForm = ref(false)
+
+function handlePONPortCreated(ponPort: PONPort) {
+  showPONPortForm.value = false
+  ponPorts.value = [...ponPorts.value, ponPort]
+}
+
+const ponPortDeleteTarget = ref<PONPort | null>(null)
+const ponPortDeletePending = ref(false)
+const ponPortDeleteError = ref<string | null>(null)
+
+async function confirmDeletePONPort() {
+  const target = ponPortDeleteTarget.value
+  if (!target) return
+  ponPortDeletePending.value = true
+  ponPortDeleteError.value = null
+  try {
+    await deletePONPort(target.id)
+    ponPorts.value = ponPorts.value.filter((ponPort) => ponPort.id !== target.id)
+    ponPortDeleteTarget.value = null
+  } catch (err) {
+    ponPortDeleteError.value =
+      err instanceof ApiError && err.kind === 'conflict'
+        ? 'This PON port still has access interfaces attached — remove those first.'
+        : 'The PON port could not be deleted.'
+  } finally {
+    ponPortDeletePending.value = false
+  }
+}
 
 // --- Delete OLT ---
 
@@ -182,15 +215,43 @@ async function confirmDeleteOLT() {
     </SectionCard>
 
     <SectionCard title="PON Ports" icon="network" :badge="ponPorts.length">
+      <div class="section-toolbar">
+        <BaseButton variant="secondary" size="sm" @click="showPONPortForm = true">Add PON Port</BaseButton>
+      </div>
+
+      <PONPortFormDialog
+        :open="showPONPortForm"
+        :olt-id="olt.id"
+        @close="showPONPortForm = false"
+        @created="handlePONPortCreated"
+      />
+
+      <ConfirmationDialog
+        :open="ponPortDeleteTarget !== null"
+        title="Remove PON Port"
+        :description="`Remove Port ${ponPortDeleteTarget?.portNumber}? This cannot be undone.`"
+        confirm-label="Remove PON Port"
+        destructive
+        :pending="ponPortDeletePending"
+        :error="ponPortDeleteError"
+        @confirm="confirmDeletePONPort"
+        @cancel="ponPortDeleteTarget = null"
+      />
+
       <SimpleTable
         :columns="ponPortColumns"
         :rows="ponPorts"
         :row-key="(ponPort) => ponPort.id"
+        clickable
         empty-icon="network"
         empty-title="No PON ports on file"
+        @row-click="openPONPort"
       >
         <template #cell-port="{ row }">Port {{ row.portNumber }}</template>
         <template #cell-description="{ row }">{{ row.description || '—' }}</template>
+        <template #cell-actions="{ row }">
+          <BaseButton variant="ghost" size="sm" @click.stop="ponPortDeleteTarget = row">Remove</BaseButton>
+        </template>
       </SimpleTable>
     </SectionCard>
 
@@ -214,5 +275,12 @@ async function confirmDeleteOLT() {
 .no-relationship {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
+}
+
+.section-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 </style>

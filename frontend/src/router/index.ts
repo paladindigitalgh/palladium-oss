@@ -90,6 +90,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/OLTDetailView.vue'),
   },
   {
+    // The PON Port Detail Workspace -- reached from an OLT Detail
+    // Workspace's PON Ports section, same pattern as /network/olts/:id
+    // above.
+    path: '/network/pon-ports/:id',
+    name: 'pon-port-detail',
+    component: () => import('@/views/PONPortDetailView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),
