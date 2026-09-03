@@ -57,7 +57,17 @@ description of `internal/workflow/` as it stands.
 5.  Workflow Instance
 6.  Workflow Steps
 7.  Workflow Lifecycle
-8.  Future Considerations
+8.  Validation Pipeline
+9.  Execution Engine
+10. Progress Reporting
+11. Error Handling & Recovery
+12. Rollback Strategy
+13. Permissions & Authorization
+14. Events & Auditing
+15. Concurrency & Locking
+16. Timeouts, Retries & Idempotency
+17. Workflow Versioning
+18. Future Enhancements
 
 ------------------------------------------------------------------------
 

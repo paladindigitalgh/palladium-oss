@@ -51,6 +51,23 @@ not a description of `internal/plugin/` as it stands.
 2.  Design Goals
 3.  Architectural Principles
 4.  Core Concepts
+5.  Plugin Lifecycle
+6.  Registration & Discovery
+7.  Capability Model
+8.  Transport Abstraction
+9.  Driver Interfaces
+10. Resource Model
+11. Operation Contracts
+12. Plugin Context
+13. Configuration & Secrets
+14. Error Handling
+15. Result Objects
+16. Plugin Versioning
+17. Compatibility Management
+18. Testing & Simulation
+19. Security Boundaries
+20. Packaging & Deployment
+21. Future Enhancements
 
 ------------------------------------------------------------------------
 

@@ -28,6 +28,28 @@ principles.
 2.  Design Goals
 3.  Guiding Principles
 4.  Core UI Concepts
+5.  Application Shell
+6.  Global Navigation
+7.  Workspace Architecture
+8.  Workspace Lifecycle
+9.  Panel System
+10. Persistent Context
+11. Multi-Workspace Behavior
+12. Views & Layout Regions
+13. Detail Workspace Interaction Model
+14. Dialogs & Drawers
+15. Tables & Data Presentation
+16. Forms & Editing Patterns
+17. Workflow Integration
+18. Notifications & Activity
+19. State Management
+20. Loading & Empty States
+21. Error & Recovery UX
+22. Accessibility
+23. Keyboard Navigation
+24. Responsive Behavior
+25. Performance Considerations
+26. Future Enhancements
 
 ------------------------------------------------------------------------
 

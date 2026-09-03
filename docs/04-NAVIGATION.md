@@ -30,8 +30,13 @@ Palladium.
 4.  Global Navigation
 5.  Search
 6.  Workspace Navigation
-7.  URL Strategy
-8.  Future Considerations
+7.  URL & Routing Strategy
+8.  Context Preservation
+9.  Permission-Aware Navigation
+10. Keyboard Shortcuts
+11. Responsive Behavior
+12. Future Navigation Enhancements
+13. Navigation Decision Checklist
 
 ------------------------------------------------------------------------
 

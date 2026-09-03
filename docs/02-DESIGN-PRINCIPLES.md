@@ -34,6 +34,8 @@ These principles form the constitutional foundation of the project.
 11. Correlation Over Collection
 12. Simplicity Over Feature Count
 13. Consistency Above Cleverness
+14. Design Decision Checklist
+15. Applying These Principles
 
 ------------------------------------------------------------------------
 

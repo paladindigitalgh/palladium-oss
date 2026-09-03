@@ -30,6 +30,19 @@ frontend.
 5.  Collection View & Detail View
 6.  Detail Workspace Structure
 7.  Dashboard Workspace
+8.  Customer Workspace
+9.  Service Workspace
+10. Device Workspace
+11. Network Workspace (Access Network / OLT / PON Port / Access Interface)
+12. Site Workspace
+13. Workflow Workspace
+14. Search Results Workspace
+15. Explorer Workspace
+16. Administration Workspace
+17. Global Workspace Behaviors
+18. Cross-Workspace Navigation
+19. Workspace Permissions
+20. Future Workspaces
 
 ------------------------------------------------------------------------
 
