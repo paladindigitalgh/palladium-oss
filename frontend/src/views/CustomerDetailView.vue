@@ -13,15 +13,18 @@ import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import ContactFormDialog from '@/components/dialogs/ContactFormDialog.vue'
 import CustomerFormDialog from '@/components/dialogs/CustomerFormDialog.vue'
 import LocationFormDialog from '@/components/dialogs/LocationFormDialog.vue'
 import ServiceFormDialog from '@/components/dialogs/ServiceFormDialog.vue'
 import { getCustomerById, deleteCustomer } from '@/services/customers/customerRepository'
+import { listContactsByCustomerId, deleteContact } from '@/services/contacts/contactRepository'
 import { listLocationsByCustomerId, deleteLocation } from '@/services/locations/locationRepository'
 import { listServicesByLocationIds, deleteService } from '@/services/services/serviceRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
+import type { Contact } from '@/types/contact'
 import type { Customer } from '@/types/customer'
 import type { Location } from '@/types/location'
 import type { Service } from '@/types/service'
@@ -32,23 +35,29 @@ import type { TimelineEvent } from '@/types/timelineEvent'
  * section 8, "Customer Workspace"), backed by the real backend.
  *
  * Sections that depended on concepts the backend does not model at all
- * (Contacts, Alerts) are removed rather than faked. Locations and
- * Services are real, resolved on demand (docs/03-DOMAIN-MODEL.md: a
+ * (Alerts) are removed rather than faked. Contacts, Locations, and
+ * Services are all real, resolved on demand (docs/03-DOMAIN-MODEL.md: a
  * Customer owns Services through Locations, and equipment is associated
- * through Services -- never embedded on Customer itself). Timeline is
- * real Events (docs/02-DESIGN-PRINCIPLES.md principle 10).
+ * through Services -- never embedded on Customer itself; Contacts are
+ * the same shape one level simpler, with no further child of their own).
+ * Timeline is real Events (docs/02-DESIGN-PRINCIPLES.md principle 10).
  *
  * Create/edit/delete lets an operator build up (and tear down) a test
- * customer the same way a real onboarding would: customer, then
- * location, then service. Deletes go through the backend's real foreign
- * key restrictions (customers <- locations <- services) rather than
- * cascading -- a blocked delete surfaces a specific, friendly message
- * instead of the raw backend error.
+ * customer the same way a real onboarding would: customer, then contact,
+ * then location, then service. Deletes go through the backend's real
+ * foreign key restrictions (customers <- locations <- services) rather
+ * than cascading -- a blocked delete surfaces a specific, friendly
+ * message instead of the raw backend error. Contacts are the one
+ * exception: contacts.customer_id is ON DELETE CASCADE, not RESTRICT
+ * (see internal/contact/postgres/contact.go's doc comment), so removing
+ * a Contact never blocks anything and deleting the Customer itself
+ * removes its Contacts along with it.
  */
 const route = useRoute()
 const router = useRouter()
 
 const customer = ref<Customer | null>(null)
+const contacts = ref<Contact[]>([])
 const locations = ref<Location[]>([])
 const services = ref<Service[]>([])
 const timeline = ref<TimelineEvent[]>([])
@@ -59,6 +68,7 @@ async function load(id: string) {
   loading.value = true
   notFound.value = false
   customer.value = null
+  contacts.value = []
   locations.value = []
   services.value = []
   timeline.value = []
@@ -71,7 +81,12 @@ async function load(id: string) {
   }
   customer.value = result
 
-  const [customerLocations, events] = await Promise.all([listLocationsByCustomerId(id), listEvents('customer', id)])
+  const [customerContacts, customerLocations, events] = await Promise.all([
+    listContactsByCustomerId(id),
+    listLocationsByCustomerId(id),
+    listEvents('customer', id),
+  ])
+  contacts.value = customerContacts
   locations.value = customerLocations
   timeline.value = events
   services.value = await listServicesByLocationIds(customerLocations.map((location) => location.id))
@@ -94,6 +109,13 @@ const summaryFacts = computed<Fact[]>(() => {
     { icon: 'clock', label: 'Created', value: formatDate(c.createdAt) },
   ]
 })
+
+const contactColumns: SimpleTableColumn[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'role', label: 'Role' },
+  { key: 'status', label: 'Status' },
+  { key: 'actions', label: '' },
+]
 
 const locationColumns: SimpleTableColumn[] = [
   { key: 'location', label: 'Location' },
@@ -149,6 +171,46 @@ async function confirmDeleteCustomer() {
         : 'The customer could not be deleted.'
   } finally {
     deleteCustomerPending.value = false
+  }
+}
+
+// --- Add/Edit/Remove Contact ---
+
+const showContactForm = ref(false)
+
+function handleContactCreated(contact: Contact) {
+  showContactForm.value = false
+  contacts.value = [...contacts.value, contact]
+}
+
+const contactEditTarget = ref<Contact | null>(null)
+
+function handleContactUpdated(updated: Contact) {
+  contacts.value = contacts.value.map((contact) => (contact.id === updated.id ? updated : contact))
+  contactEditTarget.value = null
+}
+
+// No conflict branch: contacts.customer_id is ON DELETE CASCADE, and
+// nothing else references a Contact, so deleteContact never throws an
+// ApiError with kind "conflict" (see contactRepository.ts's own doc
+// comment on deleteContact).
+const contactDeleteTarget = ref<Contact | null>(null)
+const contactDeletePending = ref(false)
+const contactDeleteError = ref<string | null>(null)
+
+async function confirmDeleteContact() {
+  const target = contactDeleteTarget.value
+  if (!target) return
+  contactDeletePending.value = true
+  contactDeleteError.value = null
+  try {
+    await deleteContact(target.id)
+    contacts.value = contacts.value.filter((contact) => contact.id !== target.id)
+    contactDeleteTarget.value = null
+  } catch {
+    contactDeleteError.value = 'The contact could not be removed.'
+  } finally {
+    contactDeletePending.value = false
   }
 }
 
@@ -287,6 +349,55 @@ const locationOptions = computed(() => locations.value.map((location) => ({ valu
     <SectionCard title="Summary" icon="customers">
       <FactGrid :facts="summaryFacts" />
       <p v-if="customer.description" class="customer-description">{{ customer.description }}</p>
+    </SectionCard>
+
+    <SectionCard title="Contacts" icon="customers" :badge="contacts.length">
+      <div class="section-toolbar">
+        <BaseButton variant="secondary" size="sm" @click="showContactForm = true">Add Contact</BaseButton>
+      </div>
+
+      <ContactFormDialog
+        :open="showContactForm"
+        :customer-id="customer.id"
+        @close="showContactForm = false"
+        @created="handleContactCreated"
+      />
+
+      <ContactFormDialog
+        :open="contactEditTarget !== null"
+        :customer-id="customer.id"
+        :contact="contactEditTarget"
+        @close="contactEditTarget = null"
+        @updated="handleContactUpdated"
+      />
+
+      <ConfirmationDialog
+        :open="contactDeleteTarget !== null"
+        title="Remove Contact"
+        :description="`Remove ${contactDeleteTarget?.name}? This cannot be undone.`"
+        confirm-label="Remove Contact"
+        destructive
+        :pending="contactDeletePending"
+        :error="contactDeleteError"
+        @confirm="confirmDeleteContact"
+        @cancel="contactDeleteTarget = null"
+      />
+
+      <SimpleTable
+        :columns="contactColumns"
+        :rows="contacts"
+        :row-key="(contact) => contact.id"
+        empty-icon="customers"
+        empty-title="No contacts on file"
+      >
+        <template #cell-name="{ row }">{{ row.name }}</template>
+        <template #cell-role="{ row }">{{ row.role }}</template>
+        <template #cell-status="{ row }">{{ row.status }}</template>
+        <template #cell-actions="{ row }">
+          <BaseButton variant="ghost" size="sm" @click="contactEditTarget = row">Edit</BaseButton>
+          <BaseButton variant="ghost" size="sm" @click="contactDeleteTarget = row">Remove</BaseButton>
+        </template>
+      </SimpleTable>
     </SectionCard>
 
     <SectionCard title="Locations" icon="location" :badge="locations.length">

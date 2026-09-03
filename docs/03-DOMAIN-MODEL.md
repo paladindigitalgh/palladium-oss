@@ -43,6 +43,7 @@ ownership, and relationships.
 16. Entity Lifecycles
 17. Domain Invariants
 18. Future Domain Expansion
+19. Contact
 
 ------------------------------------------------------------------------
 
@@ -124,7 +125,8 @@ The Customer is primarily a business entity.
 Responsibilities include:
 
 -   Identity
--   Contact information
+-   Contact information (see section 19, Contact -- resolved on demand,
+    not a field on Customer itself)
 -   Status
 -   Billing reference (external)
 -   Associated services
@@ -574,6 +576,35 @@ Future entities may include:
 
 These additions should extend the existing model rather than replacing
 it.
+
+------------------------------------------------------------------------
+
+# 19. Contact
+
+A Contact is a person to reach about a Customer's account -- billing,
+technical, or emergency.
+
+This is the domain section 4's "Contact information" responsibility
+pointed to: contact information is not a field on Customer itself, the
+same separation Location already has for addresses. A Customer's
+Contacts are resolved on demand, not embedded.
+
+## Responsibilities
+
+A Contact records:
+
+-   Owning customer
+-   Name
+-   Role (Primary, Billing, Technical, Emergency, Other)
+-   Email
+-   Phone
+-   Current status
+
+A Customer may have zero or more Contacts. Unlike Location and Service,
+a Contact has no further child of its own, and unlike every other
+Customer sub-resource, deleting the Customer deletes its Contacts along
+with it -- a Contact has no operational significance independent of the
+Customer it belongs to.
 
 ------------------------------------------------------------------------
 

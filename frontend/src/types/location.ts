@@ -2,7 +2,7 @@
  * The Location domain type (internal/location), matching
  * internal/location/httpapi/dto.go's locationResponse. A Customer's
  * address lives here, not on Customer itself (docs/03-DOMAIN-MODEL.md
- * section 8) -- the Customer Detail Workspace resolves a customer's
+ * section 4) -- the Customer Detail Workspace resolves a customer's
  * Locations on demand rather than Customer embedding address fields.
  */
 export type LocationType = 'Service' | 'Billing' | 'Office' | 'Warehouse' | 'POP' | 'DataCenter' | 'Other'

@@ -453,13 +453,16 @@ Display:
 -   Customer ID, as metadata
 
 A Customer is an identity record only (docs/03-DOMAIN-MODEL.md, section
-4): no account number, contact information, tags, or alerts exist on the
-Customer record itself, so none of these appear in the header.
+4): no account number, tags, or alerts exist on the Customer record
+itself, so none of these appear in the header. Contact information is
+real (docs/03-DOMAIN-MODEL.md, section 19) but is a related entity
+resolved on demand, the same as Locations, not a header field.
 
 ## Primary Actions
 
 -   Edit Customer
 -   Delete Customer
+-   Add Contact
 -   Add Location
 -   Add Service
 
@@ -471,6 +474,7 @@ suspended, or resumed.
 ## Sections
 
 -   Summary (status, customer type, created date, description)
+-   Contacts -- every Contact on the account, with Add/Edit/Remove
 -   Locations -- every Location on the account, with Add/Edit/Remove
 -   Services -- every Service across every Location, with Add/Remove;
     opens the Service Workspace

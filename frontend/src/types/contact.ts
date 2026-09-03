@@ -2,7 +2,7 @@
  * The Contact domain type (internal/contact), matching
  * internal/contact/httpapi/dto.go's contactResponse. Who to reach about a
  * Customer's account -- billing, technical, emergency -- lives here, not
- * on Customer itself (docs/03-DOMAIN-MODEL.md section 8), the same
+ * on Customer itself (docs/03-DOMAIN-MODEL.md section 4), the same
  * separation Location already has: the Customer Detail Workspace
  * resolves a customer's Contacts on demand rather than Customer
  * embedding contact fields.

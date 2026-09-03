@@ -66,7 +66,7 @@ Covers AccessNetwork -> OLT -> PONPort -> AccessInterface -> AccessAttachment, f
 
 - [x] Customers
 - [x] Locations
-- [ ] Contacts
+- [x] Contacts
 - [x] Service Equipment (Service <-> Device assignment)
 
 ---
