@@ -3,8 +3,13 @@
  * docs/08-DESIGN-SYSTEM.md section 12: one clear primary action per
  * view, secondary actions visually subordinate, destructive actions
  * clearly distinguished, and disabled actions should explain why --
- * hence `disabledReason`, surfaced as a title tooltip rather than a new
- * tooltip component this early.
+ * hence `disabledReason`. It is surfaced two ways: a `title` tooltip for
+ * sighted mouse users, and a visually-hidden span rendered inside the
+ * button for assistive technology -- a native `disabled` button is
+ * removed from the tab order, so `title` alone can leave screen-reader
+ * users with no way to discover *why* an action is unavailable. Text
+ * inside the button is included in its accessible name by default, so
+ * this needs no extra `aria-*` wiring.
  */
 withDefaults(
   defineProps<{
@@ -27,6 +32,7 @@ withDefaults(
     :title="disabled ? disabledReason : undefined"
   >
     <slot />
+    <span v-if="disabled && disabledReason" class="visually-hidden"> — {{ disabledReason }}</span>
   </button>
 </template>
 

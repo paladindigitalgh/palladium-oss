@@ -1,23 +1,30 @@
 <script setup lang="ts">
 import { useTemplateRef } from 'vue'
+import { useRouter } from 'vue-router'
 import BaseIcon from '@/components/base/BaseIcon.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import { useDisclosure } from '@/composables/useDisclosure'
 import { useTheme } from '@/composables/useTheme'
+import { useAuth } from '@/composables/useAuth'
 
 /**
- * Placeholder only ("No authentication work is required" -- goal 6).
- * There is no signed-in operator to display yet, so this shows a
- * generic account glyph rather than inventing a fake name or email.
  * The theme toggle lives here because Theme is "Global Layer" state
  * (docs/04-NAVIGATION.md section 3) conventionally reached through the
- * user/profile menu, and it is genuinely functional today. Profile and
- * Sign out are visibly disabled with a reason rather than being silent
- * dead buttons, since there is no identity or session to act on yet.
+ * user/profile menu. Sign out is now real: it clears the session and
+ * returns to /login, where the router guard would have sent the
+ * operator anyway. Profile remains disabled -- there is no profile
+ * screen yet, only a session to end.
  */
 const root = useTemplateRef<HTMLElement>('root')
 const { open, toggle } = useDisclosure(root)
 const { theme, toggleTheme } = useTheme()
+const { email, logout } = useAuth()
+const router = useRouter()
+
+function handleSignOut() {
+  logout()
+  router.push({ name: 'login' })
+}
 </script>
 
 <template>
@@ -34,6 +41,8 @@ const { theme, toggleTheme } = useTheme()
     </button>
 
     <div v-if="open" class="user-menu__panel" role="menu">
+      <p v-if="email" class="user-menu__email">{{ email }}</p>
+
       <button type="button" class="user-menu__item" role="menuitem" @click="toggleTheme">
         <BaseIcon :name="theme === 'dark' ? 'sun' : 'moon'" size="sm" />
         <span>Switch to {{ theme === 'dark' ? 'light' : 'dark' }} theme</span>
@@ -46,17 +55,11 @@ const { theme, toggleTheme } = useTheme()
         size="sm"
         class="user-menu__item"
         disabled
-        disabled-reason="Authentication is not implemented in this milestone"
+        disabled-reason="There is no profile screen yet"
       >
         Profile
       </BaseButton>
-      <BaseButton
-        variant="ghost"
-        size="sm"
-        class="user-menu__item"
-        disabled
-        disabled-reason="Authentication is not implemented in this milestone"
-      >
+      <BaseButton variant="ghost" size="sm" class="user-menu__item" @click="handleSignOut">
         Sign out
       </BaseButton>
     </div>
@@ -134,6 +137,15 @@ button.user-menu__item {
 
 button.user-menu__item:hover {
   background-color: var(--color-bg);
+}
+
+.user-menu__email {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-menu__divider {

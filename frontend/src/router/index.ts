@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { NAV_ITEMS } from './navigation'
+import { useAuth } from '@/composables/useAuth'
 
 /**
  * docs/04-NAVIGATION.md section 7: "URLs should identify operational
@@ -35,6 +36,14 @@ const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.map((item) => ({
 
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/dashboard' },
+  {
+    // The one public route: everything else requires a session (see the
+    // navigation guard below).
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/LoginView.vue'),
+    meta: { public: true },
+  },
   ...workspaceRoutes,
   {
     // The Customer Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
@@ -77,4 +86,23 @@ export const router = createRouter({
   scrollBehavior() {
     return { top: 0 }
   },
+})
+
+/**
+ * Every route except /login requires a session (docs/10-IMPLEMENTATION-PLAN.md
+ * section 8, "Authentication"). An unauthenticated operator navigating
+ * anywhere else is redirected to /login; an already-authenticated
+ * operator visiting /login is sent to the dashboard instead of being
+ * shown the form again.
+ */
+router.beforeEach((to) => {
+  const { isAuthenticated } = useAuth()
+
+  if (!to.meta.public && !isAuthenticated.value) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.meta.public && isAuthenticated.value) {
+    return { name: 'dashboard' }
+  }
+  return true
 })
