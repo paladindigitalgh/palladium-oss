@@ -561,46 +561,109 @@ Workflows sections -- see this section's Purpose note above.
 Customer, Service, and Device Workspaces should feel related while
 presenting information appropriate to their specific purpose.
 
-# 11. OLT Workspace
+# 11. Network Workspace (Access Network / OLT / PON Port / Access Interface)
 
 ## Purpose
 
-The OLT Workspace provides an operational view of a single Optical Line
-Terminal.
+The Network Workspace is a four-level operational hierarchy — Access
+Network → OLT → PON Port → Access Interface — reached from the Network
+Collection View (a list of Access Networks). Each level is its own
+canonical Detail View, not a tab or a page nested under its parent:
+opening an OLT navigates to `/network/olts/{id}`, exactly as opening a
+Customer navigates to `/customers/{id}` (section 5's canonical-URL
+principle applies here too). A fifth level, Access Attachment (an
+equipment item attached to an Access Interface), has no Detail View of
+its own — it is managed inline on the Access Interface Workspace,
+mirroring how Service Equipment has no Detail View of its own either.
 
-It should answer:
+It should answer, at each level: **"What exists under this node, and
+what is it connected to above it?"**
 
-**"What is the health and utilization of this OLT, and what subscriber
-services depend on it?"**
+## Access Network Workspace
 
-## Header
+### Header
 
-Display:
+-   Access Network name
+-   Status (Active / Inactive)
+
+### Primary Actions
+
+-   Delete Access Network
+
+### Sections
+
+-   Summary (status, created)
+-   OLTs (add, remove, open)
+-   Timeline
+
+## OLT Workspace
+
+### Header
 
 -   OLT name
--   Vendor and model
--   Site
--   Software version
--   Uptime
--   Overall health
+-   Subtitle: vendor
+-   Management IP, when set
 
-## Primary Actions
+### Primary Actions
 
--   View PON ports
--   Discover ONUs
--   Upgrade firmware
--   Synchronize configuration
--   Run diagnostics
--   Open related workflows
+-   Delete OLT
 
-## Sections
+### Sections
 
--   OLT Summary
--   PON Port Overview
--   Connected ONUs
--   Capacity & Utilization
--   Active Alarms
--   Performance Metrics
+-   Summary (vendor, model, management IP, created)
+-   Access Network (a single relationship link back up the chain)
+-   PON Ports (add, remove, open)
+-   Timeline
+
+There is no OLT-level status, software version, uptime, health, or
+alarm data here — an OLT record answers "what is this device and which
+Access Network does it belong to," not "is it currently healthy." That
+question belongs to a monitoring system (Zabbix, LibreNMS, Prometheus),
+per CLAUDE.md: Palladium is not a monitoring platform, and this
+workspace does not simulate being one.
+
+## PON Port Workspace
+
+The thinnest workspace in the app — a PON port has exactly one
+meaningful field of its own (its port number) and exists mainly to
+connect an OLT to its Access Interfaces.
+
+### Header
+
+-   Title: "Port {portNumber}"
+
+### Primary Actions
+
+-   Delete PON Port
+
+### Sections
+
+-   Summary (created, last updated)
+-   OLT (a single relationship link back up the chain)
+-   Access Interfaces (add, remove, open)
+-   Timeline
+
+## Access Interface Workspace
+
+### Header
+
+-   Access Interface name
+-   Subtitle: technology (GPON / XGS-PON / Active Ethernet / Other)
+-   Status (Active / Disabled)
+
+### Primary Actions
+
+-   Delete Access Interface
+
+### Sections
+
+-   Summary (technology, status, created)
+-   PON Port (a single relationship link back up the chain)
+-   Attachments — every Access Attachment ever made to this interface,
+    active and removed alike; removal is history, not deletion (see
+    03-DOMAIN-MODEL.md). "Attach Equipment" opens a picker over
+    existing Service Equipment; "Detach" records a reason and a
+    removal timestamp rather than deleting the row.
 -   Timeline
 
 ------------------------------------------------------------------------
