@@ -13,6 +13,8 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import AttachAccessAttachmentDialog from '@/components/dialogs/AttachAccessAttachmentDialog.vue'
+import DetachAccessAttachmentDialog from '@/components/dialogs/DetachAccessAttachmentDialog.vue'
 import { getAccessInterfaceById, deleteAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
 import { getPONPortById } from '@/services/ponPorts/ponPortRepository'
 import { listAccessAttachmentsByAccessInterfaceId } from '@/services/accessAttachments/accessAttachmentRepository'
@@ -27,12 +29,12 @@ import type { TimelineEvent } from '@/types/timelineEvent'
 /**
  * The Access Interface Detail Workspace. Same shape as
  * PONPortDetailView.vue/OLTDetailView.vue -- single-relation PON Port
- * section, nested Attachments section, delete-with-conflict-handling.
- *
- * Attachments is read-only for now -- AttachAccessAttachmentDialog.vue
- * and DetachAccessAttachmentDialog.vue in the next commit are what
- * actually let an operator attach/detach ServiceEquipment here, the
- * point of this whole workspace.
+ * section, delete-with-conflict-handling. The Attachments section is
+ * this workspace's actual point: attach/detach ServiceEquipment, not
+ * create/delete -- see accessAttachmentRepository.ts's own doc comment
+ * on why detach is a PUT, not a DELETE. History is not hidden: both
+ * active and removed attachments are shown, with a State column
+ * distinguishing them.
  */
 const route = useRoute()
 const router = useRouter()
@@ -92,11 +94,28 @@ const attachmentColumns: SimpleTableColumn[] = [
   { key: 'equipment', label: 'Equipment' },
   { key: 'state', label: 'State' },
   { key: 'installed', label: 'Installed' },
+  { key: 'actions', label: '' },
 ]
 
 const timelineEntries = computed(() =>
   timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
 )
+
+// --- Attach/Detach Equipment ---
+
+const showAttachDialog = ref(false)
+
+function handleAttachmentCreated(attachment: AccessAttachment) {
+  showAttachDialog.value = false
+  attachments.value = [...attachments.value, attachment]
+}
+
+const detachTarget = ref<AccessAttachment | null>(null)
+
+function handleAttachmentDetached(updated: AccessAttachment) {
+  attachments.value = attachments.value.map((attachment) => (attachment.id === updated.id ? updated : attachment))
+  detachTarget.value = null
+}
 
 // --- Delete Access Interface ---
 
@@ -183,6 +202,25 @@ async function confirmDeleteAccessInterface() {
     </SectionCard>
 
     <SectionCard title="Attachments" icon="services" :badge="attachments.length">
+      <div class="section-toolbar">
+        <BaseButton variant="secondary" size="sm" @click="showAttachDialog = true">Attach Equipment</BaseButton>
+      </div>
+
+      <AttachAccessAttachmentDialog
+        :open="showAttachDialog"
+        :access-interface-id="accessInterface.id"
+        @close="showAttachDialog = false"
+        @created="handleAttachmentCreated"
+      />
+
+      <DetachAccessAttachmentDialog
+        v-if="detachTarget"
+        :open="true"
+        :attachment="detachTarget"
+        @close="detachTarget = null"
+        @detached="handleAttachmentDetached"
+      />
+
       <SimpleTable
         :columns="attachmentColumns"
         :rows="attachments"
@@ -193,6 +231,9 @@ async function confirmDeleteAccessInterface() {
         <template #cell-equipment="{ row }"><span class="cell-mono">{{ row.serviceEquipmentId }}</span></template>
         <template #cell-state="{ row }">{{ row.removedAt === null ? 'Active' : 'Removed' }}</template>
         <template #cell-installed="{ row }">{{ row.installedAt ? formatDate(row.installedAt) : 'Not yet installed' }}</template>
+        <template #cell-actions="{ row }">
+          <BaseButton v-if="row.removedAt === null" variant="ghost" size="sm" @click="detachTarget = row">Detach</BaseButton>
+        </template>
       </SimpleTable>
     </SectionCard>
 
@@ -222,5 +263,12 @@ async function confirmDeleteAccessInterface() {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
+}
+
+.section-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 </style>
