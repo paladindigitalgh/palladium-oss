@@ -166,7 +166,9 @@ npm run dev
 
 Other Makefile targets: `make build` (builds all four `cmd/` binaries into `bin/`), `make test` / `make test-integration`, `make vet`, `make fmt`, `make tidy`, `make migrate-status`, `make db-down`, `make clean`.
 
-`docker-compose.yml` runs PostgreSQL only (`postgres:16-alpine`) — the API and frontend both run directly on the host, not in containers, during development. There is no CI pipeline today (no `.github/workflows/`); `make vet && make test && make build` (backend) and `npm run build && npm run test` (frontend) are the checks a change is expected to pass before it's considered done, run by hand or by whoever/whatever is making the change.
+`docker-compose.yml` runs PostgreSQL only (`postgres:16-alpine`) — the API and frontend both run directly on the host, not in containers, during development.
+
+`.github/workflows/ci.yml` runs on every push and pull request against `main`: a `backend` job (build, vet, migrate a fresh `postgres:16-alpine` service container, unit tests, integration tests) and a `frontend` job (`npm ci`, build, test), in parallel. Locally, `make vet && make test && make build` (backend) and `npm run build && npm run test` (frontend) are the same checks, run by hand before pushing.
 
 ## 10. Where to Go Next
 

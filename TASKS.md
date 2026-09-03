@@ -117,6 +117,7 @@ Only a simulated mock plugin (internal/plugin/mock) exists today; no real vendor
 
 ## Phase 10 — Production
 
+- [x] CI pipeline (GitHub Actions: backend build/vet/test/integration-test, frontend build/test, on every push/PR to main)
 - [ ] Metrics
 - [ ] OpenTelemetry
 - [ ] Backups
