@@ -17,6 +17,7 @@ import { getServiceById, deleteService } from '@/services/services/serviceReposi
 import { getLocationById } from '@/services/locations/locationRepository'
 import { getCustomerById } from '@/services/customers/customerRepository'
 import { listServiceEquipmentByServiceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
+import { getDeviceById } from '@/services/devices/deviceRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { listWorkflowInstancesByServiceId, runWorkflow } from '@/services/workflow/workflowRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
@@ -24,6 +25,7 @@ import { ApiError } from '@/services/api/httpClient'
 import type { Service } from '@/types/service'
 import type { Location } from '@/types/location'
 import type { Customer } from '@/types/customer'
+import type { Device } from '@/types/device'
 import type { ServiceEquipment } from '@/types/serviceEquipment'
 import type { TimelineEvent } from '@/types/timelineEvent'
 import type { WorkflowDefinitionName, WorkflowInstance } from '@/types/workflowInstance'
@@ -38,9 +40,10 @@ import type { WorkflowDefinitionName, WorkflowInstance } from '@/types/workflowI
  * internal/workflow/engine's Execute).
  *
  * Sections that depended on mock-only concepts (Provisioning Profile,
- * Network/VLAN detail, and the Devices section, since Device stays on
- * mock data this milestone) are removed rather than faked. Equipment
- * shows the real, lean Service Equipment assignment instead.
+ * Network/VLAN detail) are removed rather than faked. Equipment shows
+ * the real, lean Service Equipment assignment, with each row's Device
+ * resolved on demand -- one apiFetch per unique deviceId, not embedded
+ * on ServiceEquipment itself (see types/serviceEquipment.ts).
  */
 const route = useRoute()
 const router = useRouter()
@@ -49,6 +52,7 @@ const service = ref<Service | null>(null)
 const location = ref<Location | null>(null)
 const customer = ref<Customer | null>(null)
 const equipment = ref<ServiceEquipment[]>([])
+const devicesById = ref<Map<string, Device>>(new Map())
 const timeline = ref<TimelineEvent[]>([])
 const workflowHistory = ref<WorkflowInstance[]>([])
 const loading = ref(true)
@@ -64,6 +68,7 @@ async function load(id: string) {
   location.value = null
   customer.value = null
   equipment.value = []
+  devicesById.value = new Map()
   timeline.value = []
   workflowHistory.value = []
 
@@ -89,6 +94,15 @@ async function load(id: string) {
   if (relatedLocation) {
     customer.value = await getCustomerById(relatedLocation.customerId)
   }
+
+  const uniqueDeviceIds = [...new Set(relatedEquipment.map((item) => item.deviceId))]
+  const devices = await Promise.all(uniqueDeviceIds.map((deviceId) => getDeviceById(deviceId)))
+  const byId = new Map<string, Device>()
+  uniqueDeviceIds.forEach((deviceId, index) => {
+    const device = devices[index]
+    if (device) byId.set(deviceId, device)
+  })
+  devicesById.value = byId
 
   loading.value = false
 }
@@ -269,7 +283,13 @@ const workflowColumns: SimpleTableColumn[] = [
         empty-title="No equipment assigned"
       >
         <template #cell-role="{ row }">{{ row.role }}</template>
-        <template #cell-device="{ row }"><span class="cell-mono">{{ row.deviceId }}</span></template>
+        <template #cell-device="{ row }">
+          <span v-if="devicesById.get(row.deviceId)">
+            {{ devicesById.get(row.deviceId)!.manufacturer }} {{ devicesById.get(row.deviceId)!.model }} —
+            {{ devicesById.get(row.deviceId)!.serialNumber }}
+          </span>
+          <span v-else class="cell-mono">{{ row.deviceId }}</span>
+        </template>
         <template #cell-installed="{ row }">{{ row.installedAt ? formatDate(row.installedAt) : 'Not yet installed' }}</template>
       </SimpleTable>
     </SectionCard>

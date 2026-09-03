@@ -33,3 +33,9 @@ export async function listServiceEquipmentByServiceId(serviceId: string): Promis
   const { service_equipment: equipment } = await apiFetch<{ service_equipment: ServiceEquipmentDto[] }>('/service-equipment/')
   return equipment.map(fromDto).filter((item) => item.serviceId === serviceId)
 }
+
+/** Same as listServiceEquipmentByServiceId, filtered by deviceId instead -- which Service(s), if any, a given Device currently fulfills. */
+export async function listServiceEquipmentByDeviceId(deviceId: string): Promise<ServiceEquipment[]> {
+  const { service_equipment: equipment } = await apiFetch<{ service_equipment: ServiceEquipmentDto[] }>('/service-equipment/')
+  return equipment.map(fromDto).filter((item) => item.deviceId === deviceId)
+}

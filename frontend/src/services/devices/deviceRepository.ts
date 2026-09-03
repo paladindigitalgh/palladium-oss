@@ -1,23 +1,45 @@
-import type { Device, DeviceStatus, DeviceType } from '@/types/device'
-import type { ServiceTechnology } from '@/types/mockCustomer'
-import { DEVICES } from './deviceDataset'
+import type { Device } from '@/types/device'
+import { apiFetch, ApiError } from '@/services/api/httpClient'
 
 /**
- * The mock Device data source, mirroring
- * services/customers/customerRepository.ts's shape and role: the Device
- * Collection Workspace only ever calls listDevices/getDeviceById/
- * listAvailableLocations, exactly what a real HTTP-backed implementation
- * would expose. Components never import DEVICES or deviceDataset.ts
- * directly.
+ * The real Device data source, replacing the mock dataset this file used
+ * to read from. Mirrors customerRepository.ts's shape exactly.
  */
+
+interface DeviceDto {
+  id: string
+  name: string
+  description: string
+  rack_id: string | null
+  manufacturer: string
+  model: string
+  serial_number: string
+  asset_tag: string
+  status: Device['status']
+  created_at: string
+  updated_at: string
+}
+
+function fromDto(dto: DeviceDto): Device {
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: dto.description,
+    rackId: dto.rack_id,
+    manufacturer: dto.manufacturer,
+    model: dto.model,
+    serialNumber: dto.serial_number,
+    assetTag: dto.asset_tag,
+    status: dto.status,
+    createdAt: dto.created_at,
+    updatedAt: dto.updated_at,
+  }
+}
 
 export interface DeviceListQuery {
   search?: string
-  status?: DeviceStatus | 'all'
-  type?: DeviceType | 'all'
-  technology?: ServiceTechnology | 'any'
-  location?: string | 'all'
-  sortKey?: 'device' | 'status' | 'location' | 'assignedCustomer'
+  status?: Device['status'] | 'all'
+  sortKey?: 'name' | 'status'
   sortDirection?: 'asc' | 'desc'
   page?: number
   pageSize?: number
@@ -28,120 +50,89 @@ export interface DeviceListResult {
   total: number
 }
 
-const SIMULATED_LATENCY_MS = 250
-
-function simulateLatency(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, SIMULATED_LATENCY_MS))
-}
-
 function matchesSearch(device: Device, term: string): boolean {
   const needle = term.trim().toLowerCase()
   if (!needle) return true
   return (
-    device.model.toLowerCase().includes(needle) ||
+    device.name.toLowerCase().includes(needle) ||
     device.serialNumber.toLowerCase().includes(needle) ||
-    (device.assignedCustomerName?.toLowerCase().includes(needle) ?? false) ||
-    device.location.toLowerCase().includes(needle)
+    device.manufacturer.toLowerCase().includes(needle) ||
+    device.model.toLowerCase().includes(needle)
   )
 }
 
-// A technician sorting by Status wants problems grouped together, not an
-// alphabetical listing -- worst-first ordering under ascending.
-const STATUS_RANK: Record<DeviceStatus, number> = {
-  offline: 0,
-  warning: 1,
-  provisioning: 2,
-  online: 3,
-}
-
-function compareDevices(
-  sortKey: NonNullable<DeviceListQuery['sortKey']>,
-  sortDirection: NonNullable<DeviceListQuery['sortDirection']>,
-) {
-  const direction = sortDirection === 'desc' ? -1 : 1
+function compareDevices(sortKey: NonNullable<DeviceListQuery['sortKey']>, direction: number) {
   return (a: Device, b: Device): number => {
-    let comparison = 0
-    switch (sortKey) {
-      case 'status':
-        comparison = STATUS_RANK[a.status] - STATUS_RANK[b.status]
-        break
-      case 'location':
-        comparison = a.location.localeCompare(b.location)
-        break
-      case 'assignedCustomer':
-        comparison = (a.assignedCustomerName ?? '').localeCompare(b.assignedCustomerName ?? '')
-        break
-      case 'device':
-      default:
-        comparison = a.model.localeCompare(b.model)
-    }
+    const comparison = sortKey === 'status' ? a.status.localeCompare(b.status) : a.name.localeCompare(b.name)
     return comparison * direction
   }
 }
 
-/** Simulates a paginated, filtered, sorted device list endpoint. */
+async function listAllDevices(): Promise<Device[]> {
+  const { devices } = await apiFetch<{ devices: DeviceDto[] }>('/devices/')
+  return devices.map(fromDto)
+}
+
+/** Fetches every Device and applies search/filter/sort/pagination client-side. */
 export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceListResult> {
-  await simulateLatency()
+  const { search = '', status = 'all', sortKey = 'name', sortDirection = 'asc', page = 1, pageSize = 15 } = query
 
-  const {
-    search = '',
-    status = 'all',
-    type = 'all',
-    technology = 'any',
-    location = 'all',
-    sortKey = 'device',
-    sortDirection = 'asc',
-    page = 1,
-    pageSize = 15,
-  } = query
+  let results = (await listAllDevices()).filter((device) => matchesSearch(device, search))
 
-  let results = DEVICES.filter((device) => matchesSearch(device, search))
+  if (status !== 'all') results = results.filter((device) => device.status === status)
 
-  if (status !== 'all') {
-    results = results.filter((device) => device.status === status)
-  }
-  if (type !== 'all') {
-    results = results.filter((device) => device.type === type)
-  }
-  if (technology !== 'any') {
-    results = results.filter((device) => device.technology === technology)
-  }
-  if (location !== 'all') {
-    results = results.filter((device) => device.location === location)
-  }
-
-  results = results.slice().sort(compareDevices(sortKey, sortDirection))
+  results = results.slice().sort(compareDevices(sortKey, sortDirection === 'desc' ? -1 : 1))
 
   const total = results.length
   const start = (page - 1) * pageSize
-  const items = results.slice(start, start + pageSize)
-
-  return { items, total }
+  return { items: results.slice(start, start + pageSize), total }
 }
 
-/** Simulates a single-resource fetch endpoint. Returns null rather than throwing when not found. */
+/** Fetches a single Device, returning null (not throwing) when it does not exist. */
 export async function getDeviceById(id: string): Promise<Device | null> {
-  await simulateLatency()
-  return DEVICES.find((device) => device.id === id) ?? null
+  try {
+    const dto = await apiFetch<DeviceDto>(`/devices/${id}`)
+    return fromDto(dto)
+  } catch (err) {
+    if (err instanceof ApiError && err.kind === 'not_found') return null
+    throw err
+  }
+}
+
+export interface CreateDeviceInput {
+  name: string
+  manufacturer: string
+  model: string
+  serialNumber: string
+  assetTag: string
+  status: Device['status']
+  description: string
+}
+
+export async function createDevice(input: CreateDeviceInput): Promise<Device> {
+  const dto = await apiFetch<DeviceDto>('/devices/', {
+    method: 'POST',
+    body: {
+      name: input.name,
+      manufacturer: input.manufacturer,
+      model: input.model,
+      serial_number: input.serialNumber,
+      asset_tag: input.assetTag,
+      status: input.status,
+      description: input.description,
+      rack_id: null,
+    },
+  })
+  return fromDto(dto)
 }
 
 /**
- * Every device delivering a given service -- the Service Detail
- * Workspace's Devices section resolves this on demand rather than
- * Service carrying device detail itself (services/services/
- * serviceDataset.ts never stores it), the same on-demand-resolution
- * pattern Device Detail already uses for its own Assignment section.
+ * Deletes the Device identified by id. Device is a leaf in the Inventory
+ * hierarchy -- no other table's foreign key can ever block this delete
+ * (see internal/inventory/postgres/device.go's Delete) -- so unlike
+ * deleteCustomer/deleteService, callers do not need to handle a
+ * "conflict" ApiError specially.
  */
-export async function listDevicesByServiceId(serviceId: string): Promise<Device[]> {
-  await simulateLatency()
-  return DEVICES.filter((device) => device.serviceId === serviceId)
-}
-
-/**
- * Distinct locations present in the dataset, for the Location filter.
- * Synchronous: small, static reference data, same reasoning as
- * customerRepository.ts's listAvailableCities.
- */
-export function listAvailableLocations(): string[] {
-  return Array.from(new Set(DEVICES.map((device) => device.location))).sort((a, b) => a.localeCompare(b))
+export async function deleteDevice(id: string): Promise<void> {
+  await apiFetch<void>(`/devices/${id}`, { method: 'DELETE' })
 }

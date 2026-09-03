@@ -4,7 +4,8 @@
  * serviceEquipmentResponse -- the link between a Service and the Device
  * delivering it (docs/03-DOMAIN-MODEL.md section 7). Deliberately lean:
  * no vendor, telemetry, or configuration detail here -- that belongs to
- * Device, which stays on mock data this milestone (see types/device.ts).
+ * Device itself (see types/device.ts); this record only says that a link
+ * exists and what role the Device plays, never how it is configured.
  */
 export type EquipmentRole = 'ONU' | 'Gateway' | 'Router' | 'ONT' | 'WiFiAccessPoint' | 'UPS' | 'Other'
 

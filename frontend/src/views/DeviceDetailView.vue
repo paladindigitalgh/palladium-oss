@@ -6,44 +6,42 @@ import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import SectionCard from '@/components/data-display/SectionCard.vue'
 import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
-import ActivityList from '@/components/data-display/ActivityList.vue'
-import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
-import NotesList from '@/components/data-display/NotesList.vue'
 import RelationshipCard from '@/components/data-display/RelationshipCard.vue'
+import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
-import { getDeviceById } from '@/services/devices/deviceRepository'
-import { CUSTOMERS } from '@/services/customers/customerDataset'
+import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import { getDeviceById, deleteDevice } from '@/services/devices/deviceRepository'
+import { listServiceEquipmentByDeviceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
+import { getServiceById } from '@/services/services/serviceRepository'
+import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
-import type { Device, DeviceStatus } from '@/types/device'
-import type { Customer, CustomerStatus, ServiceStatus } from '@/types/mockCustomer'
+import { ApiError } from '@/services/api/httpClient'
+import type { Device } from '@/types/device'
+import type { Service } from '@/types/service'
+import type { TimelineEvent } from '@/types/timelineEvent'
 
 /**
  * The Device Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
- * section 10, "Device Workspace"): an operational dossier answering
- * "what is this device doing right now?" -- not a configuration form.
- * Every section is read-only this milestone -- no editing, provisioning,
- * or destructive actions, same treatment as the Customer Detail
- * Workspace's header (disabled primary actions with a reason,
- * docs/08-DESIGN-SYSTEM.md section 12).
+ * section 10, "Device Workspace"), backed by the real Inventory API.
  *
- * Devices remain projections of Customer -> Service -> Equipment
- * (docs/03-DOMAIN-MODEL.md): the device fetch resolves the device
- * itself, and Assignment additionally resolves the owning customer *on
- * demand* via `assignedCustomerId` (only when present) rather than
- * carrying the full Customer/Service objects on Device permanently --
- * that would duplicate data DeviceCollectionView never needs. Full
- * service detail (`relatedService`) is read out of that fetched
- * customer's own `services` array by `serviceId`, never stored
- * redundantly on Device either.
+ * Sections that depended on mock-only telemetry concepts (Network,
+ * Status, Configuration) are removed rather than faked -- see
+ * types/device.ts's doc comment for why (Palladium is not a monitoring
+ * platform). Assignment is real: resolved on demand via
+ * ServiceEquipment (docs/03-DOMAIN-MODEL.md -- a Device's relationship to
+ * a Customer always passes through Service, never a direct link), and a
+ * Device can have zero, one, or more equipment assignments over its
+ * lifetime, so every one that comes back is shown, not just the first.
  */
 const route = useRoute()
 const router = useRouter()
 
 const device = ref<Device | null>(null)
-const relatedCustomer = ref<Customer | null>(null)
+const assignedServices = ref<Service[]>([])
+const timeline = ref<TimelineEvent[]>([])
 const loading = ref(true)
 const notFound = ref(false)
 
@@ -51,22 +49,23 @@ async function load(id: string) {
   loading.value = true
   notFound.value = false
   device.value = null
-  relatedCustomer.value = null
+  assignedServices.value = []
+  timeline.value = []
 
   const result = await getDeviceById(id)
-  if (result) {
-    device.value = result
-    if (result.assignedCustomerId) {
-      // Device stays on mock data (see this file's own doc comment) --
-      // this reads the mock Customer/Service/Asset dataset directly
-      // rather than through customerRepository.ts, which now calls the
-      // real Customer API and has no knowledge of this mock device's
-      // fabricated assignedCustomerId.
-      relatedCustomer.value = CUSTOMERS.find((c) => c.id === result.assignedCustomerId) ?? null
-    }
-  } else {
+  if (!result) {
     notFound.value = true
+    loading.value = false
+    return
   }
+  device.value = result
+
+  const [equipment, events] = await Promise.all([listServiceEquipmentByDeviceId(id), listEvents('device', id)])
+  timeline.value = events
+
+  const services = await Promise.all(equipment.map((item) => getServiceById(item.serviceId)))
+  assignedServices.value = services.filter((service): service is Service => service !== null)
+
   loading.value = false
 }
 
@@ -76,125 +75,52 @@ watch(
   (id) => load(id as string),
 )
 
-const relatedService = computed(() => relatedCustomer.value?.services.find((service) => service.id === device.value?.serviceId))
-
-const STATUS_LABELS: Record<DeviceStatus, string> = {
-  online: 'Online',
-  offline: 'Offline',
-  warning: 'Warning',
-  provisioning: 'Provisioning',
-}
-
-const STATUS_VARIANTS: Record<DeviceStatus, 'success' | 'error' | 'warning' | 'info'> = {
-  online: 'success',
-  offline: 'error',
-  warning: 'warning',
-  provisioning: 'info',
-}
-
-const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
-  active: 'Active',
-  suspended: 'Suspended',
-  pending: 'Pending',
-  cancelled: 'Cancelled',
-}
-
-const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
-  active: 'Active',
-  provisioning: 'Provisioning',
-  suspended: 'Suspended',
-  cancelled: 'Cancelled',
-}
-
-function managementStateLabel(status: DeviceStatus): string {
-  return status === 'provisioning' ? 'Pending Discovery' : 'Managed'
-}
-
-function operationalStateLabel(status: DeviceStatus): string {
-  switch (status) {
-    case 'online':
-      return 'Operational'
-    case 'warning':
-      return 'Degraded'
-    case 'offline':
-      return 'Unreachable'
-    case 'provisioning':
-      return 'Provisioning'
-  }
-}
-
-function provisioningStatusLabel(status: DeviceStatus): string {
-  if (status === 'provisioning') return 'Pending Activation'
-  if (status === 'offline') return 'Provisioned (Unreachable)'
-  return 'Provisioned'
-}
-
-function formatUptime(seconds: number): string {
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  if (days > 0) return `${days}d ${hours}h`
-  const minutes = Math.floor((seconds % 3600) / 60)
-  return `${hours}h ${minutes}m`
-}
-
 const summaryFacts = computed<Fact[]>(() => {
   const d = device.value
   if (!d) return []
-  const facts: Fact[] = [{ icon: 'devices', label: 'Device Type', value: d.type }]
-  if (d.technology) {
-    facts.push({ icon: 'network', label: 'Technology', value: d.technology === 'gpon' ? 'GPON' : 'XGS-PON' })
-  }
-  facts.push(
-    { icon: 'clock', label: 'Installed', value: formatDate(d.installedDate) },
-    { icon: 'tasks', label: 'Firmware Version', value: d.firmwareVersion },
-    { icon: 'health', label: 'Management State', value: managementStateLabel(d.status) },
-    { icon: 'inventory', label: 'Vendor', value: d.vendor },
-  )
-  return facts
-})
-
-const networkFacts = computed<Fact[]>(() => {
-  const d = device.value
-  if (!d) return []
-  const facts: Fact[] = [{ icon: 'location', label: 'Site', value: d.siteName }]
-  if (d.oltId) facts.push({ icon: 'network', label: 'OLT', value: d.oltId })
-  if (d.ponPort) facts.push({ icon: 'network', label: 'PON Port', value: d.ponPort })
-  if (d.managementIp) facts.push({ icon: 'network', label: 'Management IP', value: d.managementIp })
-  if (d.uplinkPort) facts.push({ icon: 'network', label: 'Uplink Port', value: d.uplinkPort })
-  return facts
-})
-
-const statusFacts = computed<Fact[]>(() => {
-  const d = device.value
-  if (!d) return []
   const facts: Fact[] = [
-    { icon: 'health', label: 'Operational State', value: operationalStateLabel(d.status) },
-    { icon: 'clock', label: 'Last Contact', value: d.lastContact },
+    { icon: 'inventory', label: 'Manufacturer', value: d.manufacturer },
+    { icon: 'devices', label: 'Model', value: d.model },
   ]
-  if (d.uptimeSeconds !== undefined) {
-    facts.push({ icon: 'clock', label: 'Uptime', value: formatUptime(d.uptimeSeconds) })
-  }
-  if (d.opticalPowerDbm !== undefined) {
-    facts.push({ icon: 'network', label: 'Optical Power', value: `${d.opticalPowerDbm} dBm` })
-  }
+  if (d.assetTag) facts.push({ icon: 'tasks', label: 'Asset Tag', value: d.assetTag })
   facts.push(
-    { icon: 'alert', label: 'Temperature', value: `${d.temperatureC}°C` },
-    { icon: 'tasks', label: 'Provisioning Status', value: provisioningStatusLabel(d.status) },
+    { icon: 'clock', label: 'Created', value: formatDate(d.createdAt) },
+    { icon: 'clock', label: 'Last Updated', value: formatDate(d.updatedAt) },
   )
   return facts
 })
 
-const configFacts = computed<Fact[]>(() => {
+const timelineEntries = computed(() =>
+  timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
+)
+
+const headerMetadata = computed<string[]>(() => {
   const d = device.value
   if (!d) return []
-  const facts: Fact[] = [{ icon: 'tasks', label: 'Provisioning Profile', value: d.configProfile }]
-  if (d.serviceVlan !== undefined) facts.push({ icon: 'network', label: 'Service VLAN', value: String(d.serviceVlan) })
-  if (d.managementVlan !== undefined) {
-    facts.push({ icon: 'network', label: 'Management VLAN', value: String(d.managementVlan) })
-  }
-  facts.push({ icon: 'inventory', label: 'Configuration Version', value: d.configVersion })
-  return facts
+  const entries = [`Serial ${d.serialNumber}`]
+  if (d.assetTag) entries.push(`Asset Tag ${d.assetTag}`)
+  return entries
 })
+
+// --- Delete Device ---
+
+const showDeleteDialog = ref(false)
+const deletePending = ref(false)
+const deleteError = ref<string | null>(null)
+
+async function confirmDeleteDevice() {
+  if (!device.value) return
+  deletePending.value = true
+  deleteError.value = null
+  try {
+    await deleteDevice(device.value.id)
+    router.push('/devices')
+  } catch (err) {
+    deleteError.value = err instanceof ApiError ? err.message : 'The device could not be deleted.'
+  } finally {
+    deletePending.value = false
+  }
+}
 </script>
 
 <template>
@@ -213,97 +139,59 @@ const configFacts = computed<Fact[]>(() => {
 
   <DetailWorkspace v-else-if="device">
     <WorkspaceHeader
-      :title="device.model"
-      :subtitle="device.type"
-      :status="{ label: STATUS_LABELS[device.status], variant: STATUS_VARIANTS[device.status] }"
-      :metadata="[`Serial ${device.serialNumber}`, device.location]"
+      :title="device.name"
+      :subtitle="`${device.manufacturer} ${device.model}`"
+      :status="{ label: device.status, variant: device.status === 'Installed' || device.status === 'InStock' ? 'success' : 'neutral' }"
+      :metadata="headerMetadata"
     >
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
-            <BaseButton
-              variant="ghost"
-              size="sm"
-              disabled
-              disabled-reason="Workflow actions are not yet implemented."
-            >
-              Run Diagnostics
-            </BaseButton>
-          </template>
-          <template #primary>
-            <BaseButton
-              variant="primary"
-              size="sm"
-              disabled
-              disabled-reason="Workflow actions are not yet implemented."
-            >
-              Reboot Device
-            </BaseButton>
+            <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete Device</BaseButton>
           </template>
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
 
+    <ConfirmationDialog
+      :open="showDeleteDialog"
+      title="Delete Device"
+      :description="`Permanently delete ${device.name}? This cannot be undone.`"
+      confirm-label="Delete Device"
+      destructive
+      :pending="deletePending"
+      :error="deleteError"
+      @confirm="confirmDeleteDevice"
+      @cancel="showDeleteDialog = false"
+    />
+
     <SectionCard title="Summary" icon="devices">
       <FactGrid :facts="summaryFacts" />
+      <p v-if="device.description" class="device-description">{{ device.description }}</p>
     </SectionCard>
 
-    <SectionCard title="Network" icon="network">
-      <FactGrid :facts="networkFacts" />
-    </SectionCard>
-
-    <SectionCard title="Assignment" icon="customers">
+    <SectionCard title="Assignment" icon="services" :badge="assignedServices.length">
       <BaseEmptyState
-        v-if="!device.assignedCustomerId"
+        v-if="assignedServices.length === 0"
         icon="devices"
-        title="Not assigned to a customer"
-        description="This is network infrastructure equipment -- it serves many customers rather than belonging to one."
+        title="Not currently assigned to a service"
+        description="This device is not fulfilling any Service right now."
       />
       <div v-else class="assignment-cards">
         <RelationshipCard
-          eyebrow="Assigned Customer"
-          :title="device.assignedCustomerName ?? 'Customer'"
-          :meta="
-            relatedCustomer
-              ? `${relatedCustomer.type === 'business' ? 'Business' : 'Residential'} · ${CUSTOMER_STATUS_LABELS[relatedCustomer.status]}`
-              : undefined
-          "
-          :to="`/customers/${device.assignedCustomerId}`"
-          action-label="View Customer"
-        />
-
-        <RelationshipCard
+          v-for="service in assignedServices"
+          :key="service.id"
           eyebrow="Assigned Service"
-          :title="relatedService?.tier ?? 'Service'"
-          :meta="
-            relatedService
-              ? `${relatedService.technology === 'gpon' ? 'GPON' : 'XGS-PON'} · ${SERVICE_STATUS_LABELS[relatedService.status]}`
-              : undefined
-          "
-          :to="device.serviceId ? `/services/${device.serviceId}` : undefined"
+          :title="service.description || `Service ${service.id}`"
+          :meta="service.status"
+          :to="`/services/${service.id}`"
           action-label="View Service"
         />
       </div>
     </SectionCard>
 
-    <SectionCard title="Status" icon="health">
-      <FactGrid :facts="statusFacts" />
-    </SectionCard>
-
-    <SectionCard title="Configuration" icon="settings">
-      <FactGrid :facts="configFacts" />
-    </SectionCard>
-
-    <SectionCard title="Recent Activity" icon="clock">
-      <ActivityList :entries="device.activity" />
-    </SectionCard>
-
     <SectionCard title="Timeline" icon="history">
-      <TimelineEntries :entries="device.timeline" />
-    </SectionCard>
-
-    <SectionCard title="Notes" icon="notes">
-      <NotesList :notes="device.notes" />
+      <TimelineEntries :entries="timelineEntries" />
     </SectionCard>
   </DetailWorkspace>
 </template>
@@ -311,6 +199,12 @@ const configFacts = computed<Fact[]>(() => {
 <style scoped>
 .device-detail-view__status {
   padding: var(--space-6);
+}
+
+.device-description {
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 .assignment-cards {
