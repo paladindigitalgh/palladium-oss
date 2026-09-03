@@ -458,6 +458,7 @@ Customer record itself, so none of these appear in the header.
 
 ## Primary Actions
 
+-   Edit Customer
 -   Delete Customer
 -   Add Location
 -   Add Service
@@ -470,7 +471,7 @@ suspended, or resumed.
 ## Sections
 
 -   Summary (status, customer type, created date, description)
--   Locations -- every Location on the account, with Add/Remove
+-   Locations -- every Location on the account, with Add/Edit/Remove
 -   Services -- every Service across every Location, with Add/Remove;
     opens the Service Workspace
 -   Timeline -- the Customer's real audit trail (docs/02-DESIGN-PRINCIPLES.md
@@ -517,6 +518,7 @@ Service Profile, neither of which has its own read model yet.
 
 ## Primary Actions
 
+-   Edit Service
 -   Delete Service
 -   One dynamic primary action, following the Service's current status:
     **Provision Service** (Pending), **Suspend Service** (Active), or
@@ -626,6 +628,7 @@ what is it connected to above it?"**
 
 ### Primary Actions
 
+-   Edit Access Network
 -   Delete Access Network
 
 ### Sections
@@ -644,6 +647,7 @@ what is it connected to above it?"**
 
 ### Primary Actions
 
+-   Edit OLT
 -   Delete OLT
 
 ### Sections
@@ -672,6 +676,7 @@ connect an OLT to its Access Interfaces.
 
 ### Primary Actions
 
+-   Edit PON Port
 -   Delete PON Port
 
 ### Sections
@@ -691,6 +696,7 @@ connect an OLT to its Access Interfaces.
 
 ### Primary Actions
 
+-   Edit Access Interface
 -   Delete Access Interface
 
 ### Sections
