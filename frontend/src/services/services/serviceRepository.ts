@@ -119,6 +119,43 @@ export async function createService(input: CreateServiceInput): Promise<Service>
   return fromDto(dto)
 }
 
+export interface UpdateServiceInput {
+  locationId: string
+  productId: string
+  serviceProfileId: string
+  status: Service['status']
+  description: string
+  /**
+   * Not user-editable (see ServiceFormDialog.vue -- these are the
+   * Workflow Engine's own record of when provisioning/suspension/
+   * disconnection actually happened, set by Provision/Suspend/Resume,
+   * never by hand). Callers pass the service's current values through
+   * unchanged: PUT replaces every mutable column (see
+   * internal/service/postgres's Update), so omitting them here would
+   * silently erase real workflow history.
+   */
+  activatedAt: string | null
+  suspendedAt: string | null
+  disconnectedAt: string | null
+}
+
+export async function updateService(id: string, input: UpdateServiceInput): Promise<Service> {
+  const dto = await apiFetch<ServiceDto>(`/services/${id}`, {
+    method: 'PUT',
+    body: {
+      location_id: input.locationId,
+      product_id: input.productId,
+      service_profile_id: input.serviceProfileId,
+      status: input.status,
+      description: input.description,
+      activated_at: input.activatedAt,
+      suspended_at: input.suspendedAt,
+      disconnected_at: input.disconnectedAt,
+    },
+  })
+  return fromDto(dto)
+}
+
 /**
  * Deletes the Service identified by id. services.id is referenced by
  * service_equipment.service_id and workflow_instances.service_id, both

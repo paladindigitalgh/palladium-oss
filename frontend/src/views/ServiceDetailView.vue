@@ -13,6 +13,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
+import ServiceFormDialog from '@/components/dialogs/ServiceFormDialog.vue'
 import { getServiceById, deleteService } from '@/services/services/serviceRepository'
 import { getLocationById } from '@/services/locations/locationRepository'
 import { getCustomerById } from '@/services/customers/customerRepository'
@@ -184,6 +185,15 @@ const timelineEntries = computed(() =>
   timeline.value.map((event) => ({ id: event.id, label: event.message, timestamp: event.createdAt, description: event.type })),
 )
 
+// --- Edit Service ---
+
+const showEditDialog = ref(false)
+
+function handleServiceUpdated(updated: Service) {
+  service.value = updated
+  showEditDialog.value = false
+}
+
 // --- Delete Service ---
 
 const showDeleteDialog = ref(false)
@@ -236,6 +246,7 @@ const workflowColumns: SimpleTableColumn[] = [
       <template #actions>
         <WorkspaceActions>
           <template #secondary>
+            <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit Service</BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete Service</BaseButton>
           </template>
           <template v-if="primaryAction" #primary>
@@ -252,6 +263,14 @@ const workflowColumns: SimpleTableColumn[] = [
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
+
+    <ServiceFormDialog
+      :open="showEditDialog"
+      :location-id="service.locationId"
+      :service="service"
+      @close="showEditDialog = false"
+      @updated="handleServiceUpdated"
+    />
 
     <ConfirmationDialog
       :open="showDeleteDialog"

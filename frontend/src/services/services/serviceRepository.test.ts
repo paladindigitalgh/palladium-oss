@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
-import { listServices, listServicesByLocationIds, getServiceById, createService, deleteService } from './serviceRepository'
+import { listServices, listServicesByLocationIds, getServiceById, createService, updateService, deleteService } from './serviceRepository'
 
 /** Mirrors customerRepository.test.ts's shape exactly -- see that file. */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
@@ -142,6 +142,37 @@ describe('createService', () => {
         description: 'New service',
         activated_at: null,
         suspended_at: null,
+        disconnected_at: null,
+      },
+    })
+  })
+})
+
+describe('updateService', () => {
+  it('sends a PUT with the request body in the API wire shape, passing through activated/suspended/disconnected unchanged', async () => {
+    apiFetch.mockResolvedValue(serviceDto({ id: 's1', status: 'Suspended' }))
+
+    await updateService('s1', {
+      locationId: 'l1',
+      productId: 'p1',
+      serviceProfileId: 'sp1',
+      status: 'Suspended',
+      description: 'Updated',
+      activatedAt: '2026-02-01T00:00:00Z',
+      suspendedAt: '2026-03-01T00:00:00Z',
+      disconnectedAt: null,
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith('/services/s1', {
+      method: 'PUT',
+      body: {
+        location_id: 'l1',
+        product_id: 'p1',
+        service_profile_id: 'sp1',
+        status: 'Suspended',
+        description: 'Updated',
+        activated_at: '2026-02-01T00:00:00Z',
+        suspended_at: '2026-03-01T00:00:00Z',
         disconnected_at: null,
       },
     })

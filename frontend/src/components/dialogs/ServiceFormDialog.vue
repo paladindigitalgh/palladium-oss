@@ -4,7 +4,7 @@ import BaseModal from '@/components/base/BaseModal.vue'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-import { createService } from '@/services/services/serviceRepository'
+import { createService, updateService } from '@/services/services/serviceRepository'
 import { listProducts } from '@/services/products/productRepository'
 import { listServiceProfiles } from '@/services/serviceProfiles/serviceProfileRepository'
 import { ApiError } from '@/services/api/httpClient'
@@ -12,10 +12,21 @@ import type { Service } from '@/types/service'
 import type { Product } from '@/types/product'
 import type { ServiceProfile } from '@/types/serviceProfile'
 
-const props = defineProps<{ open: boolean; locationId: string }>()
+/**
+ * Dual-mode: create when `service` is absent, edit when present --
+ * mirrors DeviceFormDialog.vue/CustomerFormDialog.vue. `locationId` (the
+ * parent prop, needed for create since a new Service has no location of
+ * its own yet) is ignored in edit mode -- the service being edited
+ * already has one, and moving a Service to a different Location is a
+ * bigger operation than this dialog does. activatedAt/suspendedAt/
+ * disconnectedAt are never form fields (see serviceRepository.ts's
+ * UpdateServiceInput doc comment: those belong to the Workflow Engine).
+ */
+const props = defineProps<{ open: boolean; locationId: string; service?: Service | null }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', service: Service): void
+  (event: 'updated', service: Service): void
 }>()
 
 const products = ref<Product[]>([])
@@ -40,29 +51,35 @@ const statusOptions = [
 // rather than once at app startup -- there is no Product/Service Profile
 // Workspace to keep a cached copy fresh against, and this dataset is
 // small enough that refetching is simpler than inventing a cache to
-// invalidate.
+// invalidate. Needed in both modes: create defaults to the first option,
+// edit needs the options list to show the service's current selection.
 watch(
   () => props.open,
   async (isOpen) => {
     if (!isOpen) return
+    error.value = null
     loadingOptions.value = true
     const [productList, profileList] = await Promise.all([listProducts(), listServiceProfiles()])
     products.value = productList
     serviceProfiles.value = profileList
-    productId.value = productList[0]?.id ?? ''
-    serviceProfileId.value = profileList[0]?.id ?? ''
+
+    if (props.service) {
+      productId.value = props.service.productId
+      serviceProfileId.value = props.service.serviceProfileId
+      status.value = props.service.status
+      description.value = props.service.description
+    } else {
+      productId.value = productList[0]?.id ?? ''
+      serviceProfileId.value = profileList[0]?.id ?? ''
+      status.value = 'Pending'
+      description.value = ''
+    }
+
     loadingOptions.value = false
   },
 )
 
-function reset() {
-  status.value = 'Pending'
-  description.value = ''
-  error.value = null
-}
-
 function close() {
-  reset()
   emit('close')
 }
 
@@ -70,17 +87,30 @@ async function handleSubmit() {
   error.value = null
   submitting.value = true
   try {
-    const service = await createService({
-      locationId: props.locationId,
-      productId: productId.value,
-      serviceProfileId: serviceProfileId.value,
-      status: status.value,
-      description: description.value,
-    })
-    reset()
-    emit('created', service)
+    if (props.service) {
+      const updated = await updateService(props.service.id, {
+        locationId: props.service.locationId,
+        productId: productId.value,
+        serviceProfileId: serviceProfileId.value,
+        status: status.value,
+        description: description.value,
+        activatedAt: props.service.activatedAt,
+        suspendedAt: props.service.suspendedAt,
+        disconnectedAt: props.service.disconnectedAt,
+      })
+      emit('updated', updated)
+    } else {
+      const service = await createService({
+        locationId: props.locationId,
+        productId: productId.value,
+        serviceProfileId: serviceProfileId.value,
+        status: status.value,
+        description: description.value,
+      })
+      emit('created', service)
+    }
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : 'The service could not be created.'
+    error.value = err instanceof ApiError ? err.message : `The service could not be ${props.service ? 'saved' : 'created'}.`
   } finally {
     submitting.value = false
   }
@@ -88,7 +118,7 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <BaseModal :open="open" title="Add Service" @close="close">
+  <BaseModal :open="open" :title="service ? 'Edit Service' : 'Add Service'" @close="close">
     <p v-if="loadingOptions" class="service-form__loading">Loading products and service profiles…</p>
 
     <form v-else class="service-form" @submit.prevent="handleSubmit">
@@ -123,7 +153,7 @@ async function handleSubmit() {
           variant="primary"
           :disabled="submitting"
         >
-          {{ submitting ? 'Adding…' : 'Add Service' }}
+          {{ submitting ? 'Saving…' : service ? 'Save Changes' : 'Add Service' }}
         </BaseButton>
       </div>
     </form>
