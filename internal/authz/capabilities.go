@@ -136,6 +136,37 @@ func CanWriteLocations(role auth.Role) bool {
 	}
 }
 
+// CanReadContacts reports whether role may read Contact data. All three
+// built-in roles can — identical to CanReadLocations's rule today.
+//
+// This is a separate function from CanReadLocations/CanReadCustomers, not
+// a call to either, for the same reasoning CanReadLocations's own doc
+// comment gives for not being implemented in terms of CanReadCustomers:
+// Contacts, Locations, and Customers are different resources answering
+// different questions, and today's identical answer is a coincidence of
+// this being RBAC v1, not a reason to wire them together.
+func CanReadContacts(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteContacts reports whether role may create, update, or delete
+// Contact data. Administrator and Operator can; Viewer cannot. See
+// CanReadContacts's doc comment for why this is not implemented in terms
+// of CanWriteLocations despite the identical rule today.
+func CanWriteContacts(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}
+
 // CanReadCatalog reports whether role may read Product Catalog data —
 // both ProductCatalog and Product records (see internal/catalog and
 // internal/product). All three built-in roles can — identical to

@@ -35,6 +35,9 @@ import (
 	connectionprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/httpapi"
 	connectionprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/postgres"
 	connectionprofileservice "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/service"
+	contacthttpapi "github.com/paladindigitalgh/palladium-oss/internal/contact/httpapi"
+	contactpostgres "github.com/paladindigitalgh/palladium-oss/internal/contact/postgres"
+	contactservice "github.com/paladindigitalgh/palladium-oss/internal/contact/service"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
 	customerservice "github.com/paladindigitalgh/palladium-oss/internal/customer/service"
@@ -174,6 +177,13 @@ func run() error {
 	locationRepo := locationpostgres.NewLocationRepository(pool, clock.New(), id.New())
 	locationSvc := locationservice.NewLocationService(locationRepo)
 	locationHandler := locationhttpapi.NewLocationHandler(locationSvc)
+
+	// Contact follows the exact same repository -> service -> handler
+	// chain as Location, one domain package over (internal/contact
+	// instead of internal/location).
+	contactRepo := contactpostgres.NewContactRepository(pool, clock.New(), id.New())
+	contactSvc := contactservice.NewContactService(contactRepo)
+	contactHandler := contacthttpapi.NewContactHandler(contactSvc)
 
 	// Catalog and Product follow the exact same repository -> service ->
 	// handler chain as every domain above, two packages over
@@ -353,6 +363,7 @@ func run() error {
 		DeviceHandler:            deviceHandler,
 		CustomerHandler:          customerHandler,
 		LocationHandler:          locationHandler,
+		ContactHandler:           contactHandler,
 		CatalogHandler:           catalogHandler,
 		ProductHandler:           productHandler,
 		ServiceProfileHandler:    serviceProfileHandler,

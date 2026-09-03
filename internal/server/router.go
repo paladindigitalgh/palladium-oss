@@ -20,6 +20,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
 	cataloghttpapi "github.com/paladindigitalgh/palladium-oss/internal/catalog/httpapi"
 	connectionprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/httpapi"
+	contacthttpapi "github.com/paladindigitalgh/palladium-oss/internal/contact/httpapi"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
 	eventhttpapi "github.com/paladindigitalgh/palladium-oss/internal/event/httpapi"
@@ -49,6 +50,7 @@ type Dependencies struct {
 	DeviceHandler            *httpapi.DeviceHandler
 	CustomerHandler          *customerhttpapi.CustomerHandler
 	LocationHandler          *locationhttpapi.LocationHandler
+	ContactHandler           *contacthttpapi.ContactHandler
 	CatalogHandler           *cataloghttpapi.CatalogHandler
 	ProductHandler           *producthttpapi.ProductHandler
 	ServiceHandler           *servicehttpapi.ServiceHandler
@@ -210,6 +212,27 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.LocationHandler.Create)
 				r.Put("/{id}", deps.LocationHandler.Update)
 				r.Delete("/{id}", deps.LocationHandler.Delete)
+			})
+		})
+
+		// /contacts uses the exact same shape as /locations above, with its
+		// own dedicated capability pair (RequireContactRead/
+		// RequireContactWrite) rather than reusing Location's or Customer's
+		// -- the same reasoning CanReadContacts's doc comment gives.
+		r.Route("/contacts", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireContactRead())
+				r.Get("/", deps.ContactHandler.List)
+				r.Get("/{id}", deps.ContactHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireContactWrite())
+				r.Post("/", deps.ContactHandler.Create)
+				r.Put("/{id}", deps.ContactHandler.Update)
+				r.Delete("/{id}", deps.ContactHandler.Delete)
 			})
 		})
 

@@ -127,6 +127,19 @@ func (m *Middleware) RequireLocationWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteLocations)
 }
 
+// RequireContactRead returns middleware allowing any Role that
+// CanReadContacts (Administrator, Operator, Viewer).
+func (m *Middleware) RequireContactRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadContacts)
+}
+
+// RequireContactWrite returns middleware allowing any Role that
+// CanWriteContacts (Administrator, Operator) — the same authorization
+// model as RequireLocationWrite, applied to the Contact domain.
+func (m *Middleware) RequireContactWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteContacts)
+}
+
 // RequireCatalogRead returns middleware allowing any Role that
 // CanReadCatalog (Administrator, Operator, Viewer). Applied to both the
 // /catalogs and /products routes — see CanReadCatalog's doc comment for
