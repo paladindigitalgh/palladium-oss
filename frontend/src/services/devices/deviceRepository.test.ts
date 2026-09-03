@@ -127,7 +127,7 @@ describe('getDeviceById', () => {
 })
 
 describe('createDevice', () => {
-  it('sends the request body in the API wire shape, always with a null rack_id', async () => {
+  it('sends the request body in the API wire shape, with a null rack_id when no rack is chosen', async () => {
     apiFetch.mockResolvedValue(deviceDto({ id: 'new' }))
 
     await createDevice({
@@ -138,6 +138,7 @@ describe('createDevice', () => {
       assetTag: 'AT-9',
       status: 'InStock',
       description: 'Spare',
+      rackId: null,
     })
 
     expect(apiFetch).toHaveBeenCalledWith('/devices/', {
@@ -153,6 +154,24 @@ describe('createDevice', () => {
         rack_id: null,
       },
     })
+  })
+
+  it('sends the chosen rack_id when a rack is selected', async () => {
+    apiFetch.mockResolvedValue(deviceDto({ id: 'new', rack_id: 'rack-1' }))
+
+    await createDevice({
+      name: 'ONT-2',
+      manufacturer: 'Nokia',
+      model: 'G-010G',
+      serialNumber: 'SN999',
+      assetTag: 'AT-9',
+      status: 'InStock',
+      description: 'Spare',
+      rackId: 'rack-1',
+    })
+
+    const [, init] = apiFetch.mock.calls[0]
+    expect((init.body as { rack_id: string | null }).rack_id).toBe('rack-1')
   })
 })
 

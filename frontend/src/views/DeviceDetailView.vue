@@ -17,11 +17,13 @@ import DeviceFormDialog from '@/components/dialogs/DeviceFormDialog.vue'
 import { getDeviceById, deleteDevice } from '@/services/devices/deviceRepository'
 import { listServiceEquipmentByDeviceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { getServiceById } from '@/services/services/serviceRepository'
+import { getRackById } from '@/services/racks/rackRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { Device } from '@/types/device'
 import type { Service } from '@/types/service'
+import type { Rack } from '@/types/rack'
 import type { TimelineEvent } from '@/types/timelineEvent'
 
 /**
@@ -42,6 +44,7 @@ const router = useRouter()
 
 const device = ref<Device | null>(null)
 const assignedServices = ref<Service[]>([])
+const rack = ref<Rack | null>(null)
 const timeline = ref<TimelineEvent[]>([])
 const loading = ref(true)
 const notFound = ref(false)
@@ -51,6 +54,7 @@ async function load(id: string) {
   notFound.value = false
   device.value = null
   assignedServices.value = []
+  rack.value = null
   timeline.value = []
 
   const result = await getDeviceById(id)
@@ -61,8 +65,13 @@ async function load(id: string) {
   }
   device.value = result
 
-  const [equipment, events] = await Promise.all([listServiceEquipmentByDeviceId(id), listEvents('device', id)])
+  const [equipment, events, deviceRack] = await Promise.all([
+    listServiceEquipmentByDeviceId(id),
+    listEvents('device', id),
+    result.rackId ? getRackById(result.rackId) : Promise.resolve(null),
+  ])
   timeline.value = events
+  rack.value = deviceRack
 
   const services = await Promise.all(equipment.map((item) => getServiceById(item.serviceId)))
   assignedServices.value = services.filter((service): service is Service => service !== null)
@@ -181,6 +190,14 @@ async function confirmDeleteDevice() {
     <SectionCard title="Summary" icon="devices">
       <FactGrid :facts="summaryFacts" />
       <p v-if="device.description" class="device-description">{{ device.description }}</p>
+      <RelationshipCard
+        v-if="rack"
+        class="device-rack-card"
+        eyebrow="Rack"
+        :title="rack.name"
+        :to="`/inventory/racks/${rack.id}`"
+        action-label="View Rack"
+      />
     </SectionCard>
 
     <SectionCard title="Assignment" icon="services" :badge="assignedServices.length">
@@ -218,6 +235,10 @@ async function confirmDeleteDevice() {
   margin-top: var(--space-4);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+}
+
+.device-rack-card {
+  margin-top: var(--space-4);
 }
 
 .assignment-cards {

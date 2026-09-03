@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import BaseModal from '@/components/base/BaseModal.vue'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import { createDevice, updateDevice } from '@/services/devices/deviceRepository'
+import { listRacks } from '@/services/racks/rackRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { Device } from '@/types/device'
+import type { Rack } from '@/types/rack'
 
 /**
  * Dual-mode: create when `device` is absent, edit when present -- one
@@ -15,9 +17,8 @@ import type { Device } from '@/types/device'
  * abstractions" cuts the other way here: two components would only
  * duplicate this form). Editable fields are everything an operator might
  * reasonably need to correct after the fact -- name, manufacturer, model,
- * serial number, asset tag, status, description. Rack assignment is
- * deliberately not exposed here (no UI for it yet), and identity
- * (id, createdAt/updatedAt) never was.
+ * serial number, asset tag, status, description, and (see below) rack.
+ * Identity (id, createdAt/updatedAt) never was.
  */
 const props = defineProps<{ open: boolean; device?: Device | null }>()
 const emit = defineEmits<{
@@ -33,6 +34,7 @@ const serialNumber = ref('')
 const assetTag = ref('')
 const status = ref<Device['status']>('InStock')
 const description = ref('')
+const rackId = ref('')
 const submitting = ref(false)
 const error = ref<string | null>(null)
 
@@ -46,6 +48,20 @@ const statusOptions = [
   { value: 'Disposed', label: 'Disposed' },
 ]
 
+const racks = ref<Rack[]>([])
+const rackOptions = computed(() => [{ value: '', label: 'None' }, ...racks.value.map((rack) => ({ value: rack.id, label: rack.name }))])
+
+// Racks are fetched fresh each time the dialog opens, the same reasoning
+// AttachAccessAttachmentDialog.vue documents for ServiceEquipment -- no
+// cache to keep fresh, and this dataset is small.
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (!isOpen) return
+    racks.value = await listRacks()
+  },
+)
+
 function reset() {
   name.value = ''
   manufacturer.value = ''
@@ -54,6 +70,7 @@ function reset() {
   assetTag.value = ''
   status.value = 'InStock'
   description.value = ''
+  rackId.value = ''
   error.value = null
 }
 
@@ -65,6 +82,7 @@ function populateFrom(device: Device) {
   assetTag.value = device.assetTag
   status.value = device.status
   description.value = device.description
+  rackId.value = device.rackId ?? ''
   error.value = null
 }
 
@@ -90,6 +108,7 @@ async function handleSubmit() {
   error.value = null
   submitting.value = true
   try {
+    const selectedRackId = rackId.value === '' ? null : rackId.value
     if (props.device) {
       const updated = await updateDevice(props.device.id, {
         name: name.value,
@@ -99,7 +118,7 @@ async function handleSubmit() {
         assetTag: assetTag.value,
         status: status.value,
         description: description.value,
-        rackId: props.device.rackId,
+        rackId: selectedRackId,
       })
       emit('updated', updated)
     } else {
@@ -111,6 +130,7 @@ async function handleSubmit() {
         assetTag: assetTag.value,
         status: status.value,
         description: description.value,
+        rackId: selectedRackId,
       })
       reset()
       emit('created', device)
@@ -133,6 +153,7 @@ async function handleSubmit() {
       <BaseInput v-model="assetTag" label="Asset Tag" />
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
       <BaseInput v-model="description" label="Description" />
+      <BaseSelect v-model="rackId" label="Rack" :options="rackOptions" />
 
       <p v-if="error" class="device-form__error" role="alert">{{ error }}</p>
 

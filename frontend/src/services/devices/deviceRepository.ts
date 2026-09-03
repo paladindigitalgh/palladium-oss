@@ -113,6 +113,7 @@ export interface CreateDeviceInput {
   assetTag: string
   status: Device['status']
   description: string
+  rackId: string | null
 }
 
 export async function createDevice(input: CreateDeviceInput): Promise<Device> {
@@ -126,7 +127,7 @@ export async function createDevice(input: CreateDeviceInput): Promise<Device> {
       asset_tag: input.assetTag,
       status: input.status,
       description: input.description,
-      rack_id: null,
+      rack_id: input.rackId,
     },
   })
   return fromDto(dto)
@@ -141,12 +142,10 @@ export interface UpdateDeviceInput {
   status: Device['status']
   description: string
   /**
-   * Not user-editable (see DeviceFormDialog.vue -- rack assignment has no
-   * UI yet, and this milestone's instruction is "not any IDs or anything
-   * database specific"). Callers pass the device's current rackId through
-   * unchanged: PUT replaces every mutable column (see
-   * internal/inventory/postgres/device.go's Update), so omitting it here
-   * would silently unrack an installed device.
+   * User-editable via DeviceFormDialog.vue's Rack picker. PUT replaces
+   * every mutable column (see internal/inventory/postgres/device.go's
+   * Update), so omitting it here would silently unrack an installed
+   * device.
    */
   rackId: string | null
 }
