@@ -34,7 +34,7 @@ frontend.
 9.  Service Workspace
 10. Device Workspace
 11. Network Workspace (Access Network / OLT / PON Port / Access Interface)
-12. Site Workspace
+12. Site Workspace (Site / Building / Room / Rack)
 13. Workflow Workspace
 14. Search Results Workspace
 15. Explorer Workspace
@@ -716,42 +716,114 @@ connect an OLT to its Access Interfaces.
 
 ------------------------------------------------------------------------
 
-# 12. Site Workspace
+# 12. Site Workspace (Site / Building / Room / Rack)
 
 ## Purpose
 
-The Site Workspace presents all operational resources associated with a
-physical location.
+The Site Workspace is a four-level physical hierarchy — Site → Building
+→ Room → Rack — reached from the Inventory Collection View (a list of
+Sites). Devices sit below Racks, but a Device is a Detail Workspace of
+its own (section 10) and is not repeated here. Like the Network
+Workspace (section 11), each level is its own canonical Detail View,
+not a tab or a page nested under its parent: opening a Building
+navigates to `/inventory/buildings/{id}`, exactly as opening a Customer
+navigates to `/customers/{id}` (section 5's canonical-URL principle
+applies here too).
 
-It should answer:
+Per 03-DOMAIN-MODEL.md section 8, a Site is the root of the Inventory
+hierarchy and provides physical/operational context for Devices only.
+It has no relationship to OLTs (those belong to the separate Access
+Network hierarchy, section 11) and no relationship to Customers
+(customer service addresses live on the Service, not the Site).
 
-**"What equipment, services, and issues exist at this site?"**
+It should answer, at each level: **"What is physically here, and what
+does it sit inside?"**
 
-## Header
+## Site Workspace
 
-Display:
+### Header
 
 -   Site name
--   Address or location
--   Site type
--   Operational status
--   Contact information (where applicable)
 
-## Primary Actions
+### Primary Actions
 
--   View inventory
--   Open topology
--   Run site diagnostics
--   View maintenance history
+-   Edit Site
+-   Delete Site
 
-## Sections
+### Sections
 
--   Site Summary
--   Installed Equipment
--   Network Topology
--   Active Services
--   Environmental Alerts
+-   Summary (created, last updated, description when set)
+-   Buildings (add, remove, open)
 -   Timeline
+
+## Building Workspace
+
+### Header
+
+-   Building name
+
+### Primary Actions
+
+-   Edit Building
+-   Delete Building
+
+### Sections
+
+-   Summary (created, last updated, description when set)
+-   Site (a single relationship link back up the chain)
+-   Rooms (add, remove, open)
+-   Timeline
+
+## Room Workspace
+
+### Header
+
+-   Room name
+
+### Primary Actions
+
+-   Edit Room
+-   Delete Room
+
+### Sections
+
+-   Summary (created, last updated, description when set)
+-   Building (a single relationship link back up the chain)
+-   Racks (add, remove, open)
+-   Timeline
+
+## Rack Workspace
+
+### Header
+
+-   Rack name
+
+### Primary Actions
+
+-   Edit Rack
+-   Delete Rack
+
+### Sections
+
+-   Summary (created, last updated, description when set)
+-   Room — a single relationship link back up the chain, shown only
+    when the Rack is assigned to one. Per 03-DOMAIN-MODEL.md, a Rack's
+    Room association is nullable: a Rack can exist in inventory (e.g.
+    ordered, received, sitting in a warehouse) before it is installed
+    anywhere, so an unassigned Rack shows no broken relationship card.
+-   Devices — every Device racked here, read-only: a Rack does not
+    add or remove Devices itself. A Device chooses its Rack from its
+    own Detail Workspace (a Rack picker on the Device form), the same
+    way an Access Attachment is managed from the Access Interface side
+    rather than the equipment side (section 11).
+-   Timeline
+
+There is no site type, address, operational status, environmental
+alert, or diagnostics data anywhere in this hierarchy. Per CLAUDE.md,
+Palladium is not a monitoring platform: physical location and
+containment ("what is here, and what does it sit inside") is
+Inventory's job; whether a site or its equipment is currently healthy
+belongs to a monitoring system (Zabbix, LibreNMS, Prometheus).
 
 ------------------------------------------------------------------------
 

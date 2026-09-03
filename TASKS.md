@@ -41,9 +41,9 @@
 Hierarchy is Site -> Building -> Room -> Rack -> Device (internal/inventory).
 
 - [x] Sites
-- [ ] Buildings
-- [ ] Rooms
-- [ ] Racks
+- [x] Buildings
+- [x] Rooms
+- [x] Racks
 - [x] Devices
 - [ ] Inventory history
 
@@ -107,7 +107,7 @@ Only a simulated mock plugin (internal/plugin/mock) exists today; no real vendor
 - [x] Vue application
 - [x] Authentication
 - [ ] Dashboard (still placeholder data throughout, not wired to any real query -- see frontend/src/views/DashboardView.vue)
-- [x] Inventory UI (Device workspace; Building/Room/Rack have no UI, matching Phase 3)
+- [x] Inventory UI (Site/Building/Room/Rack/Device Detail Workspaces, Inventory Collection View, Rack picker on Device)
 - [x] Customer UI
 - [x] Workflow UI (Provision/Suspend/Resume actions + workflow history on the Service Detail Workspace; no dedicated workflow-instance browser)
 - [x] Network UI (AccessNetwork -> OLT -> PONPort -> AccessInterface, plus Attach/Detach for equipment)
