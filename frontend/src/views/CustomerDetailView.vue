@@ -22,6 +22,15 @@ import { listContactsByCustomerId, deleteContact } from '@/services/contacts/con
 import { listLocationsByCustomerId, deleteLocation } from '@/services/locations/locationRepository'
 import { listServicesByLocationIds, deleteService } from '@/services/services/serviceRepository'
 import { listEvents } from '@/services/events/eventRepository'
+import {
+  listCustomerEquipmentLocations,
+  runONURunningConfig,
+  runONUStatus,
+  runONUEthernetPorts,
+  runDHCPSnoopingEntries,
+  runMACAddressTableEntries,
+} from '@/services/diagnostics/diagnosticsRepository'
+import { getOLTById } from '@/services/olts/oltRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { Contact } from '@/types/contact'
@@ -29,6 +38,8 @@ import type { Customer } from '@/types/customer'
 import type { Location } from '@/types/location'
 import type { Service } from '@/types/service'
 import type { TimelineEvent } from '@/types/timelineEvent'
+import type { CustomerEquipmentLocation } from '@/types/onuDiagnostics'
+import type { OLT } from '@/types/olt'
 
 /**
  * The Customer Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
@@ -61,6 +72,9 @@ const contacts = ref<Contact[]>([])
 const locations = ref<Location[]>([])
 const services = ref<Service[]>([])
 const timeline = ref<TimelineEvent[]>([])
+const equipmentLocations = ref<CustomerEquipmentLocation[]>([])
+const oltsById = ref<Map<string, OLT>>(new Map())
+const onuDiagnostics = ref<Map<string, ONUDiagnosticsState>>(new Map())
 const loading = ref(true)
 const notFound = ref(false)
 
@@ -72,6 +86,9 @@ async function load(id: string) {
   locations.value = []
   services.value = []
   timeline.value = []
+  equipmentLocations.value = []
+  oltsById.value = new Map()
+  onuDiagnostics.value = new Map()
 
   const result = await getCustomerById(id)
   if (!result) {
@@ -81,15 +98,26 @@ async function load(id: string) {
   }
   customer.value = result
 
-  const [customerContacts, customerLocations, events] = await Promise.all([
+  const [customerContacts, customerLocations, events, customerEquipmentLocations] = await Promise.all([
     listContactsByCustomerId(id),
     listLocationsByCustomerId(id),
     listEvents('customer', id),
+    listCustomerEquipmentLocations(id),
   ])
   contacts.value = customerContacts
   locations.value = customerLocations
   timeline.value = events
   services.value = await listServicesByLocationIds(customerLocations.map((location) => location.id))
+
+  equipmentLocations.value = customerEquipmentLocations
+  const uniqueOltIds = [...new Set(customerEquipmentLocations.map((item) => item.oltId))]
+  const olts = await Promise.all(uniqueOltIds.map((oltId) => getOLTById(oltId)))
+  const byOltId = new Map<string, OLT>()
+  uniqueOltIds.forEach((oltId, index) => {
+    const olt = olts[index]
+    if (olt) byOltId.set(oltId, olt)
+  })
+  oltsById.value = byOltId
 
   loading.value = false
 }
@@ -292,6 +320,58 @@ async function confirmDeleteService() {
 }
 
 const locationOptions = computed(() => locations.value.map((location) => ({ value: location.id, label: location.name })))
+
+// --- ONU Diagnostics ---
+
+interface DiagnosticCommandResult {
+  label: string
+  output: string | null
+  error: string | null
+}
+
+interface ONUDiagnosticsState {
+  pending: boolean
+  results: DiagnosticCommandResult[] | null
+}
+
+/**
+ * The four commands "Check ONU Status" runs, in order, against every
+ * currently-attached equipment location -- each is its own SSH
+ * connection to the OLT (internal/olt/connect), run sequentially rather
+ * than in parallel to stay gentle on a device's own small concurrent-
+ * session budget (see internal/platform/ssh's "Interactive shell mode"
+ * doc comment on the real Kontron/Iskratel C16 this was confirmed
+ * against). A failure on one command does not stop the rest: each is an
+ * independent read, so the operator sees whatever is available even if
+ * one specific query fails.
+ */
+const ONU_STATUS_COMMANDS: { label: string; run: (oltId: string, iface: string) => Promise<string> }[] = [
+  { label: 'Running Configuration', run: runONURunningConfig },
+  { label: 'Status', run: runONUStatus },
+  { label: 'Ethernet Ports', run: runONUEthernetPorts },
+  { label: 'DHCP Snooping', run: runDHCPSnoopingEntries },
+  { label: 'MAC Address Table', run: runMACAddressTableEntries },
+]
+
+async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
+  onuDiagnostics.value.set(equipmentLocation.serviceEquipmentId, { pending: true, results: null })
+
+  const results: DiagnosticCommandResult[] = []
+  for (const command of ONU_STATUS_COMMANDS) {
+    try {
+      const output = await command.run(equipmentLocation.oltId, equipmentLocation.interface)
+      results.push({ label: command.label, output, error: null })
+    } catch (err) {
+      results.push({
+        label: command.label,
+        output: null,
+        error: err instanceof ApiError ? err.message : 'This command failed to run.',
+      })
+    }
+  }
+
+  onuDiagnostics.value.set(equipmentLocation.serviceEquipmentId, { pending: false, results })
+}
 </script>
 
 <template>
@@ -511,6 +591,50 @@ const locationOptions = computed(() => locations.value.map((location) => ({ valu
       </SimpleTable>
     </SectionCard>
 
+    <SectionCard title="ONU Diagnostics" icon="devices" :badge="equipmentLocations.length">
+      <p v-if="equipmentLocations.length === 0" class="no-relationship">
+        No ONU is currently attached to this customer.
+      </p>
+
+      <div
+        v-for="equipmentLocation in equipmentLocations"
+        :key="equipmentLocation.serviceEquipmentId"
+        class="onu-diagnostics-block"
+      >
+        <div class="onu-diagnostics-block__header">
+          <div>
+            <span class="cell-strong">{{ equipmentLocation.interface }}</span>
+            <span class="onu-diagnostics-block__olt">
+              on {{ oltsById.get(equipmentLocation.oltId)?.name ?? equipmentLocation.oltId }}
+            </span>
+          </div>
+          <BaseButton
+            variant="secondary"
+            size="sm"
+            :disabled="onuDiagnostics.get(equipmentLocation.serviceEquipmentId)?.pending"
+            :disabled-reason="
+              onuDiagnostics.get(equipmentLocation.serviceEquipmentId)?.pending ? 'Running…' : undefined
+            "
+            @click="checkONUStatus(equipmentLocation)"
+          >
+            {{ onuDiagnostics.get(equipmentLocation.serviceEquipmentId)?.pending ? 'Checking…' : 'Check ONU Status' }}
+          </BaseButton>
+        </div>
+
+        <div v-if="onuDiagnostics.get(equipmentLocation.serviceEquipmentId)?.results" class="onu-diagnostics-results">
+          <div
+            v-for="result in onuDiagnostics.get(equipmentLocation.serviceEquipmentId)!.results"
+            :key="result.label"
+            class="onu-diagnostics-result"
+          >
+            <h4 class="onu-diagnostics-result__label">{{ result.label }}</h4>
+            <p v-if="result.error" class="onu-diagnostics-result__error" role="alert">{{ result.error }}</p>
+            <pre v-else class="onu-diagnostics-result__output">{{ result.output }}</pre>
+          </div>
+        </div>
+      </div>
+    </SectionCard>
+
     <SectionCard title="Timeline" icon="history">
       <TimelineEntries :entries="timelineEntries" />
     </SectionCard>
@@ -555,5 +679,67 @@ const locationOptions = computed(() => locations.value.map((location) => ({ valu
   align-items: flex-end;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+.no-relationship {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.onu-diagnostics-block {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.onu-diagnostics-block + .onu-diagnostics-block {
+  margin-top: var(--space-4);
+}
+
+.onu-diagnostics-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.onu-diagnostics-block__olt {
+  margin-left: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.onu-diagnostics-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.onu-diagnostics-result__label {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.onu-diagnostics-result__output {
+  margin: 0;
+  padding: var(--space-3);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  color: var(--color-text-primary);
+}
+
+.onu-diagnostics-result__error {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
 }
 </style>
