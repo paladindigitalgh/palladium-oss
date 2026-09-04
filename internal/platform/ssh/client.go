@@ -30,6 +30,15 @@ type session interface {
 // exactly as it would against a real connection.
 type connection interface {
 	NewSession() (session, error)
+
+	// NewInteractiveSession opens a new SSH session on this connection
+	// and returns it as an interactiveSession (see interactive.go) — the
+	// wider subset of *golang.org/x/crypto/ssh.Session that Client.Interactive
+	// needs (a PTY request, stdin/stdout pipes, a shell request), as
+	// opposed to NewSession's narrower, Output-only view used by Run's
+	// one-shot exec channel.
+	NewInteractiveSession() (interactiveSession, error)
+
 	Close() error
 }
 
@@ -60,6 +69,19 @@ type realConnection struct {
 }
 
 func (r realConnection) NewSession() (session, error) {
+	s, err := r.Client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// NewInteractiveSession adapts (*gossh.Client).NewSession's concrete
+// *gossh.Session return value to the interactiveSession interface, the
+// same way NewSession above adapts it to session — the two exist
+// side by side because a single *gossh.Session value already satisfies
+// both interfaces structurally; only the return type needs adapting.
+func (r realConnection) NewInteractiveSession() (interactiveSession, error) {
 	s, err := r.Client.NewSession()
 	if err != nil {
 		return nil, err
@@ -194,4 +216,22 @@ func (c *client) Run(ctx context.Context, command string) (string, error) {
 func (c *client) Close() error {
 	c.closed = true
 	return c.conn.Close()
+}
+
+// Interactive implements Client.
+func (c *client) Interactive(ctx context.Context) (Shell, error) {
+	if c.closed {
+		return nil, ErrClientClosed
+	}
+
+	sess, err := c.conn.NewInteractiveSession()
+	if err != nil {
+		return nil, fmt.Errorf("ssh: open interactive session: %w", err)
+	}
+
+	sh, err := newShell(ctx, sess, c.timeout)
+	if err != nil {
+		return nil, err
+	}
+	return sh, nil
 }

@@ -67,6 +67,13 @@ type fakeConnection struct {
 	newSessionErr error
 	closeErr      error
 	closed        bool
+
+	// interactive and newInteractiveSessionErr back NewInteractiveSession,
+	// exercised by interactive_test.go rather than this file — this file's
+	// own tests never set them, so NewInteractiveSession returning a nil
+	// interactiveSession alongside a nil error is never reached by them.
+	interactive              interactiveSession
+	newInteractiveSessionErr error
 }
 
 func (c *fakeConnection) NewSession() (session, error) {
@@ -74,6 +81,13 @@ func (c *fakeConnection) NewSession() (session, error) {
 		return nil, c.newSessionErr
 	}
 	return c.session, nil
+}
+
+func (c *fakeConnection) NewInteractiveSession() (interactiveSession, error) {
+	if c.newInteractiveSessionErr != nil {
+		return nil, c.newInteractiveSessionErr
+	}
+	return c.interactive, nil
 }
 
 func (c *fakeConnection) Close() error {

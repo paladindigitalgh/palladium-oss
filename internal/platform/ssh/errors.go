@@ -32,4 +32,16 @@ var (
 
 	// ErrClientClosed means Run was called on a Client after Close.
 	ErrClientClosed = errors.New("ssh: client is closed")
+
+	// ErrShellClosed means RunCommand was called on a Shell after Close.
+	ErrShellClosed = errors.New("ssh: shell is closed")
+
+	// ErrPromptNotDetected means Client.Interactive gave up waiting for
+	// something prompt-shaped (see this package's doc comment,
+	// "Interactive shell mode") to appear after opening the shell
+	// channel, within promptDetectionTimeout. This usually means either
+	// the remote side printed something during login that never settled
+	// into a recognizable prompt, or the device does not behave the way
+	// this package's prompt-detection heuristic expects.
+	ErrPromptNotDetected = errors.New("ssh: no command prompt detected on interactive shell")
 )

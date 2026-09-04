@@ -99,6 +99,40 @@
 // that needs to configure a device over SSH. Neither exists yet; this
 // package is deliberately usable by both without knowing anything about
 // either.
+//
+// # Interactive shell mode
+//
+// Run's one-shot exec channel (the SSH protocol's "exec" request:
+// connect, run exactly one command, exit) is what most SSH-capable
+// software expects, but it is not universal. Some management CLIs —
+// confirmed firsthand against a real Kontron/Iskratel C16 OLT during
+// this package's own development — implement only the SSH "shell"
+// request (an interactive, human-shaped terminal session) and reject or
+// mishandle an exec request outright, sometimes with a misleading error
+// that has nothing to do with the real cause.
+//
+// Interactive (on Client) and Shell exist for exactly that case. A Shell
+// is a single PTY-backed shell channel, opened once and reused across
+// every RunCommand call — unlike Run, which is stateless and opens a
+// fresh channel per call, a Shell is the same remote process for its
+// entire lifetime, the same way a human's terminal session would be.
+//
+// Opening a Shell reads whatever the remote side prints immediately
+// after the shell starts (a login banner, MOTD, or nothing at all) and
+// treats the first line that looks like a prompt — a short, non-blank
+// line ending in '#' or '>' — as that device's prompt for the rest of
+// the Shell's lifetime. Every subsequent RunCommand then simply waits
+// for that exact, literal string to reappear to know a command has
+// finished, rather than re-guessing what a prompt looks like on every
+// call. This mirrors the well-established technique network automation
+// tools (e.g. Netmiko) use across a huge range of vendors' CLIs — it is
+// a generic heuristic about how CLI prompts are shaped, not knowledge of
+// any specific vendor, so it belongs here rather than in a plugin.
+//
+// Prefer Run when a device is known to support the exec channel — it is
+// simpler and does not depend on prompt detection at all. Reach for
+// Interactive only once Run has actually been tried and shown not to
+// work, the same way it was for the C16.
 package ssh
 
 import (
@@ -146,6 +180,78 @@ type Client interface {
 	// is usually a no-op) — Close does not itself guard against being
 	// called twice.
 	Close() error
+
+	// Interactive opens an interactive, PTY-backed shell session on this
+	// Client's existing connection and blocks until that device's own
+	// command prompt is detected (or promptDetectionTimeout elapses —
+	// see this package's doc comment, "Interactive shell mode," for why
+	// this exists alongside Run and how prompt detection works). ctx
+	// bounds only that initial prompt-detection wait; it plays no role
+	// in the Shell's later RunCommand calls, which govern their own
+	// timeout the same way Run does.
+	Interactive(ctx context.Context) (Shell, error)
+}
+
+// Shell is one interactive, PTY-backed shell session opened via
+// Client.Interactive. Unlike Client.Run, which is stateless — every
+// call opens a brand-new channel and runs one independent command — a
+// Shell is stateful: it is the same remote shell process for its entire
+// lifetime, the same way a human sitting at a real terminal would
+// experience it.
+//
+// A Shell is not safe for concurrent use, for the same reason Run is
+// not (see Client.Run's own doc comment): there is exactly one remote
+// process reading exactly one stdin, one command at a time.
+type Shell interface {
+	// RunCommand writes command to the remote shell and returns
+	// everything the shell produced in response, up to (but not
+	// including) the reappearance of that device's command prompt. This
+	// deliberately includes whatever the remote side echoes back of
+	// command itself — see this package's doc comment, "Interactive
+	// shell mode": suppressing that echo would mean interpreting the
+	// transcript rather than simply reporting it, which is out of scope
+	// here the same way command-output parsing is out of scope for Run.
+	//
+	// Some devices break long output into pages mid-command, printing
+	// their own prompt asking for a keypress before continuing — a real
+	// Kontron/Iskratel C16 has been observed doing exactly this. pagers
+	// lets a caller that already knows a specific device's pager
+	// prompt(s) hand them to RunCommand: whenever a PagerPrompt's
+	// Trigger is seen in the still-arriving output, RunCommand sends its
+	// Response and keeps waiting for the real command prompt, with
+	// neither the Trigger text nor the synthetic Response appearing in
+	// the returned output. This package still has no vendor knowledge of
+	// its own — see this package's doc comment, "Interactive shell
+	// mode" — a caller with no pager prompts to declare simply omits
+	// pagers.
+	//
+	// RunCommand honors ctx's cancellation and deadline exactly the way
+	// Run does, combined with the Client's own configured Timeout — see
+	// Run's doc comment, "Timeout behavior."
+	RunCommand(ctx context.Context, command string, pagers ...PagerPrompt) (string, error)
+
+	// Close closes the underlying shell channel. It is safe to call
+	// Close even if RunCommand was never called. Closing a Shell does
+	// not close the Client it was opened from — Interactive may be
+	// called again on the same Client after a Shell returned from an
+	// earlier call is closed.
+	Close() error
+}
+
+// PagerPrompt describes one intermediate, mid-command prompt a device
+// may print while paging through long output — see Shell.RunCommand's
+// doc comment on pagers. Both fields are plain strings, supplied
+// entirely by the caller: this package recognizes and responds to
+// whatever text it is given, but has no built-in knowledge of what any
+// specific device's pager prompt looks like.
+type PagerPrompt struct {
+	// Trigger is the exact, literal text RunCommand watches for in a
+	// command's still-arriving output.
+	Trigger string
+
+	// Response is written back verbatim — no trailing newline is added
+	// — whenever Trigger is seen, to advance past it.
+	Response string
 }
 
 // New opens a Client to the host and port described by cfg,
