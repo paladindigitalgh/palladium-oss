@@ -14,6 +14,7 @@ import (
 	accessattachmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessattachment/httpapi"
 	accessinterfacehttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/httpapi"
 	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
+	accesstopologyhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accesstopology/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	authenticationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/authentication/httpapi"
@@ -23,6 +24,7 @@ import (
 	contacthttpapi "github.com/paladindigitalgh/palladium-oss/internal/contact/httpapi"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
+	kontronhttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron/httpapi"
 	eventhttpapi "github.com/paladindigitalgh/palladium-oss/internal/event/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/health"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
@@ -67,6 +69,8 @@ type Dependencies struct {
 	AccessAttachmentHandler  *accessattachmenthttpapi.AccessAttachmentHandler
 	ServiceProfileHandler    *serviceprofilehttpapi.ServiceProfileHandler
 	DiagnosticsHandler       *diagnosticshttpapi.DiagnosticsHandler
+	KontronHandler           *kontronhttpapi.KontronHandler
+	AccessTopologyHandler    *accesstopologyhttpapi.AccessTopologyHandler
 	AuthenticationHandler    *authenticationhttpapi.AuthenticationHandler
 	ConnectionProfileHandler *connectionprofilehttpapi.ConnectionProfileHandler
 	Tokens                   *auth.TokenIssuer
@@ -541,13 +545,44 @@ func NewRouter(deps Dependencies) http.Handler {
 		// the one capability guarding this whole route (see
 		// authz.CanRunDiagnostics's doc comment for why running a
 		// diagnostic does not decompose into a Read/Write pair the way
-		// every other domain mounted above does).
+		// every other domain mounted above does). The nested
+		// /diagnostics/olts/{oltId}/... routes reuse the exact same
+		// capability: running a Kontron-specific command against a
+		// specific OLT is the same kind of action as BasicONUCheck, just
+		// scoped to one OLT rather than one ONU (see
+		// internal/diagnostics/kontron's own doc comment on why it is a
+		// separate, purpose-built framework from BasicONUCheck's rather
+		// than an extension of it).
 		r.Route("/diagnostics", func(r chi.Router) {
 			r.Use(auth.Middleware(deps.Tokens))
 
 			r.Group(func(r chi.Router) {
 				r.Use(deps.Authz.RequireDiagnostics())
 				r.Post("/basic-onu-check", deps.DiagnosticsHandler.BasicONUCheck)
+
+				r.Route("/olts/{oltId}", func(r chi.Router) {
+					r.Post("/onu-summary", deps.KontronHandler.ONUSummary)
+					r.Post("/onu-status-summary", deps.KontronHandler.ONUStatusSummary)
+					r.Post("/onu-running-config", deps.KontronHandler.ONURunningConfig)
+					r.Post("/onu-detail", deps.KontronHandler.ONUDetail)
+					r.Post("/onu-status", deps.KontronHandler.ONUStatus)
+					r.Post("/onu-ethernet-ports", deps.KontronHandler.ONUEthernetPorts)
+					r.Post("/dhcp-snooping-entries", deps.KontronHandler.DHCPSnoopingEntries)
+					r.Post("/mac-address-table-entries", deps.KontronHandler.MACAddressTableEntries)
+				})
+
+				// /diagnostics/customers/{customerId}/equipment-locations
+				// is a GET, not a POST like everything above: it only
+				// resolves where a Customer's equipment sits on the
+				// access network (internal/accesstopology), reading
+				// nothing but Palladium's own database — no device is
+				// ever contacted. A caller resolves here first, then
+				// runs a specific diagnostic against the olts/{oltId}/...
+				// routes above using the oltId/interface pair this
+				// returns.
+				r.Route("/customers/{customerId}", func(r chi.Router) {
+					r.Get("/equipment-locations", deps.AccessTopologyHandler.ListCustomerEquipmentLocations)
+				})
 			})
 		})
 

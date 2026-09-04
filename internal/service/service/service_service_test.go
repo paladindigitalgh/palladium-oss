@@ -68,6 +68,16 @@ func (f *fakeServiceRepository) Update(_ context.Context, s domainservice.Servic
 	return s, nil
 }
 
+func (f *fakeServiceRepository) ListByLocationID(_ context.Context, locationID uuid.UUID) ([]domainservice.Service, error) {
+	services := []domainservice.Service{}
+	for _, s := range f.byID {
+		if s.LocationID == locationID {
+			services = append(services, s)
+		}
+	}
+	return services, nil
+}
+
 func (f *fakeServiceRepository) Delete(_ context.Context, id uuid.UUID) error {
 	if _, ok := f.byID[id]; !ok {
 		return apperror.NotFound("service not found")

@@ -88,6 +88,39 @@ func (r *LocationRepository) List(ctx context.Context) ([]location.Location, err
 	return locations, nil
 }
 
+// ListByCustomerID returns every Location belonging to customerID,
+// ordered by name for the same stable, human-useful reason List is.
+func (r *LocationRepository) ListByCustomerID(ctx context.Context, customerID uuid.UUID) ([]location.Location, error) {
+	const query = `
+		SELECT id, customer_id, name, type, status,
+		       address1, address2, city, state, postal_code, country,
+		       latitude, longitude, description, created_at, updated_at
+		FROM locations
+		WHERE customer_id = $1
+		ORDER BY name
+	`
+
+	rows, err := r.db.Query(ctx, query, customerID)
+	if err != nil {
+		return nil, translateError("list locations by customer", err)
+	}
+	defer rows.Close()
+
+	locations := []location.Location{}
+	for rows.Next() {
+		l, err := scanLocation(rows)
+		if err != nil {
+			return nil, translateError("scan location row", err)
+		}
+		locations = append(locations, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translateError("list locations by customer", err)
+	}
+
+	return locations, nil
+}
+
 // Create inserts l and returns the persisted record.
 //
 // As with SiteRepository.Create, the repository assigns ID, CreatedAt,

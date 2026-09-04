@@ -38,6 +38,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Encryption.MasterKey == "" {
 		t.Error("Encryption.MasterKey = \"\", want a non-empty dev default")
 	}
+	if cfg.SSH.KnownHostsFile != "" {
+		t.Errorf("SSH.KnownHostsFile = %q, want empty by default (no placeholder value makes sense here)", cfg.SSH.KnownHostsFile)
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
@@ -45,6 +48,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("HTTP_PORT", "9090")
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("LOG_FORMAT", "text")
+	t.Setenv("SSH_KNOWN_HOSTS_FILE", "/etc/palladium/known_hosts")
 
 	cfg, err := Load()
 	if err != nil {
@@ -59,6 +63,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.Log.Format != "text" {
 		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, "text")
+	}
+	if cfg.SSH.KnownHostsFile != "/etc/palladium/known_hosts" {
+		t.Errorf("SSH.KnownHostsFile = %q, want %q", cfg.SSH.KnownHostsFile, "/etc/palladium/known_hosts")
 	}
 }
 

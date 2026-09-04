@@ -94,6 +94,39 @@ func (r *ServiceRepository) List(ctx context.Context) ([]service.Service, error)
 	return services, nil
 }
 
+// ListByLocationID returns every Service purchased at locationID,
+// ordered by created_at for the same reasoning List's own ordering
+// gives.
+func (r *ServiceRepository) ListByLocationID(ctx context.Context, locationID uuid.UUID) ([]service.Service, error) {
+	const query = `
+		SELECT id, location_id, product_id, service_profile_id, status, description,
+		       activated_at, suspended_at, disconnected_at, created_at, updated_at
+		FROM services
+		WHERE location_id = $1
+		ORDER BY created_at
+	`
+
+	rows, err := r.db.Query(ctx, query, locationID)
+	if err != nil {
+		return nil, translateError("list services by location", err)
+	}
+	defer rows.Close()
+
+	services := []service.Service{}
+	for rows.Next() {
+		s, err := scanService(rows)
+		if err != nil {
+			return nil, translateError("scan service row", err)
+		}
+		services = append(services, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translateError("list services by location", err)
+	}
+
+	return services, nil
+}
+
 // Create inserts s and returns the persisted record.
 //
 // As with LocationRepository.Create, the repository assigns ID, CreatedAt,

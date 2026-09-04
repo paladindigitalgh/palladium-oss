@@ -68,6 +68,16 @@ func (f *fakeLocationRepository) Update(_ context.Context, l location.Location) 
 	return l, nil
 }
 
+func (f *fakeLocationRepository) ListByCustomerID(_ context.Context, customerID uuid.UUID) ([]location.Location, error) {
+	locations := []location.Location{}
+	for _, l := range f.byID {
+		if l.CustomerID == customerID {
+			locations = append(locations, l)
+		}
+	}
+	return locations, nil
+}
+
 func (f *fakeLocationRepository) Delete(_ context.Context, id uuid.UUID) error {
 	if _, ok := f.byID[id]; !ok {
 		return apperror.NotFound("location not found")

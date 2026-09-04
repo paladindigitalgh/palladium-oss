@@ -381,6 +381,43 @@ func TestServiceRepositoryList(t *testing.T) {
 	}
 }
 
+// TestServiceRepositoryListByLocationID proves the WHERE location_id =
+// $1 filter, the one thing List() itself cannot exercise: a second
+// Location's Service must never appear in the first Location's results.
+func TestServiceRepositoryListByLocationID(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	l := createTestLocation(t, ctx, q)
+	otherLocation := createTestLocation(t, ctx, q)
+	p := createTestProduct(t, ctx, q)
+	sp := createTestServiceProfile(t, ctx, q)
+	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
+
+	first, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	second, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if _, err := repo.Create(ctx, testService(otherLocation.ID, p.ID, sp.ID)); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	services, err := repo.ListByLocationID(ctx, l.ID)
+	if err != nil {
+		t.Fatalf("ListByLocationID() = %v", err)
+	}
+
+	if len(services) != 2 {
+		t.Fatalf("len(ListByLocationID()) = %d, want 2; got %+v", len(services), services)
+	}
+	if services[0].ID != first.ID || services[1].ID != second.ID {
+		t.Errorf("ListByLocationID() order = [%v, %v], want [%v, %v] (oldest first)",
+			services[0].ID, services[1].ID, first.ID, second.ID)
+	}
+}
+
 func TestServiceRepositoryUpdate(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)

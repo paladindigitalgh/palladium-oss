@@ -64,6 +64,27 @@ type EncryptionConfig struct {
 	MasterKey string
 }
 
+// SSHConfig holds settings for connecting to network devices over SSH
+// (see internal/platform/ssh and internal/olt/connect).
+type SSHConfig struct {
+	// KnownHostsFile is the OpenSSH-format known_hosts file used to
+	// verify a device's host key for any connection whose
+	// ConnectionProfile specifies
+	// connectionprofile.HostKeyPolicyStrict — see
+	// internal/olt/connect.Shell's own doc comment on knownHostsFile.
+	// It is unused, and may be left empty, for every ConnectionProfile
+	// using HostKeyPolicyInsecure instead.
+	//
+	// There is deliberately no default value here (unlike
+	// defaultJWTSecret and defaultMasterKey above): unlike a secret,
+	// there is no dev-convenience placeholder for a host verification
+	// file that would mean anything — an empty value simply means no
+	// Strict-policy connection can succeed yet, which
+	// internal/platform/ssh.Config.validate already reports clearly
+	// (ErrKnownHostsFileRequired) the moment one is attempted.
+	KnownHostsFile string
+}
+
 // DatabaseConfig holds settings for the PostgreSQL connection pool.
 type DatabaseConfig struct {
 	Host            string
@@ -87,6 +108,7 @@ type Config struct {
 	Database    DatabaseConfig
 	JWT         JWTConfig
 	Encryption  EncryptionConfig
+	SSH         SSHConfig
 }
 
 // Load builds a Config from environment variables, applying defaults for
@@ -132,6 +154,9 @@ func Load() (Config, error) {
 		},
 		Encryption: EncryptionConfig{
 			MasterKey: getEnvString("PALLADIUM_MASTER_KEY", defaultMasterKey),
+		},
+		SSH: SSHConfig{
+			KnownHostsFile: getEnvString("SSH_KNOWN_HOSTS_FILE", ""),
 		},
 	}
 

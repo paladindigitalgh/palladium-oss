@@ -280,6 +280,41 @@ func TestLocationRepositoryList(t *testing.T) {
 	}
 }
 
+// TestLocationRepositoryListByCustomerID proves the WHERE customer_id =
+// $1 filter, the one thing List() itself cannot exercise: a second
+// customer's Location must never appear in the first customer's results.
+func TestLocationRepositoryListByCustomerID(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	c := createTestCustomer(t, ctx, q)
+	otherCustomer := createTestCustomer(t, ctx, q)
+	repo := postgres.NewLocationRepository(q, clock.New(), id.New())
+
+	first, err := repo.Create(ctx, testLocation(c.ID, "Alpha Location"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	second, err := repo.Create(ctx, testLocation(c.ID, "Beta Location"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if _, err := repo.Create(ctx, testLocation(otherCustomer.ID, "Other Customer's Location")); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	locations, err := repo.ListByCustomerID(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("ListByCustomerID() = %v", err)
+	}
+
+	if len(locations) != 2 {
+		t.Fatalf("len(ListByCustomerID()) = %d, want 2; got %+v", len(locations), locations)
+	}
+	if locations[0].ID != first.ID || locations[1].ID != second.ID {
+		t.Errorf("ListByCustomerID() = [%v, %v], want [%v, %v] (ordered by name)",
+			locations[0].ID, locations[1].ID, first.ID, second.ID)
+	}
+}
+
 func TestLocationRepositoryUpdate(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCustomer(t, ctx, q)

@@ -21,6 +21,8 @@ import (
 	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
 	accessnetworkservice "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/service"
+	"github.com/paladindigitalgh/palladium-oss/internal/accesstopology"
+	accesstopologyhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accesstopology/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	authpostgres "github.com/paladindigitalgh/palladium-oss/internal/auth/postgres"
@@ -44,6 +46,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
+	kontronhttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron/httpapi"
+	kontronservice "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron/service"
 	diagnosticsservice "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/service"
 	eventhttpapi "github.com/paladindigitalgh/palladium-oss/internal/event/httpapi"
 	eventpostgres "github.com/paladindigitalgh/palladium-oss/internal/event/postgres"
@@ -56,6 +60,7 @@ import (
 	locationpostgres "github.com/paladindigitalgh/palladium-oss/internal/location/postgres"
 	locationservice "github.com/paladindigitalgh/palladium-oss/internal/location/service"
 	logging "github.com/paladindigitalgh/palladium-oss/internal/log"
+	"github.com/paladindigitalgh/palladium-oss/internal/olt/connect"
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
 	oltpostgres "github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
 	oltservice "github.com/paladindigitalgh/palladium-oss/internal/olt/service"
@@ -352,6 +357,34 @@ func run() error {
 	connectionProfileSvc := connectionprofileservice.NewConnectionProfileService(connectionProfileRepo)
 	connectionProfileHandler := connectionprofilehttpapi.NewConnectionProfileHandler(connectionProfileSvc)
 
+	// Kontron/Iskratel C16 diagnostics (internal/diagnostics/kontron)
+	// reuse oltRepo, connectionProfileRepo, and authenticationRepo
+	// directly rather than a repository of their own: resolving how to
+	// reach a specific OLT is connect.Dialer's whole job (see that
+	// package's own doc comment), and internal/diagnostics/kontron/service
+	// has nothing of its own to persist (see that package's own doc
+	// comment). This is deliberately not wired into diagnosticsRegistry
+	// above — see internal/diagnostics/kontron's package doc comment on
+	// why it is a separate, purpose-built framework rather than an
+	// extension of internal/diagnostics's Request{ONUID}-shaped one.
+	kontronDialer := connect.NewDialer(oltRepo, connectionProfileRepo, authenticationRepo, cfg.SSH.KnownHostsFile)
+	kontronSvc := kontronservice.NewKontronService(kontronDialer)
+	kontronHandler := kontronhttpapi.NewKontronHandler(kontronSvc)
+
+	// Access Topology (internal/accesstopology) resolves where a
+	// Customer's equipment sits on the access network — the OLT and
+	// interface a diagnostic needs — reusing accessAttachmentRepo,
+	// accessInterfaceRepo, and ponPortRepo (the single-equipment
+	// Resolver) plus locationRepo, serviceRepo, and serviceEquipmentRepo
+	// (CustomerResolver's Customer -> Location -> Service ->
+	// ServiceEquipment fan-out, one layer up). Like Kontron diagnostics
+	// above, this has no repository or persistence of its own — it only
+	// traverses relationships already stored by those six repositories
+	// (see internal/accesstopology's own package doc comment).
+	accessTopologyResolver := accesstopology.NewResolver(accessAttachmentRepo, accessInterfaceRepo, ponPortRepo)
+	customerResolver := accesstopology.NewCustomerResolver(locationRepo, serviceRepo, serviceEquipmentRepo, accessTopologyResolver)
+	accessTopologyHandler := accesstopologyhttpapi.NewAccessTopologyHandler(customerResolver)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -386,6 +419,8 @@ func run() error {
 		ProductHandler:           productHandler,
 		ServiceProfileHandler:    serviceProfileHandler,
 		DiagnosticsHandler:       diagnosticsHandler,
+		KontronHandler:           kontronHandler,
+		AccessTopologyHandler:    accessTopologyHandler,
 		ServiceHandler:           serviceHandler,
 		ServiceEquipmentHandler:  serviceEquipmentHandler,
 		WorkflowHandler:          workflowHandler,

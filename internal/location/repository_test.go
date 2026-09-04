@@ -29,6 +29,9 @@ func (stubLocationRepository) Update(_ context.Context, l location.Location) (lo
 	return l, nil
 }
 func (stubLocationRepository) Delete(context.Context, uuid.UUID) error { return nil }
+func (stubLocationRepository) ListByCustomerID(context.Context, uuid.UUID) ([]location.Location, error) {
+	return nil, nil
+}
 
 var _ location.LocationRepository = (*stubLocationRepository)(nil)
 

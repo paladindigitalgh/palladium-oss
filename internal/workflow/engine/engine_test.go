@@ -56,6 +56,9 @@ func (f *fakeServiceRepo) Update(_ context.Context, s service.Service) (service.
 	return s, nil
 }
 func (f *fakeServiceRepo) Delete(context.Context, uuid.UUID) error { return nil }
+func (f *fakeServiceRepo) ListByLocationID(context.Context, uuid.UUID) ([]service.Service, error) {
+	return nil, nil
+}
 
 type fakeEquipmentRepo struct {
 	active []serviceequipment.ServiceEquipment
