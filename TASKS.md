@@ -106,7 +106,7 @@ Only a simulated mock plugin (internal/plugin/mock) exists today; no real vendor
 
 - [x] Vue application
 - [x] Authentication
-- [ ] Dashboard (still placeholder data throughout, not wired to any real query -- see frontend/src/views/DashboardView.vue)
+- [x] Dashboard (real stats/widgets: Customers/Active Services/Devices/Pending Tasks counts, Network Overview, a bounded system-wide recent-Events feed, Pending Tasks list -- Active Alerts/System Health deliberately omitted, no real data to back them)
 - [x] Inventory UI (Site/Building/Room/Rack/Device Detail Workspaces, Inventory Collection View, Rack picker on Device)
 - [x] Customer UI
 - [x] Workflow UI (Provision/Suspend/Resume actions + workflow history on the Service Detail Workspace; no dedicated workflow-instance browser)

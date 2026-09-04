@@ -162,7 +162,7 @@ Responsible for:
 
 - Customer records
 - Contacts
-- Addresses
+- Locations
 - Billing references
 - Service relationships
 
