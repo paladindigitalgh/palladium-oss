@@ -47,3 +47,47 @@ export async function listServiceEquipmentByDeviceId(deviceId: string): Promise<
   const equipment = await listServiceEquipment()
   return equipment.filter((item) => item.deviceId === deviceId)
 }
+
+export interface CreateServiceEquipmentInput {
+  serviceId: string
+  deviceId: string
+  role: ServiceEquipment['role']
+  description: string
+}
+
+/**
+ * Assigns a Device to a Service (docs/03-DOMAIN-MODEL.md section 7).
+ * installedAt is always sent as "now" and removedAt as null -- this
+ * dialog only creates a fresh, currently-active assignment; backdating
+ * one is not a flow this form supports. The backend rejects a Device
+ * that already has an active assignment elsewhere (see
+ * internal/serviceequipment/service's active-assignment-uniqueness
+ * rule) with a conflict error.
+ */
+export async function createServiceEquipment(input: CreateServiceEquipmentInput): Promise<ServiceEquipment> {
+  const dto = await apiFetch<ServiceEquipmentDto>('/service-equipment/', {
+    method: 'POST',
+    body: {
+      service_id: input.serviceId,
+      device_id: input.deviceId,
+      role: input.role,
+      description: input.description,
+      installed_at: new Date().toISOString(),
+      removed_at: null,
+    },
+  })
+  return fromDto(dto)
+}
+
+/**
+ * Permanently deletes a ServiceEquipment assignment. docs/03-DOMAIN-MODEL.md
+ * states historical Service Equipment records are never deleted -- that
+ * describes real operational history, not disposable test/demo data an
+ * operator is deliberately cycling through. The backend still enforces
+ * the real constraint regardless: an active AccessAttachment referencing
+ * this record (see accessAttachmentRepository.ts) blocks the delete with
+ * a conflict error until that attachment is removed first.
+ */
+export async function deleteServiceEquipment(id: string): Promise<void> {
+  await apiFetch<void>(`/service-equipment/${id}`, { method: 'DELETE' })
+}

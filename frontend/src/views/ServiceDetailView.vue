@@ -14,10 +14,11 @@ import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
 import ServiceFormDialog from '@/components/dialogs/ServiceFormDialog.vue'
+import AssignServiceEquipmentDialog from '@/components/dialogs/AssignServiceEquipmentDialog.vue'
 import { getServiceById, deleteService } from '@/services/services/serviceRepository'
 import { getLocationById } from '@/services/locations/locationRepository'
 import { getCustomerById } from '@/services/customers/customerRepository'
-import { listServiceEquipmentByServiceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
+import { listServiceEquipmentByServiceId, deleteServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { getDeviceById } from '@/services/devices/deviceRepository'
 import { getActiveAccessAttachmentByServiceEquipmentId } from '@/services/accessAttachments/accessAttachmentRepository'
 import { listEvents } from '@/services/events/eventRepository'
@@ -146,7 +147,50 @@ const equipmentColumns: SimpleTableColumn[] = [
   { key: 'role', label: 'Role' },
   { key: 'device', label: 'Device' },
   { key: 'installed', label: 'Installed' },
+  { key: 'actions', label: '' },
 ]
+
+// --- Assign Equipment ---
+
+const showAssignEquipmentDialog = ref(false)
+
+async function handleEquipmentAssigned(created: ServiceEquipment) {
+  showAssignEquipmentDialog.value = false
+  equipment.value = [...equipment.value, created]
+
+  // The newly assigned Device is very likely already in devicesById (it
+  // had to exist, unassigned, to be picked in the dialog), but resolve
+  // it fresh rather than assume -- the same on-demand pattern load()
+  // itself uses, just for one Device instead of the whole set.
+  if (!devicesById.value.has(created.deviceId)) {
+    const device = await getDeviceById(created.deviceId)
+    if (device) devicesById.value.set(created.deviceId, device)
+  }
+}
+
+// --- Remove Equipment ---
+
+const removeEquipmentTarget = ref<ServiceEquipment | null>(null)
+const removeEquipmentPending = ref(false)
+const removeEquipmentError = ref<string | null>(null)
+
+async function confirmRemoveEquipment() {
+  if (!removeEquipmentTarget.value) return
+  removeEquipmentPending.value = true
+  removeEquipmentError.value = null
+  try {
+    await deleteServiceEquipment(removeEquipmentTarget.value.id)
+    equipment.value = equipment.value.filter((item) => item.id !== removeEquipmentTarget.value?.id)
+    removeEquipmentTarget.value = null
+  } catch (err) {
+    removeEquipmentError.value =
+      err instanceof ApiError && err.kind === 'conflict'
+        ? 'This equipment still has an active attachment — detach it first.'
+        : 'This equipment could not be removed.'
+  } finally {
+    removeEquipmentPending.value = false
+  }
+}
 
 /**
  * Which workflow the primary action button runs, derived from the
@@ -311,6 +355,29 @@ const workflowColumns: SimpleTableColumn[] = [
     </SectionCard>
 
     <SectionCard title="Equipment" icon="devices" :badge="equipment.length">
+      <div class="section-toolbar">
+        <BaseButton variant="secondary" size="sm" @click="showAssignEquipmentDialog = true">Assign Equipment</BaseButton>
+      </div>
+
+      <AssignServiceEquipmentDialog
+        :open="showAssignEquipmentDialog"
+        :service-id="service.id"
+        @close="showAssignEquipmentDialog = false"
+        @created="handleEquipmentAssigned"
+      />
+
+      <ConfirmationDialog
+        :open="removeEquipmentTarget !== null"
+        title="Remove Equipment"
+        description="Permanently remove this equipment assignment? This cannot be undone."
+        confirm-label="Remove Equipment"
+        destructive
+        :pending="removeEquipmentPending"
+        :error="removeEquipmentError"
+        @confirm="confirmRemoveEquipment"
+        @cancel="removeEquipmentTarget = null"
+      />
+
       <SimpleTable
         :columns="equipmentColumns"
         :rows="equipment"
@@ -336,6 +403,9 @@ const workflowColumns: SimpleTableColumn[] = [
           </div>
         </template>
         <template #cell-installed="{ row }">{{ row.installedAt ? formatDate(row.installedAt) : 'Not yet installed' }}</template>
+        <template #cell-actions="{ row }">
+          <BaseButton variant="ghost" size="sm" @click="removeEquipmentTarget = row">Remove</BaseButton>
+        </template>
       </SimpleTable>
     </SectionCard>
 
@@ -362,6 +432,13 @@ const workflowColumns: SimpleTableColumn[] = [
 <style scoped>
 .service-detail-view__status {
   padding: var(--space-6);
+}
+
+.section-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .cell-mono {

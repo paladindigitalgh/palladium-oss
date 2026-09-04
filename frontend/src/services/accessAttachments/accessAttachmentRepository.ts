@@ -8,10 +8,16 @@ import { apiFetch } from '@/services/api/httpClient'
  * filtering, so every list below fetches the full set once and filters
  * client-side, the same pattern serviceEquipmentRepository.ts uses.
  *
- * There is no getAccessAttachmentById or deleteAccessAttachment: an
- * attachment is never opened on its own page, and it is detached (a PUT
+ * There is no getAccessAttachmentById: an attachment is never opened on
+ * its own page. During normal operation an attachment is detached (a PUT
  * setting removedAt/removalReason), never deleted -- see
- * updateAccessAttachment and DetachAccessAttachmentDialog.vue.
+ * updateAccessAttachment and DetachAccessAttachmentDialog.vue, which
+ * preserve the historical row on purpose. deleteAccessAttachment exists
+ * alongside that for the one case where a row should not be kept at all
+ * -- disposable test/demo data an operator wants to fully remove, not a
+ * real operational history -- and AccessInterfaceDetailView.vue only
+ * offers it once an attachment is already detached (removedAt set), so
+ * the soft path stays the default for anything still active.
  */
 
 interface AccessAttachmentDto {
@@ -107,4 +113,12 @@ export async function updateAccessAttachment(id: string, input: UpdateAccessAtta
     },
   })
   return fromDto(dto)
+}
+
+/**
+ * Permanently deletes an AccessAttachment row -- see this file's own
+ * doc comment on why this exists alongside the normal detach flow.
+ */
+export async function deleteAccessAttachment(id: string): Promise<void> {
+  await apiFetch<void>(`/access-attachments/${id}`, { method: 'DELETE' })
 }

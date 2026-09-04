@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { listServiceEquipment, listServiceEquipmentByServiceId, listServiceEquipmentByDeviceId } from './serviceEquipmentRepository'
+import {
+  listServiceEquipment,
+  listServiceEquipmentByServiceId,
+  listServiceEquipmentByDeviceId,
+  createServiceEquipment,
+  deleteServiceEquipment,
+} from './serviceEquipmentRepository'
 
 /** Both functions fetch the same full /service-equipment/ list and filter client-side by a different field -- see this file's own doc comment. */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
@@ -73,5 +79,42 @@ describe('listServiceEquipmentByDeviceId', () => {
 
     expect(result[0].installedAt).toBeNull()
     expect(result[0].removedAt).toBeNull()
+  })
+})
+
+describe('createServiceEquipment', () => {
+  it('sends the request body in the API wire shape, with installedAt set to now and removedAt null', async () => {
+    apiFetch.mockResolvedValue(equipmentDto({ id: 'se1', service_id: 's1', device_id: 'd1', role: 'ONU' }))
+
+    const result = await createServiceEquipment({
+      serviceId: 's1',
+      deviceId: 'd1',
+      role: 'ONU',
+      description: 'Primary ONU',
+    })
+
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+    const [path, options] = apiFetch.mock.calls[0]
+    expect(path).toBe('/service-equipment/')
+    expect(options.method).toBe('POST')
+    expect(options.body).toMatchObject({
+      service_id: 's1',
+      device_id: 'd1',
+      role: 'ONU',
+      description: 'Primary ONU',
+      removed_at: null,
+    })
+    expect(typeof options.body.installed_at).toBe('string')
+    expect(result.id).toBe('se1')
+  })
+})
+
+describe('deleteServiceEquipment', () => {
+  it('issues a DELETE request for the given id', async () => {
+    apiFetch.mockResolvedValue(undefined)
+
+    await deleteServiceEquipment('se1')
+
+    expect(apiFetch).toHaveBeenCalledWith('/service-equipment/se1', { method: 'DELETE' })
   })
 })

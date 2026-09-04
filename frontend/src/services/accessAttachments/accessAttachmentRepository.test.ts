@@ -6,13 +6,14 @@ import {
   getActiveAccessAttachmentByServiceEquipmentId,
   createAccessAttachment,
   updateAccessAttachment,
+  deleteAccessAttachment,
 } from './accessAttachmentRepository'
 
 /**
- * No get-by-id or delete here -- see this file's own doc comment: an
- * attachment has no Detail page and is detached (a PUT), not deleted.
- * createAccessAttachment stamps installedAt itself, so that test checks
- * the sent value is a real timestamp rather than asserting an exact one.
+ * No get-by-id here -- see this file's own doc comment: an attachment
+ * has no Detail page of its own. createAccessAttachment stamps
+ * installedAt itself, so that test checks the sent value is a real
+ * timestamp rather than asserting an exact one.
  */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 
@@ -150,5 +151,15 @@ describe('updateAccessAttachment', () => {
         removal_reason: 'ONT swapped',
       },
     })
+  })
+})
+
+describe('deleteAccessAttachment', () => {
+  it('issues a DELETE request for the given id', async () => {
+    apiFetch.mockResolvedValue(undefined)
+
+    await deleteAccessAttachment('aa1')
+
+    expect(apiFetch).toHaveBeenCalledWith('/access-attachments/aa1', { method: 'DELETE' })
   })
 })

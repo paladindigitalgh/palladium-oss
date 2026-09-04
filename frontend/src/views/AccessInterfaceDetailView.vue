@@ -18,7 +18,7 @@ import AttachAccessAttachmentDialog from '@/components/dialogs/AttachAccessAttac
 import DetachAccessAttachmentDialog from '@/components/dialogs/DetachAccessAttachmentDialog.vue'
 import { getAccessInterfaceById, deleteAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
 import { getPONPortById } from '@/services/ponPorts/ponPortRepository'
-import { listAccessAttachmentsByAccessInterfaceId } from '@/services/accessAttachments/accessAttachmentRepository'
+import { listAccessAttachmentsByAccessInterfaceId, deleteAccessAttachment } from '@/services/accessAttachments/accessAttachmentRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
@@ -116,6 +116,25 @@ const detachTarget = ref<AccessAttachment | null>(null)
 function handleAttachmentDetached(updated: AccessAttachment) {
   attachments.value = attachments.value.map((attachment) => (attachment.id === updated.id ? updated : attachment))
   detachTarget.value = null
+}
+
+const deleteAttachmentTarget = ref<AccessAttachment | null>(null)
+const deleteAttachmentPending = ref(false)
+const deleteAttachmentError = ref<string | null>(null)
+
+async function confirmDeleteAttachment() {
+  if (!deleteAttachmentTarget.value) return
+  deleteAttachmentPending.value = true
+  deleteAttachmentError.value = null
+  try {
+    await deleteAccessAttachment(deleteAttachmentTarget.value.id)
+    attachments.value = attachments.value.filter((attachment) => attachment.id !== deleteAttachmentTarget.value?.id)
+    deleteAttachmentTarget.value = null
+  } catch {
+    deleteAttachmentError.value = 'This attachment could not be deleted.'
+  } finally {
+    deleteAttachmentPending.value = false
+  }
 }
 
 // --- Edit Access Interface ---
@@ -240,6 +259,18 @@ async function confirmDeleteAccessInterface() {
         @detached="handleAttachmentDetached"
       />
 
+      <ConfirmationDialog
+        :open="deleteAttachmentTarget !== null"
+        title="Delete Attachment"
+        description="Permanently delete this attachment record? This cannot be undone."
+        confirm-label="Delete Attachment"
+        destructive
+        :pending="deleteAttachmentPending"
+        :error="deleteAttachmentError"
+        @confirm="confirmDeleteAttachment"
+        @cancel="deleteAttachmentTarget = null"
+      />
+
       <SimpleTable
         :columns="attachmentColumns"
         :rows="attachments"
@@ -252,6 +283,7 @@ async function confirmDeleteAccessInterface() {
         <template #cell-installed="{ row }">{{ row.installedAt ? formatDate(row.installedAt) : 'Not yet installed' }}</template>
         <template #cell-actions="{ row }">
           <BaseButton v-if="row.removedAt === null" variant="ghost" size="sm" @click="detachTarget = row">Detach</BaseButton>
+          <BaseButton v-else variant="ghost" size="sm" @click="deleteAttachmentTarget = row">Delete</BaseButton>
         </template>
       </SimpleTable>
     </SectionCard>
