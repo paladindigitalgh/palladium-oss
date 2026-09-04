@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.4-draft
+version: 1.5-draft
 ---
 
 # Workspace Specifications
@@ -478,14 +478,27 @@ suspended, or resumed.
 -   Locations -- every Location on the account, with Add/Edit/Remove
 -   Services -- every Service across every Location, with Add/Remove;
     opens the Service Workspace
+-   ONU Diagnostics -- one block per equipment location the customer's
+    Services resolve to (Customer → Location → Service → Service
+    Equipment → Access Attachment → Access Interface → OLT, see
+    `internal/accesstopology`), each with a "Check ONU Status" button.
+    The button runs five fixed, read-only Kontron commands in sequence
+    against the live OLT over SSH (`show run <int>`,
+    `show interface <int> status`, `show interface <int> eth all`,
+    `show dhcpsnooping interface <int>`, `show mac-addr-table interface
+    <int>`) and renders each command's raw output verbatim -- no
+    parsing anywhere in the stack. Empty when nothing is attached yet.
 -   Timeline -- the Customer's real audit trail (docs/02-DESIGN-PRINCIPLES.md
     principle 10), sourced from the Event domain
 
-Equipment, workflow history, and diagnostics belong to a Service, not a
-Customer directly (docs/03-DOMAIN-MODEL.md: a Customer owns Services
-through Locations, and equipment is associated through Services) -- see
-those sections on the Service Workspace instead. There is no Notes
-feature in Version 1.
+Equipment and workflow history belong to a Service, not a Customer
+directly (docs/03-DOMAIN-MODEL.md: a Customer owns Services through
+Locations, and equipment is associated through Services) -- see those
+sections on the Service Workspace instead. ONU Diagnostics is the one
+exception: it reads live from the OLT rather than from Palladium's own
+records, and an operator checking on a customer's connectivity wants it
+on the Customer Workspace, not one hop down on each Service. There is no
+Notes feature in Version 1.
 
 ## Navigation
 
@@ -541,7 +554,10 @@ action in Version 1.
     Location
 -   Location -- the Service's Location
 -   Equipment -- the Service's Service Equipment assignments (role,
-    device, installed date)
+    device, installed date), with "Assign Equipment" (picks an
+    unassigned Device) and a per-row "Remove" (hard delete, blocked
+    while an active Access Attachment references the row -- see
+    03-DOMAIN-MODEL.md section 7)
 -   Workflow History -- every WorkflowInstance run against this Service
     (definition, status, started date)
 -   Timeline -- the Service's real audit trail, sourced from the Event
@@ -708,10 +724,14 @@ connect an OLT to its Access Interfaces.
 -   Summary (technology, status, created)
 -   PON Port (a single relationship link back up the chain)
 -   Attachments — every Access Attachment ever made to this interface,
-    active and removed alike; removal is history, not deletion (see
-    03-DOMAIN-MODEL.md). "Attach Equipment" opens a picker over
-    existing Service Equipment; "Detach" records a reason and a
-    removal timestamp rather than deleting the row.
+    active and removed alike; removal is history by default, not
+    deletion (see 03-DOMAIN-MODEL.md). "Attach Equipment" opens a
+    picker over existing Service Equipment; "Detach" records a reason
+    and a removal timestamp rather than deleting the row. Once a row is
+    detached, a "Delete" action also appears -- a real hard delete, for
+    disposable test/demo data rather than real operational history --
+    but only ever on an already-removed row; an active attachment can
+    only be detached.
 -   Timeline
 
 ------------------------------------------------------------------------
@@ -1109,6 +1129,7 @@ understanding, investigating, and acting on the network.
   1.2 Draft   2026-07-30   Documented the Landing/Entity Workspace archetype distinction (section 4); clarified WorkspaceLayout applies to Entity Workspaces only
   1.3 Draft   2026-07-30   Added Collection View & Detail View specification (section 5): Collection View discovery scope, Detail View responsibilities, navigation flow, and canonical Detail Views
   1.4 Draft   2026-07-30   Added Detail Workspace Structure (section 6): header, Contents navigation, collapsible sections, no tabs; renamed "Primary Panels" to "Sections" for single-object Detail Workspaces
+  1.5 Draft   2026-09-04   Documented the ONU Diagnostics section on the Customer Workspace (section 8) and corrected the prior claim that diagnostics live only on the Service Workspace; documented Assign/Remove Equipment on the Service Workspace (section 9) and Delete-after-Detach on the Access Interface Workspace's Attachments section (section 11)
 
 ------------------------------------------------------------------------
 

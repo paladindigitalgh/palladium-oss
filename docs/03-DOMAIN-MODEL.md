@@ -2,7 +2,7 @@
 document: 03-DOMAIN-MODEL
 status: Draft
 title: Domain Model
-version: 1.0-draft
+version: 1.1-draft
 ---
 
 # Domain Model
@@ -242,7 +242,14 @@ Service Equipment records:
 
 Only one active assignment should exist for a given device at a time.
 
-Historical assignments are never deleted.
+Removing an assignment is normally a soft operation: a removal date and
+reason are recorded rather than deleting the row, so historical
+assignments remain queryable. A real hard delete also exists
+(`DELETE /service-equipment/{id}`) for disposable test/demo data an
+operator is deliberately cycling through — it is blocked by an active
+Access Attachment (foreign-key `RESTRICT`) until that attachment is
+removed first, and the frontend only offers it as a distinct "Remove"
+action, never a replacement for the soft path.
 
 ------------------------------------------------------------------------
 
@@ -548,7 +555,10 @@ The following rules must always remain true.
 -   A Device may exist without being assigned.
 -   A Device may have only one active Service Equipment assignment at a
     time.
--   Historical Service Equipment records are never deleted.
+-   Service Equipment assignments are removed (soft) by default, keeping
+    historical records queryable; a real delete exists only for
+    disposable test/demo data and is blocked while an active Access
+    Attachment references the record.
 -   Workflow definitions are immutable once published.
 -   Workflow Instances are permanent historical records.
 -   Events are immutable.
@@ -625,6 +635,7 @@ understandable, extensible, and maintainable as it grows.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-09-04   Corrected section 7 and the section 17 invariant: Service Equipment removal is soft by default, but a real hard delete now exists for disposable test/demo data (blocked by an active Access Attachment)
 
 ------------------------------------------------------------------------
 

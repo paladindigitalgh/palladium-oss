@@ -2,7 +2,7 @@
 document: 06-PLUGIN-ARCHITECTURE
 status: Draft
 title: Plugin Architecture
-version: 1.0-draft
+version: 1.1-draft
 ---
 
 # Plugin Architecture
@@ -38,7 +38,23 @@ today (see `internal/plugin/`) is a deliberately minimal slice of it:
     marketplace concept.
 -   Only one plugin exists today: `internal/plugin/mock`, a simulated
     vendor. No real Kontron, Nokia, Calix, Adtran, or MikroTik
-    integration has been built yet.
+    integration has been built through the `Plugin` interface itself.
+
+A real Kontron integration does exist (`internal/diagnostics/kontron`),
+built against a live Kontron/Iskratel C16, but it does **not** go
+through `internal/plugin`. It is a standalone, read-only diagnostics
+package: an interactive-shell SSH client
+(`internal/platform/ssh`, added for Kontron's exec-channel-less CLI
+and its "-- More --" pager) wrapped by eight vendor-specific `show`
+commands, exposed over its own HTTP routes
+(`internal/diagnostics/kontron/httpapi`) rather than through the
+Capability Model in section 7 below. It was built this way because the
+immediate need was narrow (read-only ONU status for the Customer
+Workspace, docs/09-WORKSPACE-SPECIFICATIONS.md section 8) and
+config-change capability was explicitly deferred; it should be treated
+as a candidate first real `Plugin` implementation once that broader
+work happens, not as evidence the Capability Model below is already
+load-bearing.
 
 Treat the rest of this document as where the plugin system is headed,
 not a description of `internal/plugin/` as it stands.
@@ -489,6 +505,7 @@ manufacturers or protocols.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-09-04   Updated the Implementation Status note: a real Kontron SSH diagnostics integration now exists (`internal/diagnostics/kontron`), but outside the `Plugin` interface -- documented as a candidate first real Plugin rather than evidence the Capability Model is load-bearing
 
 ------------------------------------------------------------------------
 
