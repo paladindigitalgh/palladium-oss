@@ -107,7 +107,7 @@ func newTestRouter(svc *fakeProductService) http.Handler {
 	return r
 }
 
-const validBody = `{"catalog_id":"11111111-1111-1111-1111-111111111111","name":"Residential Internet 100/20","category":"Internet","status":"Active"}`
+const validBody = `{"catalog_id":"11111111-1111-1111-1111-111111111111","provider_id":"22222222-2222-2222-2222-222222222222","name":"Residential Internet 100/20","category":"Internet","status":"Active"}`
 
 func TestProductHandlerCreate(t *testing.T) {
 	router := newTestRouter(newFakeProductService())
@@ -121,11 +121,12 @@ func TestProductHandlerCreate(t *testing.T) {
 	}
 
 	var body struct {
-		ID        string `json:"id"`
-		CatalogID string `json:"catalog_id"`
-		Name      string `json:"name"`
-		Category  string `json:"category"`
-		Status    string `json:"status"`
+		ID         string `json:"id"`
+		CatalogID  string `json:"catalog_id"`
+		ProviderID string `json:"provider_id"`
+		Name       string `json:"name"`
+		Category   string `json:"category"`
+		Status     string `json:"status"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -135,6 +136,9 @@ func TestProductHandlerCreate(t *testing.T) {
 	}
 	if body.CatalogID != "11111111-1111-1111-1111-111111111111" {
 		t.Errorf("catalog_id = %q, want %q", body.CatalogID, "11111111-1111-1111-1111-111111111111")
+	}
+	if body.ProviderID != "22222222-2222-2222-2222-222222222222" {
+		t.Errorf("provider_id = %q, want %q", body.ProviderID, "22222222-2222-2222-2222-222222222222")
 	}
 	if body.Name != "Residential Internet 100/20" || body.Category != "Internet" || body.Status != "Active" {
 		t.Errorf("body = %+v, want Name=Residential Internet 100/20 Category=Internet Status=Active", body)
@@ -182,8 +186,8 @@ func TestProductHandlerCreatePropagatesConflictOnUnknownCatalog(t *testing.T) {
 }
 
 func TestProductHandlerList(t *testing.T) {
-	a := product.Product{ID: uuid.New(), CatalogID: uuid.New(), Name: "A", Category: product.ProductCategoryInternet, Status: product.ProductStatusActive}
-	b := product.Product{ID: uuid.New(), CatalogID: uuid.New(), Name: "B", Category: product.ProductCategoryVoice, Status: product.ProductStatusActive}
+	a := product.Product{ID: uuid.New(), CatalogID: uuid.New(), ProviderID: uuid.New(), Name: "A", Category: product.ProductCategoryInternet, Status: product.ProductStatusActive}
+	b := product.Product{ID: uuid.New(), CatalogID: uuid.New(), ProviderID: uuid.New(), Name: "B", Category: product.ProductCategoryVoice, Status: product.ProductStatusActive}
 	router := newTestRouter(newFakeProductService(a, b))
 
 	req := httptest.NewRequest(http.MethodGet, "/products", nil)
@@ -208,7 +212,7 @@ func TestProductHandlerList(t *testing.T) {
 }
 
 func TestProductHandlerGet(t *testing.T) {
-	p := product.Product{ID: uuid.New(), CatalogID: uuid.New(), Name: "Residential Internet", Category: product.ProductCategoryInternet, Status: product.ProductStatusActive}
+	p := product.Product{ID: uuid.New(), CatalogID: uuid.New(), ProviderID: uuid.New(), Name: "Residential Internet", Category: product.ProductCategoryInternet, Status: product.ProductStatusActive}
 	router := newTestRouter(newFakeProductService(p))
 
 	req := httptest.NewRequest(http.MethodGet, "/products/"+p.ID.String(), nil)
@@ -245,7 +249,7 @@ func TestProductHandlerGetRejectsMalformedID(t *testing.T) {
 }
 
 func TestProductHandlerUpdate(t *testing.T) {
-	p := product.Product{ID: uuid.New(), CatalogID: uuid.New(), Name: "Old Name", Category: product.ProductCategoryInternet, Status: product.ProductStatusActive}
+	p := product.Product{ID: uuid.New(), CatalogID: uuid.New(), ProviderID: uuid.New(), Name: "Old Name", Category: product.ProductCategoryInternet, Status: product.ProductStatusActive}
 	router := newTestRouter(newFakeProductService(p))
 
 	req := httptest.NewRequest(http.MethodPut, "/products/"+p.ID.String(),
@@ -283,7 +287,7 @@ func TestProductHandlerUpdateNotFound(t *testing.T) {
 }
 
 func TestProductHandlerDelete(t *testing.T) {
-	p := product.Product{ID: uuid.New(), CatalogID: uuid.New(), Name: "Temporary", Category: product.ProductCategoryInternet, Status: product.ProductStatusActive}
+	p := product.Product{ID: uuid.New(), CatalogID: uuid.New(), ProviderID: uuid.New(), Name: "Temporary", Category: product.ProductCategoryInternet, Status: product.ProductStatusActive}
 	router := newTestRouter(newFakeProductService(p))
 
 	req := httptest.NewRequest(http.MethodDelete, "/products/"+p.ID.String(), nil)

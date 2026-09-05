@@ -31,10 +31,11 @@ func assertInvalid(t *testing.T, err error) {
 
 func validProduct() product.Product {
 	return product.Product{
-		CatalogID: uuid.New(),
-		Name:      "Residential Internet 100/20",
-		Category:  product.ProductCategoryInternet,
-		Status:    product.ProductStatusActive,
+		CatalogID:  uuid.New(),
+		ProviderID: uuid.New(),
+		Name:       "Residential Internet 100/20",
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
 	}
 }
 
@@ -49,6 +50,13 @@ func TestProductValidate(t *testing.T) {
 func TestProductValidateRequiresCatalogID(t *testing.T) {
 	p := validProduct()
 	p.CatalogID = uuid.Nil
+
+	assertInvalid(t, p.Validate())
+}
+
+func TestProductValidateRequiresProviderID(t *testing.T) {
+	p := validProduct()
+	p.ProviderID = uuid.Nil
 
 	assertInvalid(t, p.Validate())
 }

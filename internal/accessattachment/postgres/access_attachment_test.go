@@ -34,6 +34,8 @@ import (
 	ponportpostgres "github.com/paladindigitalgh/palladium-oss/internal/ponport/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/provider"
+	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
@@ -170,12 +172,22 @@ func createTestServiceEquipment(t *testing.T, ctx context.Context, q database.Qu
 		t.Fatalf("fixture: create catalog: %v", err)
 	}
 
+	providerRepo := providerpostgres.NewProviderRepository(q, clock.New(), id.New())
+	pr, err := providerRepo.Create(ctx, provider.Provider{
+		Name:   "Fixture Provider " + uuid.NewString(),
+		Status: provider.StatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create provider: %v", err)
+	}
+
 	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
 	p, err := productRepo.Create(ctx, product.Product{
-		CatalogID: cat.ID,
-		Name:      "Fixture Product " + uuid.NewString(),
-		Category:  product.ProductCategoryInternet,
-		Status:    product.ProductStatusActive,
+		CatalogID:  cat.ID,
+		ProviderID: pr.ID,
+		Name:       "Fixture Product " + uuid.NewString(),
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create product: %v", err)

@@ -80,10 +80,11 @@ var _ product.ProductRepository = (*fakeProductRepository)(nil)
 
 func validProduct() product.Product {
 	return product.Product{
-		CatalogID: uuid.New(),
-		Name:      "Residential Internet 100/20",
-		Category:  product.ProductCategoryInternet,
-		Status:    product.ProductStatusActive,
+		CatalogID:  uuid.New(),
+		ProviderID: uuid.New(),
+		Name:       "Residential Internet 100/20",
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
 	}
 }
 

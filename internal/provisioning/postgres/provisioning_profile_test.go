@@ -18,6 +18,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/provider"
+	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/provisioning"
 	"github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
 )
@@ -53,14 +55,16 @@ func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	return tx, ctx
 }
 
-// createTestProduct creates a real Product row (via a fixture Catalog
-// row) through internal/product/postgres and internal/catalog/postgres —
-// not this package — so a fixture failure surfaces as a clear failure of
-// Product's own Create, not a confusing failure somewhere else. This is
-// the one place this package imports internal/product or internal/catalog
-// at all: the domain model (internal/provisioning) never does (see its
-// package doc comment), only this test, which genuinely needs a real
-// products row for the foreign key to reference.
+// createTestProduct creates a real Product row (via fixture Catalog and
+// Provider rows) through internal/product/postgres,
+// internal/catalog/postgres, and internal/provider/postgres — not this
+// package — so a fixture failure surfaces as a clear failure of one of
+// those domains' own Create, not a confusing failure somewhere else.
+// This is the one place this package imports internal/product,
+// internal/catalog, or internal/provider at all: the domain model
+// (internal/provisioning) never does (see its package doc comment), only
+// this test, which genuinely needs real products/providers rows for the
+// foreign key to reference.
 func createTestProduct(t *testing.T, ctx context.Context, q database.Querier) product.Product {
 	t.Helper()
 
@@ -73,12 +77,22 @@ func createTestProduct(t *testing.T, ctx context.Context, q database.Querier) pr
 		t.Fatalf("fixture: create catalog: %v", err)
 	}
 
+	providerRepo := providerpostgres.NewProviderRepository(q, clock.New(), id.New())
+	pr, err := providerRepo.Create(ctx, provider.Provider{
+		Name:   "Fixture Provider " + uuid.NewString(),
+		Status: provider.StatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create provider: %v", err)
+	}
+
 	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
 	p, err := productRepo.Create(ctx, product.Product{
-		CatalogID: c.ID,
-		Name:      "Fixture Product " + uuid.NewString(),
-		Category:  product.ProductCategoryInternet,
-		Status:    product.ProductStatusActive,
+		CatalogID:  c.ID,
+		ProviderID: pr.ID,
+		Name:       "Fixture Product " + uuid.NewString(),
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create product: %v", err)
@@ -99,10 +113,11 @@ func TestProvisioningProfileRepositoryCreate(t *testing.T) {
 	p := createTestProduct(t, ctx, q)
 	repo := postgres.NewProvisioningProfileRepository(q, clock.New(), id.New())
 
+	profileName := "RES-500M-" + uuid.NewString()
 	created, err := repo.Create(ctx, provisioning.ProvisioningProfile{
 		ProductID:   p.ID,
 		Vendor:      "Kontron",
-		ProfileName: "RES-500M",
+		ProfileName: profileName,
 		Description: "500 Mbps residential rate-limit + VLAN profile",
 	})
 	if err != nil {
@@ -118,8 +133,8 @@ func TestProvisioningProfileRepositoryCreate(t *testing.T) {
 	if created.Vendor != "Kontron" {
 		t.Errorf("Vendor = %q, want %q", created.Vendor, "Kontron")
 	}
-	if created.ProfileName != "RES-500M" {
-		t.Errorf("ProfileName = %q, want %q", created.ProfileName, "RES-500M")
+	if created.ProfileName != profileName {
+		t.Errorf("ProfileName = %q, want %q", created.ProfileName, profileName)
 	}
 	if created.Description != "500 Mbps residential rate-limit + VLAN profile" {
 		t.Errorf("Description = %q, want %q", created.Description, "500 Mbps residential rate-limit + VLAN profile")
@@ -140,7 +155,7 @@ func TestProvisioningProfileRepositoryCreateIgnoresCallerSuppliedIdentity(t *tes
 	bogusID := uuid.New()
 	bogusTime := time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	profile := testProvisioningProfile(p.ID, "Kontron", "RES-100M")
+	profile := testProvisioningProfile(p.ID, "Kontron", "RES-100M-"+uuid.NewString())
 	profile.ID = bogusID
 	profile.CreatedAt = bogusTime
 	profile.UpdatedAt = bogusTime
@@ -162,7 +177,7 @@ func TestProvisioningProfileRepositoryCreateFailsWhenProductDoesNotExist(t *test
 	q, ctx := newTestQuerier(t)
 	repo := postgres.NewProvisioningProfileRepository(q, clock.New(), id.New())
 
-	_, err := repo.Create(ctx, testProvisioningProfile(uuid.New(), "Kontron", "RES-100M")) // product does not exist
+	_, err := repo.Create(ctx, testProvisioningProfile(uuid.New(), "Kontron", "RES-100M-"+uuid.NewString())) // product does not exist
 
 	assertConflict(t, err)
 }
@@ -172,14 +187,14 @@ func TestProvisioningProfileRepositoryCreateConflictOnDuplicateProductAndVendor(
 	p := createTestProduct(t, ctx, q)
 	repo := postgres.NewProvisioningProfileRepository(q, clock.New(), id.New())
 
-	if _, err := repo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-100M")); err != nil {
+	if _, err := repo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-100M-"+uuid.NewString())); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
 
 	// Same Product, same vendor, a different profile name -- still a
 	// conflict, because a Product may have at most one profile per
 	// vendor (see the migration's UNIQUE (product_id, vendor)).
-	_, err := repo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-250M"))
+	_, err := repo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-250M-"+uuid.NewString()))
 	assertConflict(t, err)
 }
 
@@ -189,14 +204,15 @@ func TestProvisioningProfileRepositoryCreateConflictOnDuplicateVendorAndProfileN
 	second := createTestProduct(t, ctx, q)
 	repo := postgres.NewProvisioningProfileRepository(q, clock.New(), id.New())
 
-	if _, err := repo.Create(ctx, testProvisioningProfile(first.ID, "Kontron", "RES-500M")); err != nil {
+	profileName := "RES-500M-" + uuid.NewString()
+	if _, err := repo.Create(ctx, testProvisioningProfile(first.ID, "Kontron", profileName)); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
 
 	// A different Product claiming the same vendor+profile name is a
 	// conflict too (see the migration's UNIQUE (vendor, profile_name)):
 	// two Products cannot both point at one OLT profile.
-	_, err := repo.Create(ctx, testProvisioningProfile(second.ID, "Kontron", "RES-500M"))
+	_, err := repo.Create(ctx, testProvisioningProfile(second.ID, "Kontron", profileName))
 	assertConflict(t, err)
 }
 
@@ -205,7 +221,7 @@ func TestProvisioningProfileRepositoryGet(t *testing.T) {
 	p := createTestProduct(t, ctx, q)
 	repo := postgres.NewProvisioningProfileRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-500M"))
+	created, err := repo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-500M-"+uuid.NewString()))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -281,24 +297,25 @@ func TestProvisioningProfileRepositoryUpdate(t *testing.T) {
 	otherProduct := createTestProduct(t, ctx, q)
 	repo := postgres.NewProvisioningProfileRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-100M"))
+	created, err := repo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-100M-"+uuid.NewString()))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
+	newProfileName := "RES-250M-" + uuid.NewString()
 	updated, err := repo.Update(ctx, provisioning.ProvisioningProfile{
 		ID:          created.ID,
 		ProductID:   otherProduct.ID,
 		Vendor:      "Kontron",
-		ProfileName: "RES-250M",
+		ProfileName: newProfileName,
 		Description: "New Description",
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 
-	if updated.ProfileName != "RES-250M" {
-		t.Errorf("ProfileName = %q, want %q", updated.ProfileName, "RES-250M")
+	if updated.ProfileName != newProfileName {
+		t.Errorf("ProfileName = %q, want %q", updated.ProfileName, newProfileName)
 	}
 	if updated.ProductID != otherProduct.ID {
 		t.Errorf("ProductID = %v, want %v (ProductID must be mutable via Update)", updated.ProductID, otherProduct.ID)
@@ -365,7 +382,7 @@ func TestProductRepositoryDeleteBlockedByExistingProvisioningProfile(t *testing.
 	q, ctx := newTestQuerier(t)
 	p := createTestProduct(t, ctx, q)
 	profileRepo := postgres.NewProvisioningProfileRepository(q, clock.New(), id.New())
-	if _, err := profileRepo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-500M")); err != nil {
+	if _, err := profileRepo.Create(ctx, testProvisioningProfile(p.ID, "Kontron", "RES-500M-"+uuid.NewString())); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 

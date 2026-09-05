@@ -5,12 +5,23 @@
 // migrations, no HTTP CRUD — mirroring internal/location's own package
 // exactly.
 //
-// This package does not import internal/catalog. CatalogID is a bare
-// uuid.UUID, not a catalog.ProductCatalog reference: the foreign key to
-// catalogs(id) is a database concept, enforced by
-// internal/product/postgres and its migration, not a Go package
-// dependency — the same reasoning internal/location/model.go documents
-// for why Location does not import internal/customer.
+// This package does not import internal/catalog or internal/provider.
+// CatalogID and ProviderID are bare uuid.UUID, not
+// catalog.ProductCatalog / provider.Provider references: the foreign
+// keys to catalogs(id) and providers(id) are database concepts,
+// enforced by internal/product/postgres and its migrations, not a Go
+// package dependency — the same reasoning internal/location/model.go
+// documents for why Location does not import internal/customer.
+//
+// ProviderID and CatalogID are two required FKs answering two different
+// questions, the same "two required FKs, two different questions"
+// pattern internal/service.Service already uses for ProductID and
+// ServiceProfileID: CatalogID says which grouping this Product is
+// organized under (Residential vs. Business), while ProviderID says
+// which retail ISP identity owns and sells it (see internal/provider's
+// package doc comment on why this distinction only matters in an
+// open-access deployment with more than one ISP on one physical
+// network). Neither is derived from the other.
 //
 // A Product describes what the ISP offers, never a subscriber's actual
 // service. Per this milestone's explicit scope:
@@ -39,12 +50,14 @@ import (
 	"github.com/google/uuid"
 )
 
-// Product is a single offering within a ProductCatalog — what the ISP
-// sells, described independently of who buys it (see the package doc
-// comment for what this deliberately excludes).
+// Product is a single offering within a ProductCatalog, owned by exactly
+// one Provider — what the ISP sells, described independently of who
+// buys it (see the package doc comment for what this deliberately
+// excludes).
 type Product struct {
 	ID          uuid.UUID
 	CatalogID   uuid.UUID
+	ProviderID  uuid.UUID
 	Name        string
 	Category    ProductCategory
 	Status      ProductStatus

@@ -25,9 +25,9 @@ import (
 // exactly as they would for a request built any other way — this handler
 // does not duplicate that check (the service is where validation lives).
 //
-// CatalogID is left as its plain uuid.UUID rather than following that
-// same string-everywhere rule: it carries no domain enum type to decouple
-// from in the first place — the same reasoning
+// CatalogID and ProviderID are left as plain uuid.UUID rather than
+// following that same string-everywhere rule: neither carries a domain
+// enum type to decouple from in the first place — the same reasoning
 // internal/location/httpapi.locationRequest gives for its own CustomerID
 // field.
 //
@@ -36,6 +36,7 @@ import (
 // UpdatedAt are metadata the repository owns and a caller cannot set.
 type productRequest struct {
 	CatalogID   uuid.UUID `json:"catalog_id"`
+	ProviderID  uuid.UUID `json:"provider_id"`
 	Name        string    `json:"name"`
 	Category    string    `json:"category"`
 	Status      string    `json:"status"`
@@ -49,6 +50,7 @@ func (req productRequest) toProduct(id uuid.UUID) product.Product {
 	return product.Product{
 		ID:          id,
 		CatalogID:   req.CatalogID,
+		ProviderID:  req.ProviderID,
 		Name:        req.Name,
 		Category:    product.ProductCategory(req.Category),
 		Status:      product.ProductStatus(req.Status),
@@ -63,6 +65,7 @@ func (req productRequest) toProduct(id uuid.UUID) product.Product {
 type productResponse struct {
 	ID          uuid.UUID `json:"id"`
 	CatalogID   uuid.UUID `json:"catalog_id"`
+	ProviderID  uuid.UUID `json:"provider_id"`
 	Name        string    `json:"name"`
 	Category    string    `json:"category"`
 	Status      string    `json:"status"`
@@ -75,6 +78,7 @@ func newProductResponse(p product.Product) productResponse {
 	return productResponse{
 		ID:          p.ID,
 		CatalogID:   p.CatalogID,
+		ProviderID:  p.ProviderID,
 		Name:        p.Name,
 		Category:    string(p.Category),
 		Status:      string(p.Status),

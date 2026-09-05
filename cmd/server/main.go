@@ -76,6 +76,9 @@ import (
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
 	productservice "github.com/paladindigitalgh/palladium-oss/internal/product/service"
+	providerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provider/httpapi"
+	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
+	providerservice "github.com/paladindigitalgh/palladium-oss/internal/provider/service"
 	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	provisioningpostgres "github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
 	provisioningservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/service"
@@ -217,6 +220,15 @@ func run() error {
 	catalogRepo := catalogpostgres.NewCatalogRepository(pool, clock.New(), id.New())
 	catalogSvc := catalogservice.NewCatalogService(catalogRepo)
 	catalogHandler := cataloghttpapi.NewCatalogHandler(catalogSvc)
+
+	// Provider follows the exact same repository -> service -> handler
+	// chain as every domain above, mirroring internal/serviceprofile's
+	// own standalone (non-nested) shape -- constructed before Product
+	// since products.provider_id references providers(id), though
+	// nothing here actually requires that ordering.
+	providerRepo := providerpostgres.NewProviderRepository(pool, clock.New(), id.New())
+	providerSvc := providerservice.NewProviderService(providerRepo)
+	providerHandler := providerhttpapi.NewProviderHandler(providerSvc)
 
 	productRepo := productpostgres.NewProductRepository(pool, clock.New(), id.New())
 	productSvc := productservice.NewProductService(productRepo)
@@ -429,6 +441,7 @@ func run() error {
 		ContactHandler:             contactHandler,
 		CatalogHandler:             catalogHandler,
 		ProductHandler:             productHandler,
+		ProviderHandler:            providerHandler,
 		ProvisioningProfileHandler: provisioningProfileHandler,
 		ServiceProfileHandler:      serviceProfileHandler,
 		DiagnosticsHandler:         diagnosticsHandler,

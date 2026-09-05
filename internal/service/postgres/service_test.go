@@ -22,6 +22,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/provider"
+	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
@@ -98,9 +100,10 @@ func createTestLocation(t *testing.T, ctx context.Context, q database.Querier) l
 }
 
 // createTestProduct creates a real Product row (and the fixture Catalog
-// it requires) through internal/product/postgres and
-// internal/catalog/postgres — see createTestLocation's doc comment for
-// the same reasoning, applied to the other foreign key.
+// and Provider it requires) through internal/product/postgres,
+// internal/catalog/postgres, and internal/provider/postgres — see
+// createTestLocation's doc comment for the same reasoning, applied to
+// the other foreign keys.
 func createTestProduct(t *testing.T, ctx context.Context, q database.Querier) product.Product {
 	t.Helper()
 
@@ -113,12 +116,22 @@ func createTestProduct(t *testing.T, ctx context.Context, q database.Querier) pr
 		t.Fatalf("fixture: create catalog: %v", err)
 	}
 
+	providerRepo := providerpostgres.NewProviderRepository(q, clock.New(), id.New())
+	pr, err := providerRepo.Create(ctx, provider.Provider{
+		Name:   "Fixture Provider " + uuid.NewString(),
+		Status: provider.StatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create provider: %v", err)
+	}
+
 	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
 	p, err := productRepo.Create(ctx, product.Product{
-		CatalogID: c.ID,
-		Name:      "Fixture Product " + uuid.NewString(),
-		Category:  product.ProductCategoryInternet,
-		Status:    product.ProductStatusActive,
+		CatalogID:  c.ID,
+		ProviderID: pr.ID,
+		Name:       "Fixture Product " + uuid.NewString(),
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create product: %v", err)

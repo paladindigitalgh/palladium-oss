@@ -1,10 +1,10 @@
 // Command seed populates a freshly migrated database with a minimal,
-// realistic demo dataset — one Customer, Location, Catalog, Product,
-// Service Profile, Service, inventory Device, and Service Equipment
-// assignment — so a new installation has something real to look at and
-// act on (a Service the Workflow Engine can actually provision, suspend,
-// and resume against internal/plugin/mock's simulated vendor) before any
-// real customer data or hardware exists.
+// realistic demo dataset — one Customer, Location, Catalog, Provider,
+// Product, Service Profile, Service, inventory Device, and Service
+// Equipment assignment — so a new installation has something real to
+// look at and act on (a Service the Workflow Engine can actually
+// provision, suspend, and resume against internal/plugin/mock's
+// simulated vendor) before any real customer data or hardware exists.
 //
 // It is a separate binary from cmd/bootstrap for the same reason
 // cmd/bootstrap is separate from cmd/migrate: account creation, schema
@@ -33,6 +33,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/provider"
+	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
@@ -77,6 +79,7 @@ func run() error {
 	customers := customerpostgres.NewCustomerRepository(pool, clock.New(), id.New())
 	locations := locationpostgres.NewLocationRepository(pool, clock.New(), id.New())
 	catalogs := catalogpostgres.NewCatalogRepository(pool, clock.New(), id.New())
+	providers := providerpostgres.NewProviderRepository(pool, clock.New(), id.New())
 	products := productpostgres.NewProductRepository(pool, clock.New(), id.New())
 	serviceProfiles := serviceprofilepostgres.NewServiceProfileRepository(pool, clock.New(), id.New())
 	services := servicepostgres.NewServiceRepository(pool, clock.New(), id.New())
@@ -126,11 +129,20 @@ func run() error {
 		return fmt.Errorf("create demo catalog: %w", err)
 	}
 
+	demoProvider, err := providers.Create(ctx, provider.Provider{
+		Name:   "Demo Provider",
+		Status: provider.StatusActive,
+	})
+	if err != nil {
+		return fmt.Errorf("create demo provider: %w", err)
+	}
+
 	demoProduct, err := products.Create(ctx, product.Product{
-		CatalogID: demoCatalog.ID,
-		Name:      "Fiber 500/500",
-		Category:  product.ProductCategoryInternet,
-		Status:    product.ProductStatusActive,
+		CatalogID:  demoCatalog.ID,
+		ProviderID: demoProvider.ID,
+		Name:       "Fiber 500/500",
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
 	})
 	if err != nil {
 		return fmt.Errorf("create demo product: %w", err)

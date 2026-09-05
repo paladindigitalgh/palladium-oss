@@ -33,6 +33,7 @@ import (
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
+	providerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provider/httpapi"
 	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
@@ -59,6 +60,7 @@ type Dependencies struct {
 	ContactHandler             *contacthttpapi.ContactHandler
 	CatalogHandler             *cataloghttpapi.CatalogHandler
 	ProductHandler             *producthttpapi.ProductHandler
+	ProviderHandler            *providerhttpapi.ProviderHandler
 	ProvisioningProfileHandler *provisioninghttpapi.ProvisioningProfileHandler
 	ServiceHandler             *servicehttpapi.ServiceHandler
 	ServiceEquipmentHandler    *serviceequipmenthttpapi.ServiceEquipmentHandler
@@ -562,6 +564,30 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.ServiceProfileHandler.Create)
 				r.Put("/{id}", deps.ServiceProfileHandler.Update)
 				r.Delete("/{id}", deps.ServiceProfileHandler.Delete)
+			})
+		})
+
+		// /providers gets its own dedicated capability pair
+		// (RequireProvidersRead/RequireProvidersWrite), not a reuse of
+		// /catalogs' or /products' — the same reasoning as
+		// /service-profiles above: a Product now references both a
+		// Catalog and a Provider, but they represent different business
+		// concepts that may diverge in authorization requirements later
+		// (see authz.CanReadProviders's doc comment).
+		r.Route("/providers", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireProvidersRead())
+				r.Get("/", deps.ProviderHandler.List)
+				r.Get("/{id}", deps.ProviderHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireProvidersWrite())
+				r.Post("/", deps.ProviderHandler.Create)
+				r.Put("/{id}", deps.ProviderHandler.Update)
+				r.Delete("/{id}", deps.ProviderHandler.Delete)
 			})
 		})
 

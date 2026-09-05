@@ -43,6 +43,8 @@ import (
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/provider"
+	providerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provider/httpapi"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
@@ -2082,6 +2084,127 @@ func TestRouterAdministratorCanWriteServiceProfiles(t *testing.T) {
 	token := mustIssueToken(t, tokens)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/service-profiles/", strings.NewReader(validServiceProfileBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// stubProviderService satisfies whatever interface
+// providerhttpapi.ProviderHandler needs structurally, the same
+// technique stubServiceProfileService and every other stub above uses.
+type stubProviderService struct{}
+
+func (stubProviderService) Get(context.Context, uuid.UUID) (provider.Provider, error) {
+	return provider.Provider{}, apperror.NotFound("provider not found")
+}
+func (stubProviderService) List(context.Context) ([]provider.Provider, error) {
+	return nil, nil
+}
+func (stubProviderService) Create(_ context.Context, p provider.Provider) (provider.Provider, error) {
+	return p, nil
+}
+func (stubProviderService) Update(_ context.Context, p provider.Provider) (provider.Provider, error) {
+	return p, nil
+}
+func (stubProviderService) Delete(context.Context, uuid.UUID) error { return nil }
+
+// newRouterWithProviders mirrors newRouterWithServiceProfiles exactly,
+// one domain over: it proves /api/v1/providers is wired up behind
+// auth.Middleware and authz.Middleware in the real production router,
+// using its own dedicated RequireProvidersRead/RequireProvidersWrite
+// (see authz.CanReadProviders's doc comment for why Provider does not
+// share Catalog's/ServiceProfile's capability pair). See
+// internal/provider/httpapi/authenticated_test.go for a far more
+// thorough version of the same checks, scoped to that package.
+func newRouterWithProviders(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.NewRouter(api.Dependencies{
+		Logger:          logger,
+		Version:         "test",
+		Commit:          "test",
+		ProviderHandler: providerhttpapi.NewProviderHandler(stubProviderService{}),
+		Tokens:          tokens,
+		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
+	})
+}
+
+const validProviderBody = `{"name":"Acme Fiber","status":"Active"}`
+
+func TestRouterRejectsUnauthenticatedProviderRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProviders(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/providers/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCanReadProviders is "apply the standard RBAC matrix",
+// proven through the real, fully wired router.
+func TestRouterViewerCanReadProviders(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProviders(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/providers/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestRouterViewerCannotWriteProviders is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterViewerCannotWriteProviders(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProviders(tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/providers/", strings.NewReader(validProviderBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestRouterOperatorCanWriteProviders is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterOperatorCanWriteProviders(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProviders(tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/providers/", strings.NewReader(validProviderBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestRouterAdministratorCanWriteProviders is "apply the standard RBAC
+// matrix", proven through the real, fully wired router.
+func TestRouterAdministratorCanWriteProviders(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithProviders(tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/providers/", strings.NewReader(validProviderBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

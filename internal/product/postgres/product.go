@@ -40,7 +40,7 @@ func NewProductRepository(db database.Querier, clock clock.Clock, ids id.Generat
 // none exists.
 func (r *ProductRepository) Get(ctx context.Context, productID uuid.UUID) (product.Product, error) {
 	const query = `
-		SELECT id, catalog_id, name, category, status, description, created_at, updated_at
+		SELECT id, catalog_id, provider_id, name, category, status, description, created_at, updated_at
 		FROM products
 		WHERE id = $1
 	`
@@ -59,7 +59,7 @@ func (r *ProductRepository) Get(ctx context.Context, productID uuid.UUID) (produ
 // output (see the index added on that column in the migration).
 func (r *ProductRepository) List(ctx context.Context) ([]product.Product, error) {
 	const query = `
-		SELECT id, catalog_id, name, category, status, description, created_at, updated_at
+		SELECT id, catalog_id, provider_id, name, category, status, description, created_at, updated_at
 		FROM products
 		ORDER BY name
 	`
@@ -89,19 +89,19 @@ func (r *ProductRepository) List(ctx context.Context) ([]product.Product, error)
 //
 // As with LocationRepository.Create, the repository assigns ID, CreatedAt,
 // and UpdatedAt itself — any values already set on the input Product for
-// those fields are ignored. A CatalogID that does not reference an
-// existing ProductCatalog fails with an apperror.KindConflict error (see
-// translateError).
+// those fields are ignored. A CatalogID or ProviderID that does not
+// reference an existing ProductCatalog/Provider fails with an
+// apperror.KindConflict error (see translateError).
 func (r *ProductRepository) Create(ctx context.Context, p product.Product) (product.Product, error) {
 	const query = `
-		INSERT INTO products (id, catalog_id, name, category, status, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-		RETURNING id, catalog_id, name, category, status, description, created_at, updated_at
+		INSERT INTO products (id, catalog_id, provider_id, name, category, status, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		RETURNING id, catalog_id, provider_id, name, category, status, description, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanProduct(r.db.QueryRow(ctx, query,
-		r.ids.New(), p.CatalogID, p.Name, string(p.Category), string(p.Status), p.Description, now))
+		r.ids.New(), p.CatalogID, p.ProviderID, p.Name, string(p.Category), string(p.Status), p.Description, now))
 	if err != nil {
 		return product.Product{}, translateError("create product", err)
 	}
@@ -118,13 +118,13 @@ func (r *ProductRepository) Create(ctx context.Context, p product.Product) (prod
 func (r *ProductRepository) Update(ctx context.Context, p product.Product) (product.Product, error) {
 	const query = `
 		UPDATE products
-		SET catalog_id = $1, name = $2, category = $3, status = $4, description = $5, updated_at = $6
-		WHERE id = $7
-		RETURNING id, catalog_id, name, category, status, description, created_at, updated_at
+		SET catalog_id = $1, provider_id = $2, name = $3, category = $4, status = $5, description = $6, updated_at = $7
+		WHERE id = $8
+		RETURNING id, catalog_id, provider_id, name, category, status, description, created_at, updated_at
 	`
 
 	updated, err := scanProduct(r.db.QueryRow(ctx, query,
-		p.CatalogID, p.Name, string(p.Category), string(p.Status), p.Description, r.clock.Now(), p.ID))
+		p.CatalogID, p.ProviderID, p.Name, string(p.Category), string(p.Status), p.Description, r.clock.Now(), p.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return product.Product{}, productNotFound(p.ID)
@@ -166,7 +166,7 @@ func scanProduct(row rowScanner) (product.Product, error) {
 		category string
 		status   string
 	)
-	err := row.Scan(&p.ID, &p.CatalogID, &p.Name, &category, &status, &p.Description, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.CatalogID, &p.ProviderID, &p.Name, &category, &status, &p.Description, &p.CreatedAt, &p.UpdatedAt)
 	p.Category = product.ProductCategory(category)
 	p.Status = product.ProductStatus(status)
 	return p, err

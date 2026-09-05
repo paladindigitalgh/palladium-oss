@@ -18,15 +18,18 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
 	"github.com/paladindigitalgh/palladium-oss/internal/product"
 	"github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/provider"
+	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 )
 
 // newTestQuerier opens a transaction against the real test database,
 // rolled back automatically on cleanup — the same pattern as
 // internal/location/postgres/location_test.go. Every Product test needs a
-// fixture ProductCatalog to satisfy the required CatalogID foreign key,
-// and the fixture must share the same transaction as the repository under
-// test, so tests here call this directly rather than hiding it behind a
-// Catalog-style newTestRepository wrapper.
+// fixture ProductCatalog and a fixture Provider to satisfy the required
+// CatalogID/ProviderID foreign keys, and the fixtures must share the same
+// transaction as the repository under test, so tests here call these
+// directly rather than hiding them behind a Catalog-style
+// newTestRepository wrapper.
 func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	t.Helper()
 
@@ -55,11 +58,11 @@ func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 // createTestCatalog creates a real ProductCatalog row through
 // internal/catalog/postgres — not internal/product/postgres — so a
 // Product fixture failure surfaces as a clear failure of Catalog's own
-// Create, not a confusing failure somewhere else. This is the one place
-// this package imports internal/catalog at all: the domain model
+// Create, not a confusing failure somewhere else. This is one of two
+// places this package imports a sibling domain at all: the domain model
 // (internal/product) never does (see its package doc comment), only this
-// test, which genuinely needs a real catalogs row for the foreign key to
-// reference.
+// test, which genuinely needs real catalogs/providers rows for the
+// foreign keys to reference.
 func createTestCatalog(t *testing.T, ctx context.Context, q database.Querier) catalog.ProductCatalog {
 	t.Helper()
 
@@ -74,22 +77,42 @@ func createTestCatalog(t *testing.T, ctx context.Context, q database.Querier) ca
 	return c
 }
 
-func testProduct(catalogID uuid.UUID, name string) product.Product {
+// createTestProvider creates a real Provider row through
+// internal/provider/postgres — see createTestCatalog's own doc comment
+// for why this package reaches into a sibling domain only in tests.
+func createTestProvider(t *testing.T, ctx context.Context, q database.Querier) provider.Provider {
+	t.Helper()
+
+	repo := providerpostgres.NewProviderRepository(q, clock.New(), id.New())
+	p, err := repo.Create(ctx, provider.Provider{
+		Name:   "Fixture Provider " + uuid.NewString(),
+		Status: provider.StatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create provider: %v", err)
+	}
+	return p
+}
+
+func testProduct(catalogID, providerID uuid.UUID, name string) product.Product {
 	return product.Product{
-		CatalogID: catalogID,
-		Name:      name,
-		Category:  product.ProductCategoryInternet,
-		Status:    product.ProductStatusActive,
+		CatalogID:  catalogID,
+		ProviderID: providerID,
+		Name:       name,
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
 	}
 }
 
 func TestProductRepositoryCreate(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
 	created, err := repo.Create(ctx, product.Product{
 		CatalogID:   c.ID,
+		ProviderID:  pr.ID,
 		Name:        "Residential Internet 100/20",
 		Category:    product.ProductCategoryInternet,
 		Status:      product.ProductStatusActive,
@@ -104,6 +127,9 @@ func TestProductRepositoryCreate(t *testing.T) {
 	}
 	if created.CatalogID != c.ID {
 		t.Errorf("CatalogID = %v, want %v", created.CatalogID, c.ID)
+	}
+	if created.ProviderID != pr.ID {
+		t.Errorf("ProviderID = %v, want %v", created.ProviderID, pr.ID)
 	}
 	if created.Name != "Residential Internet 100/20" {
 		t.Errorf("Name = %q, want %q", created.Name, "Residential Internet 100/20")
@@ -128,12 +154,13 @@ func TestProductRepositoryCreate(t *testing.T) {
 func TestProductRepositoryCreateIgnoresCallerSuppliedIdentity(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
 	bogusID := uuid.New()
 	bogusTime := time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	p := testProduct(c.ID, "Edge Product")
+	p := testProduct(c.ID, pr.ID, "Edge Product")
 	p.ID = bogusID
 	p.CreatedAt = bogusTime
 	p.UpdatedAt = bogusTime
@@ -153,9 +180,20 @@ func TestProductRepositoryCreateIgnoresCallerSuppliedIdentity(t *testing.T) {
 
 func TestProductRepositoryCreateFailsWhenCatalogDoesNotExist(t *testing.T) {
 	q, ctx := newTestQuerier(t)
+	pr := createTestProvider(t, ctx, q)
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
-	_, err := repo.Create(ctx, testProduct(uuid.New(), "Orphan Product")) // catalog does not exist
+	_, err := repo.Create(ctx, testProduct(uuid.New(), pr.ID, "Orphan Product")) // catalog does not exist
+
+	assertConflict(t, err)
+}
+
+func TestProductRepositoryCreateFailsWhenProviderDoesNotExist(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	c := createTestCatalog(t, ctx, q)
+	repo := postgres.NewProductRepository(q, clock.New(), id.New())
+
+	_, err := repo.Create(ctx, testProduct(c.ID, uuid.New(), "Orphan Product")) // provider does not exist
 
 	assertConflict(t, err)
 }
@@ -163,9 +201,10 @@ func TestProductRepositoryCreateFailsWhenCatalogDoesNotExist(t *testing.T) {
 func TestProductRepositoryGet(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testProduct(c.ID, "Residential Internet"))
+	created, err := repo.Create(ctx, testProduct(c.ID, pr.ID, "Residential Internet"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -174,7 +213,7 @@ func TestProductRepositoryGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() = %v", err)
 	}
-	if got.ID != created.ID || got.CatalogID != created.CatalogID || got.Name != created.Name {
+	if got.ID != created.ID || got.CatalogID != created.CatalogID || got.ProviderID != created.ProviderID || got.Name != created.Name {
 		t.Errorf("Get() = %+v, want %+v", got, created)
 	}
 	if !got.CreatedAt.Equal(created.CreatedAt) {
@@ -197,13 +236,14 @@ func TestProductRepositoryGetNotFound(t *testing.T) {
 func TestProductRepositoryList(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
-	first, err := repo.Create(ctx, testProduct(c.ID, "Alpha Product"))
+	first, err := repo.Create(ctx, testProduct(c.ID, pr.ID, "Alpha Product"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	second, err := repo.Create(ctx, testProduct(c.ID, "Beta Product"))
+	second, err := repo.Create(ctx, testProduct(c.ID, pr.ID, "Beta Product"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -225,7 +265,7 @@ func TestProductRepositoryList(t *testing.T) {
 	}
 
 	// Both were created within this same rolled-back transaction (plus
-	// the fixture ProductCatalog, which is a different table), so the
+	// the fixture ProductCatalog/Provider rows, different tables), so the
 	// list is exactly these two, letting us also check the ORDER BY name.
 	if len(products) != 2 {
 		t.Fatalf("len(List()) = %d, want 2; got %+v", len(products), products)
@@ -239,9 +279,11 @@ func TestProductRepositoryUpdate(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
 	otherCatalog := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
+	otherProvider := createTestProvider(t, ctx, q)
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testProduct(c.ID, "Old Name"))
+	created, err := repo.Create(ctx, testProduct(c.ID, pr.ID, "Old Name"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -249,6 +291,7 @@ func TestProductRepositoryUpdate(t *testing.T) {
 	updated, err := repo.Update(ctx, product.Product{
 		ID:          created.ID,
 		CatalogID:   otherCatalog.ID,
+		ProviderID:  otherProvider.ID,
 		Name:        "New Name",
 		Category:    product.ProductCategoryVoice,
 		Status:      product.ProductStatusRetired,
@@ -263,6 +306,9 @@ func TestProductRepositoryUpdate(t *testing.T) {
 	}
 	if updated.CatalogID != otherCatalog.ID {
 		t.Errorf("CatalogID = %v, want %v (CatalogID must be mutable via Update)", updated.CatalogID, otherCatalog.ID)
+	}
+	if updated.ProviderID != otherProvider.ID {
+		t.Errorf("ProviderID = %v, want %v (ProviderID must be mutable via Update)", updated.ProviderID, otherProvider.ID)
 	}
 	if updated.Category != product.ProductCategoryVoice {
 		t.Errorf("Category = %q, want %q", updated.Category, product.ProductCategoryVoice)
@@ -284,9 +330,10 @@ func TestProductRepositoryUpdate(t *testing.T) {
 func TestProductRepositoryUpdateNotFound(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
-	ghost := testProduct(c.ID, "Ghost")
+	ghost := testProduct(c.ID, pr.ID, "Ghost")
 	ghost.ID = uuid.New()
 
 	_, err := repo.Update(ctx, ghost)
@@ -297,9 +344,10 @@ func TestProductRepositoryUpdateNotFound(t *testing.T) {
 func TestProductRepositoryDelete(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testProduct(c.ID, "Temporary"))
+	created, err := repo.Create(ctx, testProduct(c.ID, pr.ID, "Temporary"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -324,14 +372,15 @@ func TestProductRepositoryDeleteNotFound(t *testing.T) {
 func TestProductRepositoryCreateConflictOnDuplicateID(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
 	fixedID := uuid.New()
 	repo := postgres.NewProductRepository(q, clock.New(), id.Static{Value: fixedID})
 
-	if _, err := repo.Create(ctx, testProduct(c.ID, "First")); err != nil {
+	if _, err := repo.Create(ctx, testProduct(c.ID, pr.ID, "First")); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
 
-	_, err := repo.Create(ctx, testProduct(c.ID, "Second"))
+	_, err := repo.Create(ctx, testProduct(c.ID, pr.ID, "Second"))
 	assertConflict(t, err)
 }
 
@@ -345,14 +394,35 @@ func TestProductRepositoryCreateConflictOnDuplicateID(t *testing.T) {
 func TestCatalogRepositoryDeleteBlockedByExistingProduct(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
 	productRepo := postgres.NewProductRepository(q, clock.New(), id.New())
-	if _, err := productRepo.Create(ctx, testProduct(c.ID, "Blocking Product")); err != nil {
+	if _, err := productRepo.Create(ctx, testProduct(c.ID, pr.ID, "Blocking Product")); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
 	catalogRepo := catalogpostgres.NewCatalogRepository(q, clock.New(), id.New())
 
 	err := catalogRepo.Delete(ctx, c.ID)
+
+	assertConflict(t, err)
+}
+
+// TestProviderRepositoryDeleteBlockedByExistingProduct lives here for the
+// same reason as TestCatalogRepositoryDeleteBlockedByExistingProduct
+// above: it exercises ProviderRepository.Delete against the foreign key
+// this domain's own migration adds to products, not providers.
+func TestProviderRepositoryDeleteBlockedByExistingProduct(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	c := createTestCatalog(t, ctx, q)
+	pr := createTestProvider(t, ctx, q)
+	productRepo := postgres.NewProductRepository(q, clock.New(), id.New())
+	if _, err := productRepo.Create(ctx, testProduct(c.ID, pr.ID, "Blocking Product")); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	providerRepo := providerpostgres.NewProviderRepository(q, clock.New(), id.New())
+
+	err := providerRepo.Delete(ctx, pr.ID)
 
 	assertConflict(t, err)
 }
