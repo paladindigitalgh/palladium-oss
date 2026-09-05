@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.8-draft
+version: 1.9-draft
 ---
 
 # Workspace Specifications
@@ -1049,13 +1049,24 @@ Administration centralizes independent platform-configuration concerns
 rather than managing one object, so it is not a Detail Workspace and
 does not use section 6, "Detail Workspace Structure."
 
+-   Providers -- a Provider (internal/provider) is the retail ISP
+    identity a Plan belongs to, meaningful only on an open-access
+    network carrying more than one ISP over shared infrastructure; in a
+    single-ISP deployment exactly one Provider exists and this panel is
+    a one-time setup step, never revisited. Flat create-and-list, no
+    edit yet.
 -   Plans -- the first real panel built here (AdministrationView.vue). A
     "Plan" is a Product (docs/03-DOMAIN-MODEL.md section 5 -- what the
     ISP sells, e.g. "Residential Internet 500 Mbps") paired with a
     ProvisioningProfile (internal/provisioning) naming the OLT vendor
     profile an operator already configured by hand to deliver it (rate
-    limiting, VLAN assignment, ...). "New Plan" creates both in one
-    guided step. Neither Product nor ProvisioningProfile has a
+    limiting, VLAN assignment, ...), and belonging to exactly one
+    Provider. "New Plan" creates the Product and ProvisioningProfile
+    together in one guided step; a Provider picker appears in that
+    dialog, and a Provider column appears in this table, only once a
+    second Provider actually exists (see ProviderFormDialog.vue's and
+    PlanFormDialog.vue's own doc comments) -- a single-ISP deployment
+    never sees either. Neither Product nor ProvisioningProfile has a
     dedicated Detail Workspace of its own yet -- this panel is a flat
     create-and-list table, not a Collection View.
 -   System Health
@@ -1168,6 +1179,7 @@ understanding, investigating, and acting on the network.
   1.6 Draft   2026-09-04   Documented the ONU Status section on the OLT Workspace (section 11): a whole-device, on-demand ONU summary snapshot, and clarified this does not contradict the workspace's no-passive-monitoring stance
   1.7 Draft   2026-09-04   Documented the ONU Status section on the Access Interface Workspace (section 11): a per-interface, no-Customer-required ONU check for turn-up before any equipment is assigned or attached, exposing ONUDetail for the first time in any page
   1.8 Draft   2026-09-04   Documented the Plans panel on the Administration Workspace (section 16): the first real panel built there, pairing a Product with a new ProvisioningProfile domain that maps it to a hand-configured OLT vendor profile
+  1.9 Draft   2026-09-04   Documented the Providers panel (section 16): Plans now belong to exactly one Provider (the retail ISP identity, for open-access networks), surfaced only once a second Provider actually exists so a single-ISP deployment never sees it
 
 ------------------------------------------------------------------------
 
