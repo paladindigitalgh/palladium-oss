@@ -13,6 +13,7 @@ import { apiFetch } from '@/services/api/httpClient'
 interface ProductDto {
   id: string
   catalog_id: string
+  provider_id: string
   name: string
   category: ProductCategory
   status: Product['status']
@@ -23,6 +24,7 @@ function fromDto(dto: ProductDto): Product {
   return {
     id: dto.id,
     catalogId: dto.catalog_id,
+    providerId: dto.provider_id,
     name: dto.name,
     category: dto.category,
     status: dto.status,
@@ -37,6 +39,7 @@ export async function listProducts(): Promise<Product[]> {
 
 export interface CreateProductInput {
   catalogId: string
+  providerId: string
   name: string
   category: ProductCategory
   description: string
@@ -55,6 +58,7 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
     method: 'POST',
     body: {
       catalog_id: input.catalogId,
+      provider_id: input.providerId,
       name: input.name,
       category: input.category,
       status: 'Active',

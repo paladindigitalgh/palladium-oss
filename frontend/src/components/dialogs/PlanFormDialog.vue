@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import BaseModal from '@/components/base/BaseModal.vue'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
@@ -9,6 +9,7 @@ import { createProduct } from '@/services/products/productRepository'
 import { createProvisioningProfile } from '@/services/provisioningProfiles/provisioningProfileRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { Product, ProductCategory } from '@/types/product'
+import type { Provider } from '@/types/provider'
 import type { ProvisioningProfile } from '@/types/provisioningProfile'
 
 /**
@@ -30,8 +31,16 @@ import type { ProvisioningProfile } from '@/types/provisioningProfile'
  * place rather than rolled back: it is still a valid, retirable Product,
  * and the operator can add a corrected profile mapping to it separately
  * without having to redo the whole form.
+ *
+ * `providers` is passed down from AdministrationView.vue, which already
+ * has the list loaded for its own Providers panel -- avoids a second
+ * fetch of the same data. A Provider picker only appears once a second
+ * Provider actually exists; in a single-ISP deployment (exactly one
+ * Provider) it is silently the default, the same "irrelevant until it
+ * isn't" reasoning internal/provider's package doc comment gives for the
+ * domain itself.
  */
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean; providers: Provider[] }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', payload: { product: Product; profile: ProvisioningProfile }): void
@@ -42,9 +51,12 @@ const category = ref<ProductCategory>('Internet')
 const description = ref('')
 const vendor = ref('Kontron')
 const profileName = ref('')
+const providerId = ref('')
 const defaultCatalogId = ref('')
 const submitting = ref(false)
 const error = ref<string | null>(null)
+
+const providerOptions = computed(() => props.providers.map((p) => ({ value: p.id, label: p.name })))
 
 const categoryOptions: { value: ProductCategory; label: string }[] = [
   { value: 'Internet', label: 'Internet' },
@@ -61,6 +73,7 @@ function reset() {
   description.value = ''
   vendor.value = 'Kontron'
   profileName.value = ''
+  providerId.value = props.providers[0]?.id ?? ''
   error.value = null
 }
 
@@ -91,6 +104,7 @@ async function handleSubmit() {
   try {
     const product = await createProduct({
       catalogId: defaultCatalogId.value,
+      providerId: providerId.value,
       name: name.value,
       category: category.value,
       description: description.value,
@@ -117,17 +131,21 @@ async function handleSubmit() {
 <template>
   <BaseModal :open="open" title="New Plan" @close="close">
     <form class="plan-form" @submit.prevent="handleSubmit">
+      <BaseSelect v-if="providers.length > 1" v-model="providerId" label="Provider" :options="providerOptions" />
       <BaseInput v-model="name" label="Name" placeholder="Residential Internet 500/500" required />
       <BaseSelect v-model="category" label="Category" :options="categoryOptions" />
       <BaseInput v-model="description" label="Description" />
       <BaseInput v-model="vendor" label="OLT Vendor" required />
       <BaseInput v-model="profileName" label="OLT Profile Name" placeholder="RES-500M" required />
 
-      <p v-if="error" class="plan-form__error" role="alert">{{ error }}</p>
+      <p v-if="providers.length === 0" class="plan-form__error" role="alert">
+        Create a Provider first -- every Plan belongs to one.
+      </p>
+      <p v-else-if="error" class="plan-form__error" role="alert">{{ error }}</p>
 
       <div class="plan-form__actions">
         <BaseButton type="button" variant="secondary" :disabled="submitting" @click="close">Cancel</BaseButton>
-        <BaseButton type="submit" variant="primary" :disabled="submitting || !name || !profileName">
+        <BaseButton type="submit" variant="primary" :disabled="submitting || !name || !profileName || !providerId">
           {{ submitting ? 'Creating…' : 'Create Plan' }}
         </BaseButton>
       </div>

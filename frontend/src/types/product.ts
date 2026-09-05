@@ -10,6 +10,7 @@ export type ProductCategory = 'Internet' | 'Voice' | 'IPTV' | 'Transport' | 'Man
 export interface Product {
   id: string
   catalogId: string
+  providerId: string
   name: string
   category: ProductCategory
   status: 'Active' | 'Retired'
