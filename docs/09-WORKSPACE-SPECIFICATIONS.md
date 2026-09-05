@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.5-draft
+version: 1.6-draft
 ---
 
 # Workspace Specifications
@@ -675,14 +675,24 @@ what is it connected to above it?"**
 -   Summary (vendor, model, management IP, created)
 -   Access Network (a single relationship link back up the chain)
 -   PON Ports (add, remove, open)
+-   ONU Status — a "Check ONU Status" button that runs the OLT's own
+    whole-device summary commands ("show onu interface all" and
+    "...all status") over live SSH and renders each one's raw output
+    verbatim, the same no-parsing contract as the Customer Workspace's
+    ONU Diagnostics (section 8). This is a single operator-triggered,
+    on-demand snapshot, not continuous polling, so it does not
+    contradict the paragraph below.
 -   Timeline
 
 There is no OLT-level status, software version, uptime, health, or
-alarm data here — an OLT record answers "what is this device and which
-Access Network does it belong to," not "is it currently healthy." That
-question belongs to a monitoring system (Zabbix, LibreNMS, Prometheus),
-per CLAUDE.md: Palladium is not a monitoring platform, and this
-workspace does not simulate being one.
+alarm data *displayed passively* here — an OLT record answers "what is
+this device and which Access Network does it belong to," not "is it
+currently healthy" on its own, unprompted. That broader question still
+belongs to a monitoring system (Zabbix, LibreNMS, Prometheus), per
+CLAUDE.md: Palladium is not a monitoring platform, and this workspace
+does not poll, alert, or track history for ONU Status the way one
+would — it runs two commands once, on click, and shows exactly what
+came back.
 
 ## PON Port Workspace
 
@@ -1130,6 +1140,7 @@ understanding, investigating, and acting on the network.
   1.3 Draft   2026-07-30   Added Collection View & Detail View specification (section 5): Collection View discovery scope, Detail View responsibilities, navigation flow, and canonical Detail Views
   1.4 Draft   2026-07-30   Added Detail Workspace Structure (section 6): header, Contents navigation, collapsible sections, no tabs; renamed "Primary Panels" to "Sections" for single-object Detail Workspaces
   1.5 Draft   2026-09-04   Documented the ONU Diagnostics section on the Customer Workspace (section 8) and corrected the prior claim that diagnostics live only on the Service Workspace; documented Assign/Remove Equipment on the Service Workspace (section 9) and Delete-after-Detach on the Access Interface Workspace's Attachments section (section 11)
+  1.6 Draft   2026-09-04   Documented the ONU Status section on the OLT Workspace (section 11): a whole-device, on-demand ONU summary snapshot, and clarified this does not contradict the workspace's no-passive-monitoring stance
 
 ------------------------------------------------------------------------
 

@@ -19,6 +19,7 @@ import { getOLTById, deleteOLT } from '@/services/olts/oltRepository'
 import { getAccessNetworkById } from '@/services/accessNetworks/accessNetworkRepository'
 import { listPONPortsByOLTId, deletePONPort } from '@/services/ponPorts/ponPortRepository'
 import { listEvents } from '@/services/events/eventRepository'
+import { runONUSummary, runONUStatusSummary } from '@/services/diagnostics/diagnosticsRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { OLT } from '@/types/olt'
@@ -30,7 +31,17 @@ import type { TimelineEvent } from '@/types/timelineEvent'
  * The OLT Detail Workspace. Mirrors ServiceDetailView.vue's shape for the
  * single-relation Access Network section (a RelationshipCard, resolved
  * on demand) and CustomerDetailView.vue's shape for the nested PON Ports
- * section (add/remove/open) and delete-with-conflict-handling.
+ * section (add/remove/open), delete-with-conflict-handling, and the ONU
+ * Status section's raw-output rendering (no parsing anywhere in this
+ * stack -- see internal/diagnostics/kontron's own doc comment).
+ *
+ * Unlike Customer Detail's per-equipment "Check ONU Status" (four/five
+ * commands run against one known interface), this runs the OLT's own
+ * whole-device summary commands ("show onu interface all" and
+ * "...all status") -- an operator-triggered, on-demand snapshot, not
+ * continuous polling or alarms, so it does not cross into the
+ * monitoring-platform territory docs/09-WORKSPACE-SPECIFICATIONS.md
+ * section 11 deliberately keeps off this workspace.
  */
 const route = useRoute()
 const router = useRouter()
@@ -49,6 +60,7 @@ async function load(id: string) {
   accessNetwork.value = null
   ponPorts.value = []
   timeline.value = []
+  onuStatusResults.value = null
 
   const result = await getOLTById(id)
   if (!result) {
@@ -171,6 +183,40 @@ async function confirmDeleteOLT() {
     deletePending.value = false
   }
 }
+
+// --- ONU Status ---
+
+interface ONUStatusResult {
+  label: string
+  output: string | null
+  error: string | null
+}
+
+const ONU_STATUS_COMMANDS: { label: string; run: (oltId: string) => Promise<string> }[] = [
+  { label: 'ONU Summary', run: runONUSummary },
+  { label: 'ONU Status Summary', run: runONUStatusSummary },
+]
+
+const onuStatusPending = ref(false)
+const onuStatusResults = ref<ONUStatusResult[] | null>(null)
+
+async function checkONUStatus() {
+  if (!olt.value) return
+  onuStatusPending.value = true
+
+  const results: ONUStatusResult[] = []
+  for (const command of ONU_STATUS_COMMANDS) {
+    try {
+      const output = await command.run(olt.value.id)
+      results.push({ label: command.label, output, error: null })
+    } catch (err) {
+      results.push({ label: command.label, output: null, error: err instanceof ApiError ? err.message : 'This command failed to run.' })
+    }
+  }
+
+  onuStatusResults.value = results
+  onuStatusPending.value = false
+}
 </script>
 
 <template>
@@ -274,6 +320,32 @@ async function confirmDeleteOLT() {
       </SimpleTable>
     </SectionCard>
 
+    <SectionCard title="ONU Status" icon="network">
+      <div class="section-toolbar">
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          :disabled="onuStatusPending"
+          :disabled-reason="onuStatusPending ? 'Running…' : undefined"
+          @click="checkONUStatus"
+        >
+          {{ onuStatusPending ? 'Checking…' : 'Check ONU Status' }}
+        </BaseButton>
+      </div>
+
+      <p v-if="!onuStatusResults" class="no-relationship">
+        Run a live, on-demand snapshot of every ONU on this OLT.
+      </p>
+
+      <div v-else class="onu-status-results">
+        <div v-for="result in onuStatusResults" :key="result.label" class="onu-status-result">
+          <h4 class="onu-status-result__label">{{ result.label }}</h4>
+          <p v-if="result.error" class="onu-status-result__error" role="alert">{{ result.error }}</p>
+          <pre v-else class="onu-status-result__output">{{ result.output }}</pre>
+        </div>
+      </div>
+    </SectionCard>
+
     <SectionCard title="Timeline" icon="history">
       <TimelineEntries :entries="timelineEntries" />
     </SectionCard>
@@ -301,5 +373,38 @@ async function confirmDeleteOLT() {
   align-items: flex-end;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+.onu-status-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.onu-status-result__label {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.onu-status-result__output {
+  margin: 0;
+  padding: var(--space-3);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  color: var(--color-text-primary);
+}
+
+.onu-status-result__error {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
 }
 </style>

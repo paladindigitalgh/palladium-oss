@@ -34,7 +34,7 @@ interface CommandOutputDto {
  * commands against oltId/iface and returns the device's raw output,
  * verbatim -- there is no parsing anywhere in this stack (see
  * internal/diagnostics/kontron's own "no command parsing" doc comment),
- * so none is added here either. Not exported: callers use the five named
+ * so none is added here either. Not exported: callers use the named
  * functions below, one per known-safe command, the same
  * "business intent over vendor commands" reasoning the backend's own
  * KontronService applies -- this repository does not expose a generic
@@ -46,6 +46,26 @@ async function runOLTDiagnostic(oltId: string, path: string, iface: string): Pro
     body: { interface: iface },
   })
   return output
+}
+
+/**
+ * Same as runOLTDiagnostic, for the two whole-OLT commands
+ * (ONUSummary/ONUStatusSummary) that take no interface argument and so
+ * send no request body at all -- see KontronHandler.runNoArgs.
+ */
+async function runOLTWideDiagnostic(oltId: string, path: string): Promise<string> {
+  const { output } = await apiFetch<CommandOutputDto>(`/diagnostics/olts/${oltId}/${path}`, { method: 'POST' })
+  return output
+}
+
+/** Runs "show onu interface all": one row per ONU on this OLT, across every PON port -- identity fields (serial, registration ID, IP, MAC, description). */
+export function runONUSummary(oltId: string): Promise<string> {
+  return runOLTWideDiagnostic(oltId, 'onu-summary')
+}
+
+/** Runs "show onu interface all status": the same one-row-per-ONU shape as runONUSummary, but with operational state, distance, and optical levels instead of identity fields. */
+export function runONUStatusSummary(oltId: string): Promise<string> {
+  return runOLTWideDiagnostic(oltId, 'onu-status-summary')
 }
 
 /** Runs "show run <interface>": the ONU's stored provisioning configuration. */

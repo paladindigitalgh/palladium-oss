@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   listCustomerEquipmentLocations,
+  runONUSummary,
+  runONUStatusSummary,
   runONURunningConfig,
   runONUStatus,
   runONUEthernetPorts,
@@ -44,6 +46,24 @@ describe('listCustomerEquipmentLocations', () => {
 
     expect(result).toEqual([])
   })
+})
+
+describe('whole-OLT functions', () => {
+  const cases: { name: string; fn: (oltId: string) => Promise<string>; path: string }[] = [
+    { name: 'runONUSummary', fn: runONUSummary, path: 'onu-summary' },
+    { name: 'runONUStatusSummary', fn: runONUStatusSummary, path: 'onu-status-summary' },
+  ]
+
+  for (const { name, fn, path } of cases) {
+    it(`${name} posts to /diagnostics/olts/:oltId/${path} with no request body and returns the raw output`, async () => {
+      apiFetch.mockResolvedValue({ output: 'device output for ' + path })
+
+      const result = await fn('olt1')
+
+      expect(apiFetch).toHaveBeenCalledWith(`/diagnostics/olts/olt1/${path}`, { method: 'POST' })
+      expect(result).toBe('device output for ' + path)
+    })
+  }
 })
 
 describe('per-command functions', () => {
