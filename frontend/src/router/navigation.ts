@@ -84,6 +84,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Administration',
     path: '/administration',
     icon: 'administration',
-    description: 'Platform administration will appear here.',
+    description: 'Manage Plans and other platform configuration.',
   },
 ]
