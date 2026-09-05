@@ -418,6 +418,42 @@ func TestCanWriteServiceProfiles(t *testing.T) {
 	}
 }
 
+// TestCanReadProviders and TestCanWriteProviders are the same direct
+// proof as TestCanReadServiceProfiles/TestCanWriteServiceProfiles,
+// applied to the Provider domain's access-control table ("apply the
+// standard RBAC matrix").
+func TestCanReadProviders(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadProviders(role); got != want {
+			t.Errorf("CanReadProviders(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanWriteProviders(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanWriteProviders(role); got != want {
+			t.Errorf("CanWriteProviders(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
 // TestCanRunDiagnostics is the same direct proof as every other
 // capability's own test, applied to the Diagnostics framework's
 // access-control rule ("apply the standard RBAC matrix"). Unlike the
@@ -528,8 +564,8 @@ func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 		"CanWriteServices":           authz.CanWriteServices,
 		"CanReadServiceEquipment":    authz.CanReadServiceEquipment,
 		"CanWriteServiceEquipment":   authz.CanWriteServiceEquipment,
-		"CanReadWorkflow":        authz.CanReadWorkflow,
-		"CanWriteWorkflow":       authz.CanWriteWorkflow,
+		"CanReadWorkflow":            authz.CanReadWorkflow,
+		"CanWriteWorkflow":           authz.CanWriteWorkflow,
 		"CanReadAccessNetwork":       authz.CanReadAccessNetwork,
 		"CanWriteAccessNetwork":      authz.CanWriteAccessNetwork,
 		"CanReadAccessTopology":      authz.CanReadAccessTopology,

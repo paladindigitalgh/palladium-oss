@@ -253,6 +253,20 @@ func (m *Middleware) RequireServiceProfilesWrite() func(http.Handler) http.Handl
 	return m.Require(CanWriteServiceProfiles)
 }
 
+// RequireProvidersRead returns middleware allowing any Role that
+// CanReadProviders (Administrator, Operator, Viewer). Applied to the
+// /providers route.
+func (m *Middleware) RequireProvidersRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadProviders)
+}
+
+// RequireProvidersWrite returns middleware allowing any Role that
+// CanWriteProviders (Administrator, Operator). Applied to the /providers
+// route.
+func (m *Middleware) RequireProvidersWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteProviders)
+}
+
 // RequireDiagnostics returns middleware allowing any Role that
 // CanRunDiagnostics (Administrator, Operator). Applied to the
 // /diagnostics routes. Unlike every Require*Read/Require*Write pair

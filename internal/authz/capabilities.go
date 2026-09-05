@@ -468,6 +468,43 @@ func CanWriteServiceProfiles(role auth.Role) bool {
 	}
 }
 
+// CanReadProviders reports whether role may read Provider data — the
+// retail ISP identity a Product belongs to (see internal/provider). All
+// three built-in roles can — identical to CanReadServiceProfiles's rule
+// today.
+//
+// This is a separate function from CanReadCatalog and
+// CanReadServiceProfiles, not a call to either, for the same reasoning
+// CanReadServiceProfiles's own doc comment gives: Product now references
+// a Provider in addition to a Catalog, but "which company sells this"
+// and "what catalog is it organized under" are different business
+// concepts that merely happen to both be referenced by Product — a
+// future requirement specific to Providers (e.g. restricting which
+// operator staff may create a new Provider identity) must never require
+// touching Catalog's or Product's code, and vice versa.
+func CanReadProviders(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteProviders reports whether role may create, update, or delete
+// Provider data. Administrator and Operator can; Viewer cannot. See
+// CanReadProviders's doc comment for why this is not implemented in
+// terms of CanWriteCatalog or CanWriteServiceProfiles despite the
+// identical rule today.
+func CanWriteProviders(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}
+
 // CanRunDiagnostics reports whether role may execute a diagnostic (see
 // internal/diagnostics) — today, POST /api/v1/diagnostics/basic-onu-check,
 // and any future diagnostic endpoint built against the same framework.
