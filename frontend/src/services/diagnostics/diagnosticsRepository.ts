@@ -73,6 +73,11 @@ export function runONURunningConfig(oltId: string, iface: string): Promise<strin
   return runOLTDiagnostic(oltId, 'onu-running-config', iface)
 }
 
+/** Runs "show onu interface <interface>": the OLT's full detail view for one ONU -- hardware/firmware identity, uptime, firmware image slots, IP/DHCP config, optical levels, and temperature. */
+export function runONUDetail(oltId: string, iface: string): Promise<string> {
+  return runOLTDiagnostic(oltId, 'onu-detail', iface)
+}
+
 /** Runs "show onu interface <interface> status": operational state, distance, and optical levels. */
 export function runONUStatus(oltId: string, iface: string): Promise<string> {
   return runOLTDiagnostic(oltId, 'onu-status', iface)

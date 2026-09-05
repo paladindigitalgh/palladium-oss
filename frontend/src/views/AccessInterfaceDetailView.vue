@@ -20,6 +20,14 @@ import { getAccessInterfaceById, deleteAccessInterface } from '@/services/access
 import { getPONPortById } from '@/services/ponPorts/ponPortRepository'
 import { listAccessAttachmentsByAccessInterfaceId, deleteAccessAttachment } from '@/services/accessAttachments/accessAttachmentRepository'
 import { listEvents } from '@/services/events/eventRepository'
+import {
+  runONUDetail,
+  runONURunningConfig,
+  runONUStatus,
+  runONUEthernetPorts,
+  runDHCPSnoopingEntries,
+  runMACAddressTableEntries,
+} from '@/services/diagnostics/diagnosticsRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { AccessInterface } from '@/types/accessInterface'
@@ -36,6 +44,16 @@ import type { TimelineEvent } from '@/types/timelineEvent'
  * on why detach is a PUT, not a DELETE. History is not hidden: both
  * active and removed attachments are shown, with a State column
  * distinguishing them.
+ *
+ * The ONU Status section runs the same per-interface Kontron commands
+ * as CustomerDetailView.vue's ONU Diagnostics, plus ONUDetail (the one
+ * command that existed end-to-end on the backend but had never been
+ * wired into any page) -- but keyed only by this interface's own OLT
+ * (ponPort.oltId) and name, with no Customer or ServiceEquipment
+ * involved. That is deliberate: an ONU can be physically plugged into
+ * an interface well before "Assign Equipment" ever happens on a
+ * Service, and a tech doing turn-up needs to check it right here, not
+ * by first finding whichever Customer it will eventually belong to.
  */
 const route = useRoute()
 const router = useRouter()
@@ -54,6 +72,7 @@ async function load(id: string) {
   ponPort.value = null
   attachments.value = []
   timeline.value = []
+  onuStatusResults.value = null
 
   const result = await getAccessInterfaceById(id)
   if (!result) {
@@ -135,6 +154,46 @@ async function confirmDeleteAttachment() {
   } finally {
     deleteAttachmentPending.value = false
   }
+}
+
+// --- ONU Status ---
+
+interface ONUStatusResult {
+  label: string
+  output: string | null
+  error: string | null
+}
+
+const ONU_STATUS_COMMANDS: { label: string; run: (oltId: string, iface: string) => Promise<string> }[] = [
+  { label: 'ONU Detail', run: runONUDetail },
+  { label: 'Running Configuration', run: runONURunningConfig },
+  { label: 'Status', run: runONUStatus },
+  { label: 'Ethernet Ports', run: runONUEthernetPorts },
+  { label: 'DHCP Snooping', run: runDHCPSnoopingEntries },
+  { label: 'MAC Address Table', run: runMACAddressTableEntries },
+]
+
+const onuStatusPending = ref(false)
+const onuStatusResults = ref<ONUStatusResult[] | null>(null)
+
+async function checkONUStatus() {
+  if (!ponPort.value || !accessInterface.value) return
+  const oltId = ponPort.value.oltId
+  const iface = accessInterface.value.name
+  onuStatusPending.value = true
+
+  const results: ONUStatusResult[] = []
+  for (const command of ONU_STATUS_COMMANDS) {
+    try {
+      const output = await command.run(oltId, iface)
+      results.push({ label: command.label, output, error: null })
+    } catch (err) {
+      results.push({ label: command.label, output: null, error: err instanceof ApiError ? err.message : 'This command failed to run.' })
+    }
+  }
+
+  onuStatusResults.value = results
+  onuStatusPending.value = false
 }
 
 // --- Edit Access Interface ---
@@ -288,6 +347,32 @@ async function confirmDeleteAccessInterface() {
       </SimpleTable>
     </SectionCard>
 
+    <SectionCard title="ONU Status" icon="network">
+      <div class="section-toolbar">
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          :disabled="onuStatusPending"
+          :disabled-reason="onuStatusPending ? 'Running…' : undefined"
+          @click="checkONUStatus"
+        >
+          {{ onuStatusPending ? 'Checking…' : 'Check ONU Status' }}
+        </BaseButton>
+      </div>
+
+      <p v-if="!onuStatusResults" class="no-relationship">
+        Run a live, on-demand check of whatever ONU is plugged into this interface right now.
+      </p>
+
+      <div v-else class="onu-status-results">
+        <div v-for="result in onuStatusResults" :key="result.label" class="onu-status-result">
+          <h4 class="onu-status-result__label">{{ result.label }}</h4>
+          <p v-if="result.error" class="onu-status-result__error" role="alert">{{ result.error }}</p>
+          <pre v-else class="onu-status-result__output">{{ result.output }}</pre>
+        </div>
+      </div>
+    </SectionCard>
+
     <SectionCard title="Timeline" icon="history">
       <TimelineEntries :entries="timelineEntries" />
     </SectionCard>
@@ -321,5 +406,38 @@ async function confirmDeleteAccessInterface() {
   align-items: flex-end;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+.onu-status-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.onu-status-result__label {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.onu-status-result__output {
+  margin: 0;
+  padding: var(--space-3);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  color: var(--color-text-primary);
+}
+
+.onu-status-result__error {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
 }
 </style>

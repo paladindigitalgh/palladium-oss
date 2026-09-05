@@ -4,6 +4,7 @@ import {
   runONUSummary,
   runONUStatusSummary,
   runONURunningConfig,
+  runONUDetail,
   runONUStatus,
   runONUEthernetPorts,
   runDHCPSnoopingEntries,
@@ -73,6 +74,7 @@ describe('per-command functions', () => {
     path: string
   }[] = [
     { name: 'runONURunningConfig', fn: runONURunningConfig, path: 'onu-running-config' },
+    { name: 'runONUDetail', fn: runONUDetail, path: 'onu-detail' },
     { name: 'runONUStatus', fn: runONUStatus, path: 'onu-status' },
     { name: 'runONUEthernetPorts', fn: runONUEthernetPorts, path: 'onu-ethernet-ports' },
     { name: 'runDHCPSnoopingEntries', fn: runDHCPSnoopingEntries, path: 'dhcp-snooping-entries' },

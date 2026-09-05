@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.6-draft
+version: 1.7-draft
 ---
 
 # Workspace Specifications
@@ -742,6 +742,18 @@ connect an OLT to its Access Interfaces.
     disposable test/demo data rather than real operational history --
     but only ever on an already-removed row; an active attachment can
     only be detached.
+-   ONU Status — a "Check ONU Status" button running six read-only
+    Kontron commands (ONU Detail, Running Configuration, Status,
+    Ethernet Ports, DHCP Snooping, MAC Address Table) against whatever
+    ONU is physically live on this interface's own OLT and name — no
+    Customer, Service, or ServiceEquipment involved. This is
+    deliberately independent of the Attachments section above: an ONU
+    is commonly plugged in and reachable well before any equipment is
+    assigned or attached, and a tech doing turn-up needs to check it
+    here rather than first finding which Customer it will eventually
+    belong to. Same on-demand, no-parsing, no-polling contract as the
+    Customer Workspace's ONU Diagnostics (section 8) and the OLT
+    Workspace's ONU Status (above).
 -   Timeline
 
 ------------------------------------------------------------------------
@@ -1141,6 +1153,7 @@ understanding, investigating, and acting on the network.
   1.4 Draft   2026-07-30   Added Detail Workspace Structure (section 6): header, Contents navigation, collapsible sections, no tabs; renamed "Primary Panels" to "Sections" for single-object Detail Workspaces
   1.5 Draft   2026-09-04   Documented the ONU Diagnostics section on the Customer Workspace (section 8) and corrected the prior claim that diagnostics live only on the Service Workspace; documented Assign/Remove Equipment on the Service Workspace (section 9) and Delete-after-Detach on the Access Interface Workspace's Attachments section (section 11)
   1.6 Draft   2026-09-04   Documented the ONU Status section on the OLT Workspace (section 11): a whole-device, on-demand ONU summary snapshot, and clarified this does not contradict the workspace's no-passive-monitoring stance
+  1.7 Draft   2026-09-04   Documented the ONU Status section on the Access Interface Workspace (section 11): a per-interface, no-Customer-required ONU check for turn-up before any equipment is assigned or attached, exposing ONUDetail for the first time in any page
 
 ------------------------------------------------------------------------
 
