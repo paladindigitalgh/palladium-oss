@@ -16,6 +16,7 @@ import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
 import ServiceFormDialog from '@/components/dialogs/ServiceFormDialog.vue'
 import AssignServiceEquipmentDialog from '@/components/dialogs/AssignServiceEquipmentDialog.vue'
 import { getServiceById, deleteService } from '@/services/services/serviceRepository'
+import { resolveServiceLabels } from '@/services/services/serviceLabels'
 import { getLocationById } from '@/services/locations/locationRepository'
 import { getCustomerById } from '@/services/customers/customerRepository'
 import { listServiceEquipmentByServiceId, deleteServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
@@ -56,6 +57,7 @@ const route = useRoute()
 const router = useRouter()
 
 const service = ref<Service | null>(null)
+const serviceLabel = ref<string | null>(null)
 const location = ref<Location | null>(null)
 const customer = ref<Customer | null>(null)
 const equipment = ref<ServiceEquipment[]>([])
@@ -73,6 +75,7 @@ async function load(id: string) {
   notFound.value = false
   actionError.value = null
   service.value = null
+  serviceLabel.value = null
   location.value = null
   customer.value = null
   equipment.value = []
@@ -89,12 +92,14 @@ async function load(id: string) {
   }
   service.value = result
 
-  const [relatedLocation, relatedEquipment, events, history] = await Promise.all([
+  const [relatedLocation, relatedEquipment, events, history, labels] = await Promise.all([
     getLocationById(result.locationId),
     listServiceEquipmentByServiceId(result.id),
     listEvents('service', result.id),
     listWorkflowInstancesByServiceId(result.id),
+    resolveServiceLabels([result]),
   ])
+  serviceLabel.value = labels.get(result.id) ?? result.id
   location.value = relatedLocation
   equipment.value = relatedEquipment
   timeline.value = events
@@ -284,8 +289,9 @@ const workflowColumns: SimpleTableColumn[] = [
 
   <DetailWorkspace v-else-if="service">
     <WorkspaceHeader
-      :title="`Service ${service.id}`"
+      :title="serviceLabel ?? service.id"
       :status="{ label: service.status, variant: service.status === 'Active' ? 'success' : 'neutral' }"
+      :metadata="[`Service ${service.id}`]"
     >
       <template #actions>
         <WorkspaceActions>

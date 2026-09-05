@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import BaseCard from '@/components/base/BaseCard.vue'
@@ -11,6 +11,7 @@ import type { Customer } from '@/types/customer'
 import { useServiceCollection, type ServiceSortKey } from '@/composables/useServiceCollection'
 import { listLocations } from '@/services/locations/locationRepository'
 import { listCustomers } from '@/services/customers/customerRepository'
+import { resolveServiceLabels } from '@/services/services/serviceLabels'
 
 /**
  * The Service Collection View (docs/09-WORKSPACE-SPECIFICATIONS.md,
@@ -25,6 +26,7 @@ const router = useRouter()
 const { search, status, sortKey, sortDirection, toggleSort, page, pageSize, services, total, loading } = useServiceCollection()
 
 const customerByLocationId = ref<Map<string, Customer>>(new Map())
+const serviceLabelsById = ref<Map<string, string>>(new Map())
 
 onMounted(async () => {
   const [locations, { items: customers }] = await Promise.all([listLocations(), listCustomers({ pageSize: 1000 })])
@@ -36,6 +38,18 @@ onMounted(async () => {
   }
   customerByLocationId.value = byLocation
 })
+
+// Re-resolved whenever the visible page of Services changes (search,
+// filter, sort, or page navigation all reassign `services` inside
+// useServiceCollection) -- cheap regardless, since resolveServiceLabels
+// is one pair of requests no matter how many Services are passed in.
+watch(
+  services,
+  async (currentServices) => {
+    serviceLabelsById.value = await resolveServiceLabels(currentServices)
+  },
+  { immediate: true },
+)
 
 const columns: DataTableColumn[] = [
   { key: 'service', label: 'Service', sortable: true },
@@ -52,7 +66,7 @@ const statusOptions = [
 ]
 
 function rowLabel(service: Service): string {
-  return `Open service ${service.id}`
+  return `Open ${serviceLabelsById.value.get(service.id) ?? service.id}`
 }
 
 function openService(service: Service) {
@@ -91,7 +105,7 @@ function handleSort(key: string) {
         @update:page="(next) => (page = next)"
       >
         <template #cell-service="{ row }">
-          <span class="service-cell__id">{{ row.id }}</span>
+          <span class="service-cell__id">{{ serviceLabelsById.get(row.id) ?? row.id }}</span>
         </template>
 
         <template #cell-customer="{ row }">
@@ -117,8 +131,6 @@ function handleSort(key: string) {
 }
 
 .service-cell__id {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
   color: var(--color-text-primary);
 }
 

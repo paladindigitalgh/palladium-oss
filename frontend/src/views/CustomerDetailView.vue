@@ -21,6 +21,7 @@ import { getCustomerById, deleteCustomer } from '@/services/customers/customerRe
 import { listContactsByCustomerId, deleteContact } from '@/services/contacts/contactRepository'
 import { listLocationsByCustomerId, deleteLocation } from '@/services/locations/locationRepository'
 import { listServicesByLocationIds, deleteService } from '@/services/services/serviceRepository'
+import { resolveServiceLabels } from '@/services/services/serviceLabels'
 import { listEvents } from '@/services/events/eventRepository'
 import {
   listCustomerEquipmentLocations,
@@ -71,6 +72,7 @@ const customer = ref<Customer | null>(null)
 const contacts = ref<Contact[]>([])
 const locations = ref<Location[]>([])
 const services = ref<Service[]>([])
+const serviceLabelsById = ref<Map<string, string>>(new Map())
 const timeline = ref<TimelineEvent[]>([])
 const equipmentLocations = ref<CustomerEquipmentLocation[]>([])
 const oltsById = ref<Map<string, OLT>>(new Map())
@@ -85,6 +87,7 @@ async function load(id: string) {
   contacts.value = []
   locations.value = []
   services.value = []
+  serviceLabelsById.value = new Map()
   timeline.value = []
   equipmentLocations.value = []
   oltsById.value = new Map()
@@ -108,6 +111,7 @@ async function load(id: string) {
   locations.value = customerLocations
   timeline.value = events
   services.value = await listServicesByLocationIds(customerLocations.map((location) => location.id))
+  serviceLabelsById.value = await resolveServiceLabels(services.value)
 
   equipmentLocations.value = customerEquipmentLocations
   const uniqueOltIds = [...new Set(customerEquipmentLocations.map((item) => item.oltId))]
@@ -291,9 +295,11 @@ function openServiceForm() {
   showServiceForm.value = true
 }
 
-function handleServiceCreated(service: Service) {
+async function handleServiceCreated(service: Service) {
   showServiceForm.value = false
   services.value = [...services.value, service]
+  const labels = await resolveServiceLabels([service])
+  serviceLabelsById.value = new Map(serviceLabelsById.value).set(service.id, labels.get(service.id) ?? service.id)
 }
 
 const serviceDeleteTarget = ref<Service | null>(null)
@@ -563,7 +569,7 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
       <ConfirmationDialog
         :open="serviceDeleteTarget !== null"
         title="Remove Service"
-        :description="`Remove service ${serviceDeleteTarget?.id}? This cannot be undone.`"
+        :description="`Remove ${serviceDeleteTarget ? serviceLabelsById.get(serviceDeleteTarget.id) ?? serviceDeleteTarget.id : ''}? This cannot be undone.`"
         confirm-label="Remove Service"
         destructive
         :pending="serviceDeletePending"
@@ -581,9 +587,7 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         empty-title="No services on this account"
         @row-click="openService"
       >
-        <template #cell-service="{ row }">
-          <span class="cell-mono">{{ row.id }}</span>
-        </template>
+        <template #cell-service="{ row }">{{ serviceLabelsById.get(row.id) ?? row.id }}</template>
         <template #cell-status="{ row }">{{ row.status }}</template>
         <template #cell-actions="{ row }">
           <BaseButton variant="ghost" size="sm" @click.stop="serviceDeleteTarget = row">Remove</BaseButton>
@@ -649,12 +653,6 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
 .cell-strong {
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
-}
-
-.cell-mono {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
 }
 
 .customer-description {
