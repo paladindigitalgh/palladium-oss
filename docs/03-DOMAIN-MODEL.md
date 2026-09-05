@@ -2,7 +2,7 @@
 document: 03-DOMAIN-MODEL
 status: Draft
 title: Domain Model
-version: 1.1-draft
+version: 1.2-draft
 ---
 
 # Domain Model
@@ -618,6 +618,125 @@ Customer it belongs to.
 
 ------------------------------------------------------------------------
 
+# 20. Product Catalog
+
+A Product Catalog groups related Products under one named,
+independently-lifecycled collection -- e.g. "Residential Internet"
+versus "Business Internet".
+
+## Responsibilities
+
+A Product Catalog records:
+
+-   Name
+-   Description
+-   Current status (Active / Inactive)
+
+A Product Catalog describes how the ISP organizes its own offerings,
+never a subscriber's actual service, and never a price. It exists
+purely to group Products (see section 21) -- it has no other
+responsibility.
+
+------------------------------------------------------------------------
+
+# 21. Product
+
+A Product is a single commercial offering the ISP sells -- e.g.
+"Residential Internet 500 Mbps" -- described independently of who buys
+it and how it is delivered.
+
+## Responsibilities
+
+A Product records:
+
+-   Owning Product Catalog
+-   Owning Provider (see section 23)
+-   Category (Internet, Voice, IPTV, Transport, Managed WiFi, Other)
+-   Name
+-   Description
+-   Current status (Active / Retired -- one-way, unlike most other
+    status fields in this document)
+
+A Service (section 5) references exactly one Product -- "what was
+sold" -- and, separately, exactly one Service Profile (section 22) --
+"how it is meant to operate." Neither is derived from the other; both
+are required. A Product carries no pricing, no bandwidth profile, and
+no vendor-specific configuration of its own -- the OLT profile that
+actually delivers it is a separate concern (see section 24,
+Provisioning Profile).
+
+------------------------------------------------------------------------
+
+# 22. Service Profile
+
+A Service Profile is a named, reusable description of a Service's
+operational intent -- e.g. "Residential Standard" versus "Business
+Ethernet" -- distinct from which Product was sold.
+
+## Responsibilities
+
+A Service Profile records:
+
+-   Name
+-   Description
+-   Current status (Active / Inactive)
+
+Like Product, a Service Profile carries no bandwidth, QoS, VLAN, or
+vendor-specific detail of its own -- that remains a future Network
+domain's concern, layered on top of a Service, never folded into its
+Service Profile.
+
+------------------------------------------------------------------------
+
+# 23. Provider
+
+A Provider is the retail ISP identity a Product belongs to -- the
+company selling it -- distinct from the network operator that owns the
+physical OLTs and PON ports it is delivered over.
+
+## Responsibilities
+
+A Provider records:
+
+-   Name
+-   Description
+-   Current status (Active / Inactive)
+
+This distinction is invisible in a single-ISP deployment: exactly one
+Provider exists, and nothing in the product surfaces it. It becomes
+real on an open-access network, where more than one ISP sells service
+over one shared physical network -- each Provider's Products, and the
+OLT vendor profiles that deliver them (see section 24), stay fully
+isolated from one another even when they happen to share an identical
+speed tier.
+
+------------------------------------------------------------------------
+
+# 24. Provisioning Profile
+
+A Provisioning Profile maps one Product to the exact configuration
+profile a specific OLT vendor already has running for it -- the rate
+limiting and VLAN assignment an operator builds by hand directly on the
+OLT.
+
+## Responsibilities
+
+A Provisioning Profile records:
+
+-   Owning Product
+-   Vendor
+-   Profile name
+-   Description
+
+Palladium never generates, applies, or modifies this profile itself --
+see section 13 (Vendor Plugin) and section 14 (Transport) for why that
+boundary matters; applying a profile to a live ONU is future
+provisioning work, layered on top of this lookup, not implied by it.
+One Product maps to at most one profile per vendor, and a given
+vendor's profile name identifies exactly one Product.
+
+------------------------------------------------------------------------
+
 # Closing Statement
 
 The Domain Model defines the language of Palladium.
@@ -636,6 +755,7 @@ understandable, extensible, and maintainable as it grows.
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
   1.1 Draft   2026-09-04   Corrected section 7 and the section 17 invariant: Service Equipment removal is soft by default, but a real hard delete now exists for disposable test/demo data (blocked by an active Access Attachment)
+  1.2 Draft   2026-09-05   Added sections 20-24 (Product Catalog, Product, Service Profile, Provider, Provisioning Profile), documenting four real, already-implemented domains this document had never covered; corrected two stale "section 5" citations elsewhere that meant to point at Product
 
 ------------------------------------------------------------------------
 

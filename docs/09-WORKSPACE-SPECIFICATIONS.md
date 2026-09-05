@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.9-draft
+version: 1.10-draft
 ---
 
 # Workspace Specifications
@@ -477,7 +477,11 @@ suspended, or resumed.
 -   Contacts -- every Contact on the account, with Add/Edit/Remove
 -   Locations -- every Location on the account, with Add/Edit/Remove
 -   Services -- every Service across every Location, with Add/Remove;
-    opens the Service Workspace
+    opens the Service Workspace. Since a Service record itself carries
+    no name (see section 9's Header), each row shows the resolved
+    "<Product name>" (or "<Provider> > <Product>" once a second
+    Provider exists) in place of the raw id -- see
+    frontend/src/services/services/serviceLabels.ts's own doc comment.
 -   ONU Diagnostics -- one block per equipment location the customer's
     Services resolve to (Customer → Location → Service → Service
     Equipment → Access Attachment → Access Interface → OLT, see
@@ -524,14 +528,22 @@ It should answer:
 
 Include:
 
--   Service identifier
+-   The resolved Service label -- "<Product name>" normally, or
+    "<Provider> > <Product name>" once a second Provider exists (see
+    section 8's Services section and internal/provider's own package
+    doc comment on when that prefix appears). A Service record itself
+    (docs/03-DOMAIN-MODEL.md) is lean and has no name field to show
+    directly.
 -   Status
 
-A Service record (docs/03-DOMAIN-MODEL.md) is lean: no technology,
-provisioned speed, or utilization field exists on it. Customer and
-Location are shown as their own sections below, not header fields --
-richer service detail (technology, speed tier) belongs to Product and
-Service Profile, neither of which has its own read model yet.
+The raw Service id moves to header metadata (`Service <id>`), the same
+"readable title, id as metadata" pattern the Customer and OLT
+Workspaces already use -- not the title itself. Customer and Location
+are shown as their own sections below, not header fields. Product now
+has a real read/write frontend model (Administration → Plans, see
+docs/09-WORKSPACE-SPECIFICATIONS.md section 16); Service Profile still
+does not, and richer service detail beyond the Product name shown here
+(technology, speed tier as their own fields) remains out of scope.
 
 ## Primary Actions
 
@@ -1056,7 +1068,7 @@ does not use section 6, "Detail Workspace Structure."
     a one-time setup step, never revisited. Flat create-and-list, no
     edit yet.
 -   Plans -- the first real panel built here (AdministrationView.vue). A
-    "Plan" is a Product (docs/03-DOMAIN-MODEL.md section 5 -- what the
+    "Plan" is a Product (docs/03-DOMAIN-MODEL.md section 21 -- what the
     ISP sells, e.g. "Residential Internet 500 Mbps") paired with a
     ProvisioningProfile (internal/provisioning) naming the OLT vendor
     profile an operator already configured by hand to deliver it (rate
@@ -1180,6 +1192,7 @@ understanding, investigating, and acting on the network.
   1.7 Draft   2026-09-04   Documented the ONU Status section on the Access Interface Workspace (section 11): a per-interface, no-Customer-required ONU check for turn-up before any equipment is assigned or attached, exposing ONUDetail for the first time in any page
   1.8 Draft   2026-09-04   Documented the Plans panel on the Administration Workspace (section 16): the first real panel built there, pairing a Product with a new ProvisioningProfile domain that maps it to a hand-configured OLT vendor profile
   1.9 Draft   2026-09-04   Documented the Providers panel (section 16): Plans now belong to exactly one Provider (the retail ISP identity, for open-access networks), surfaced only once a second Provider actually exists so a single-ISP deployment never sees it
+  1.10 Draft  2026-09-04   Corrected the Service Workspace Header (section 9): shows the resolved Product/Provider label, not "Service identifier," which moved to metadata; corrected the stale claim that Product has no read model yet (section 16's Plans panel gives it one). Noted the same label resolution on the Customer Workspace's Services section (section 8)
 
 ------------------------------------------------------------------------
 

@@ -22,7 +22,7 @@ import type { Provider } from '@/types/provider'
  * are the first real panels; System Health, User Management, Plugin
  * Management, and the rest of that section's list remain unbuilt.
  *
- * A "Plan" is a Product (docs/03-DOMAIN-MODEL.md section 5 -- what the
+ * A "Plan" is a Product (docs/03-DOMAIN-MODEL.md section 21 -- what the
  * ISP sells, e.g. "Residential Internet 500/500") paired with a
  * ProvisioningProfile (internal/provisioning -- which OLT vendor profile
  * an operator already built by hand delivers it), and now also
