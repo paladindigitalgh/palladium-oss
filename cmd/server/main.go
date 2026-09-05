@@ -76,6 +76,9 @@ import (
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
 	productservice "github.com/paladindigitalgh/palladium-oss/internal/product/service"
+	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
+	provisioningpostgres "github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
+	provisioningservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/service"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
@@ -218,6 +221,15 @@ func run() error {
 	productRepo := productpostgres.NewProductRepository(pool, clock.New(), id.New())
 	productSvc := productservice.NewProductService(productRepo)
 	productHandler := producthttpapi.NewProductHandler(productSvc)
+
+	// Provisioning Profile follows the exact same repository -> service ->
+	// handler chain as Product, one package over (internal/provisioning
+	// instead of internal/product) -- see that package's own doc comment
+	// for why this is not the internal/provisioning that existed earlier
+	// in this codebase's history.
+	provisioningProfileRepo := provisioningpostgres.NewProvisioningProfileRepository(pool, clock.New(), id.New())
+	provisioningProfileSvc := provisioningservice.NewProvisioningProfileService(provisioningProfileRepo)
+	provisioningProfileHandler := provisioninghttpapi.NewProvisioningProfileHandler(provisioningProfileSvc)
 
 	// Service Profile follows the exact same repository -> service ->
 	// handler chain as every domain above, mirroring internal/catalog's
@@ -403,39 +415,40 @@ func run() error {
 	authzMiddleware := authz.NewMiddleware(userRepo)
 
 	router := api.NewRouter(api.Dependencies{
-		Logger:                   logger,
-		HealthCheckers:           healthCheckers,
-		Version:                  version.Version,
-		Commit:                   version.Commit,
-		SiteHandler:              siteHandler,
-		BuildingHandler:          buildingHandler,
-		RoomHandler:              roomHandler,
-		RackHandler:              rackHandler,
-		DeviceHandler:            deviceHandler,
-		CustomerHandler:          customerHandler,
-		LocationHandler:          locationHandler,
-		ContactHandler:           contactHandler,
-		CatalogHandler:           catalogHandler,
-		ProductHandler:           productHandler,
-		ServiceProfileHandler:    serviceProfileHandler,
-		DiagnosticsHandler:       diagnosticsHandler,
-		KontronHandler:           kontronHandler,
-		AccessTopologyHandler:    accessTopologyHandler,
-		ServiceHandler:           serviceHandler,
-		ServiceEquipmentHandler:  serviceEquipmentHandler,
-		WorkflowHandler:          workflowHandler,
-		EventHandler:             eventHandler,
-		AccessNetworkHandler:     accessNetworkHandler,
-		OLTHandler:               oltHandler,
-		PONPortHandler:           ponPortHandler,
-		AccessInterfaceHandler:   accessInterfaceHandler,
-		AccessAttachmentHandler:  accessAttachmentHandler,
-		AuthenticationHandler:    authenticationHandler,
-		ConnectionProfileHandler: connectionProfileHandler,
-		Tokens:                   tokenIssuer,
-		LoginHandler:             loginHandler,
-		Authz:                    authzMiddleware,
-		AllowedOrigin:            cfg.HTTP.AllowedOrigin,
+		Logger:                     logger,
+		HealthCheckers:             healthCheckers,
+		Version:                    version.Version,
+		Commit:                     version.Commit,
+		SiteHandler:                siteHandler,
+		BuildingHandler:            buildingHandler,
+		RoomHandler:                roomHandler,
+		RackHandler:                rackHandler,
+		DeviceHandler:              deviceHandler,
+		CustomerHandler:            customerHandler,
+		LocationHandler:            locationHandler,
+		ContactHandler:             contactHandler,
+		CatalogHandler:             catalogHandler,
+		ProductHandler:             productHandler,
+		ProvisioningProfileHandler: provisioningProfileHandler,
+		ServiceProfileHandler:      serviceProfileHandler,
+		DiagnosticsHandler:         diagnosticsHandler,
+		KontronHandler:             kontronHandler,
+		AccessTopologyHandler:      accessTopologyHandler,
+		ServiceHandler:             serviceHandler,
+		ServiceEquipmentHandler:    serviceEquipmentHandler,
+		WorkflowHandler:            workflowHandler,
+		EventHandler:               eventHandler,
+		AccessNetworkHandler:       accessNetworkHandler,
+		OLTHandler:                 oltHandler,
+		PONPortHandler:             ponPortHandler,
+		AccessInterfaceHandler:     accessInterfaceHandler,
+		AccessAttachmentHandler:    accessAttachmentHandler,
+		AuthenticationHandler:      authenticationHandler,
+		ConnectionProfileHandler:   connectionProfileHandler,
+		Tokens:                     tokenIssuer,
+		LoginHandler:               loginHandler,
+		Authz:                      authzMiddleware,
+		AllowedOrigin:              cfg.HTTP.AllowedOrigin,
 	})
 
 	srv := httpserver.New(httpserver.Config{

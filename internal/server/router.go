@@ -33,6 +33,7 @@ import (
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
+	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
@@ -44,38 +45,39 @@ import (
 // this package, keeping construction explicit rather than relying on
 // globals or a framework-managed container.
 type Dependencies struct {
-	Logger                   *slog.Logger
-	HealthCheckers           []health.Checker
-	Version                  string
-	Commit                   string
-	SiteHandler              *httpapi.SiteHandler
-	BuildingHandler          *httpapi.BuildingHandler
-	RoomHandler              *httpapi.RoomHandler
-	RackHandler              *httpapi.RackHandler
-	DeviceHandler            *httpapi.DeviceHandler
-	CustomerHandler          *customerhttpapi.CustomerHandler
-	LocationHandler          *locationhttpapi.LocationHandler
-	ContactHandler           *contacthttpapi.ContactHandler
-	CatalogHandler           *cataloghttpapi.CatalogHandler
-	ProductHandler           *producthttpapi.ProductHandler
-	ServiceHandler           *servicehttpapi.ServiceHandler
-	ServiceEquipmentHandler  *serviceequipmenthttpapi.ServiceEquipmentHandler
-	WorkflowHandler          *workflowhttpapi.WorkflowHandler
-	EventHandler             *eventhttpapi.EventHandler
-	AccessNetworkHandler     *accessnetworkhttpapi.AccessNetworkHandler
-	OLTHandler               *olthttpapi.OLTHandler
-	PONPortHandler           *ponporthttpapi.PONPortHandler
-	AccessInterfaceHandler   *accessinterfacehttpapi.AccessInterfaceHandler
-	AccessAttachmentHandler  *accessattachmenthttpapi.AccessAttachmentHandler
-	ServiceProfileHandler    *serviceprofilehttpapi.ServiceProfileHandler
-	DiagnosticsHandler       *diagnosticshttpapi.DiagnosticsHandler
-	KontronHandler           *kontronhttpapi.KontronHandler
-	AccessTopologyHandler    *accesstopologyhttpapi.AccessTopologyHandler
-	AuthenticationHandler    *authenticationhttpapi.AuthenticationHandler
-	ConnectionProfileHandler *connectionprofilehttpapi.ConnectionProfileHandler
-	Tokens                   *auth.TokenIssuer
-	LoginHandler             *authhttpapi.LoginHandler
-	Authz                    *authz.Middleware
+	Logger                     *slog.Logger
+	HealthCheckers             []health.Checker
+	Version                    string
+	Commit                     string
+	SiteHandler                *httpapi.SiteHandler
+	BuildingHandler            *httpapi.BuildingHandler
+	RoomHandler                *httpapi.RoomHandler
+	RackHandler                *httpapi.RackHandler
+	DeviceHandler              *httpapi.DeviceHandler
+	CustomerHandler            *customerhttpapi.CustomerHandler
+	LocationHandler            *locationhttpapi.LocationHandler
+	ContactHandler             *contacthttpapi.ContactHandler
+	CatalogHandler             *cataloghttpapi.CatalogHandler
+	ProductHandler             *producthttpapi.ProductHandler
+	ProvisioningProfileHandler *provisioninghttpapi.ProvisioningProfileHandler
+	ServiceHandler             *servicehttpapi.ServiceHandler
+	ServiceEquipmentHandler    *serviceequipmenthttpapi.ServiceEquipmentHandler
+	WorkflowHandler            *workflowhttpapi.WorkflowHandler
+	EventHandler               *eventhttpapi.EventHandler
+	AccessNetworkHandler       *accessnetworkhttpapi.AccessNetworkHandler
+	OLTHandler                 *olthttpapi.OLTHandler
+	PONPortHandler             *ponporthttpapi.PONPortHandler
+	AccessInterfaceHandler     *accessinterfacehttpapi.AccessInterfaceHandler
+	AccessAttachmentHandler    *accessattachmenthttpapi.AccessAttachmentHandler
+	ServiceProfileHandler      *serviceprofilehttpapi.ServiceProfileHandler
+	DiagnosticsHandler         *diagnosticshttpapi.DiagnosticsHandler
+	KontronHandler             *kontronhttpapi.KontronHandler
+	AccessTopologyHandler      *accesstopologyhttpapi.AccessTopologyHandler
+	AuthenticationHandler      *authenticationhttpapi.AuthenticationHandler
+	ConnectionProfileHandler   *connectionprofilehttpapi.ConnectionProfileHandler
+	Tokens                     *auth.TokenIssuer
+	LoginHandler               *authhttpapi.LoginHandler
+	Authz                      *authz.Middleware
 	// AllowedOrigin is the frontend origin CORS middleware accepts
 	// cross-origin requests from (see corsMiddleware). Empty disables
 	// CORS headers entirely, which is fine for tests that never go
@@ -342,6 +344,28 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.ProductHandler.Create)
 				r.Put("/{id}", deps.ProductHandler.Update)
 				r.Delete("/{id}", deps.ProductHandler.Delete)
+			})
+		})
+
+		// A ProvisioningProfile only exists nested inside a Product (see
+		// provisioning.ProvisioningProfile's required ProductID) the same
+		// way a Product only exists nested inside a ProductCatalog, so it
+		// reuses that same RequireCatalogRead/RequireCatalogWrite pair
+		// rather than getting its own (see the comment above /catalogs).
+		r.Route("/provisioning-profiles", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCatalogRead())
+				r.Get("/", deps.ProvisioningProfileHandler.List)
+				r.Get("/{id}", deps.ProvisioningProfileHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCatalogWrite())
+				r.Post("/", deps.ProvisioningProfileHandler.Create)
+				r.Put("/{id}", deps.ProvisioningProfileHandler.Update)
+				r.Delete("/{id}", deps.ProvisioningProfileHandler.Delete)
 			})
 		})
 
