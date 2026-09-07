@@ -38,7 +38,7 @@ func NewUserRepository(db database.Querier, clock clock.Clock, ids id.Generator)
 // none exists.
 func (r *UserRepository) GetByID(ctx context.Context, userID uuid.UUID) (auth.User, error) {
 	const query = `
-		SELECT id, email, password_hash, role, created_at, updated_at
+		SELECT id, email, password_hash, role, status, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -57,7 +57,7 @@ func (r *UserRepository) GetByID(ctx context.Context, userID uuid.UUID) (auth.Us
 // if none exists. This is the lookup a login attempt starts from.
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (auth.User, error) {
 	const query = `
-		SELECT id, email, password_hash, role, created_at, updated_at
+		SELECT id, email, password_hash, role, status, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -72,6 +72,37 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (auth.Use
 	return user, nil
 }
 
+// List returns every User, ordered by email for stable, human-useful
+// output — the same reasoning as internal/provider/postgres.List backing
+// User Management's browse view.
+func (r *UserRepository) List(ctx context.Context) ([]auth.User, error) {
+	const query = `
+		SELECT id, email, password_hash, role, status, created_at, updated_at
+		FROM users
+		ORDER BY email
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, translateError("list users", err)
+	}
+	defer rows.Close()
+
+	users := []auth.User{}
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, translateError("scan user row", err)
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translateError("list users", err)
+	}
+
+	return users, nil
+}
+
 // Create inserts user and returns the persisted record.
 //
 // As with SiteRepository.Create, the repository assigns ID, CreatedAt, and
@@ -80,21 +111,23 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (auth.Use
 // with an apperror.KindConflict error (see translateError). Create does
 // not hash PasswordHash — it stores exactly the string it is given, which
 // must already be a bcrypt hash produced by auth.HashPassword — nor does
-// it decide Role: both are taken from the input User exactly as given.
-// The repository has no business logic and does not know how a password
-// became a hash or why a caller chose a particular Role; deciding that is
-// e.g. internal/auth/bootstrap's job (it always sets RoleAdministrator),
-// not this one's.
+// it decide Role or Status: all three are taken from the input User
+// exactly as given. The repository has no business logic and does not
+// know how a password became a hash or why a caller chose a particular
+// Role or Status; deciding that is e.g. internal/auth/bootstrap's job (it
+// always sets RoleAdministrator/UserStatusActive) or
+// internal/auth/service.UserManagementService's (it always sets
+// UserStatusActive), not this one's.
 func (r *UserRepository) Create(ctx context.Context, user auth.User) (auth.User, error) {
 	const query = `
-		INSERT INTO users (id, email, password_hash, role, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $5)
-		RETURNING id, email, password_hash, role, created_at, updated_at
+		INSERT INTO users (id, email, password_hash, role, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $6)
+		RETURNING id, email, password_hash, role, status, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanUser(r.db.QueryRow(ctx, query,
-		r.ids.New(), user.Email, user.PasswordHash, string(user.Role), now))
+		r.ids.New(), user.Email, user.PasswordHash, string(user.Role), string(user.Status), now))
 	if err != nil {
 		return auth.User{}, translateError("create user", err)
 	}
@@ -120,7 +153,7 @@ func (r *UserRepository) UpdatePasswordHash(ctx context.Context, userID uuid.UUI
 		UPDATE users
 		SET password_hash = $1, updated_at = $2
 		WHERE id = $3
-		RETURNING id, email, password_hash, role, created_at, updated_at
+		RETURNING id, email, password_hash, role, status, created_at, updated_at
 	`
 
 	updated, err := scanUser(r.db.QueryRow(ctx, query, passwordHash, r.clock.Now(), userID))
@@ -133,10 +166,57 @@ func (r *UserRepository) UpdatePasswordHash(ctx context.Context, userID uuid.UUI
 	return updated, nil
 }
 
+// UpdateRole overwrites the Role of the User identified by userID and
+// returns the persisted record, or an apperror.KindNotFound error if it
+// does not exist. Whether this change is safe to make (e.g. it would not
+// remove the last active Administrator) is
+// internal/auth/service.UserManagementService's job, not this
+// repository's — it trusts its caller, same as every other repository in
+// this codebase.
+func (r *UserRepository) UpdateRole(ctx context.Context, userID uuid.UUID, role auth.Role) (auth.User, error) {
+	const query = `
+		UPDATE users
+		SET role = $1, updated_at = $2
+		WHERE id = $3
+		RETURNING id, email, password_hash, role, status, created_at, updated_at
+	`
+
+	updated, err := scanUser(r.db.QueryRow(ctx, query, string(role), r.clock.Now(), userID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return auth.User{}, userNotFoundByID(userID)
+		}
+		return auth.User{}, translateError("update user role", err)
+	}
+	return updated, nil
+}
+
+// UpdateStatus overwrites the Status of the User identified by userID and
+// returns the persisted record, or an apperror.KindNotFound error if it
+// does not exist. See UpdateRole's doc comment for why this repository
+// does not itself guard against locking out the last Administrator.
+func (r *UserRepository) UpdateStatus(ctx context.Context, userID uuid.UUID, status auth.UserStatus) (auth.User, error) {
+	const query = `
+		UPDATE users
+		SET status = $1, updated_at = $2
+		WHERE id = $3
+		RETURNING id, email, password_hash, role, status, created_at, updated_at
+	`
+
+	updated, err := scanUser(r.db.QueryRow(ctx, query, string(status), r.clock.Now(), userID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return auth.User{}, userNotFoundByID(userID)
+		}
+		return auth.User{}, translateError("update user status", err)
+	}
+	return updated, nil
+}
+
 // Count returns how many Users exist. See the UserRepository interface's
-// doc comment in internal/auth/repository.go for why this exists despite
-// there being no List: it backs internal/auth/bootstrap's "refuse if a
-// user already exists" check, and nothing else needs it yet.
+// doc comment in internal/auth/repository.go for why this exists
+// alongside List: it backs internal/auth/bootstrap's "refuse if a user
+// already exists" check specifically, and predates List.
 func (r *UserRepository) Count(ctx context.Context) (int, error) {
 	const query = `SELECT count(*) FROM users`
 
@@ -162,10 +242,12 @@ type rowScanner interface {
 
 func scanUser(row rowScanner) (auth.User, error) {
 	var (
-		user auth.User
-		role string
+		user   auth.User
+		role   string
+		status string
 	)
-	err := row.Scan(&user.ID, &user.Email, &user.PasswordHash, &role, &user.CreatedAt, &user.UpdatedAt)
+	err := row.Scan(&user.ID, &user.Email, &user.PasswordHash, &role, &status, &user.CreatedAt, &user.UpdatedAt)
 	user.Role = auth.Role(role)
+	user.Status = auth.UserStatus(status)
 	return user, err
 }

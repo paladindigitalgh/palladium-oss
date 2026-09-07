@@ -51,6 +51,14 @@ func (s *AuthService) Authenticate(ctx context.Context, email, password string) 
 		return "", errInvalidCredentials()
 	}
 
+	// Checked after VerifyPassword, not before: the caller has already
+	// proven they know the correct password by this point, so returning a
+	// specific "deactivated" error here carries none of the enumeration
+	// risk errInvalidCredentials above is deliberately avoiding.
+	if user.Status != UserStatusActive {
+		return "", apperror.Forbidden("this account has been deactivated")
+	}
+
 	return s.tokens.IssueToken(user)
 }
 

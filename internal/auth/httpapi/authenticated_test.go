@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -12,8 +11,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
+	"github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
-	"github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 )
@@ -21,7 +20,8 @@ import (
 // stubUserRepository satisfies auth.UserRepository structurally, always
 // reporting the configured role for GetByID regardless of which ID is
 // asked for — enough for authz.Middleware, which is all these tests need
-// it for. Mirrors internal/server/router_test.go's stub of the same name.
+// it for. Mirrors internal/diagnostics/httpapi/authenticated_test.go's
+// stub of the same name.
 type stubUserRepository struct {
 	role auth.Role
 }
@@ -47,40 +47,26 @@ func (s stubUserRepository) Count(context.Context) (int, error) { return 0, nil 
 
 var _ auth.UserRepository = stubUserRepository{}
 
-// newAuthenticatedTestRouter mounts CustomerHandler behind the real
+// newAuthenticatedTestRouter mounts UserHandler behind the real
 // auth.Middleware and authz.Middleware, exactly as
-// internal/server/router.go wires /api/v1/customers in production (goal
-// 6: "apply the same authorization model as Sites") — the fake service
-// and stub user repository are the only stand-ins; everything about how a
-// request reaches the handler (routing, authentication, authorization,
-// context propagation) is the genuine article. This is what distinguishes
-// these tests from customer_handler_test.go's: those test the handler in
+// internal/server/router.go wires /api/v1/users in production — using
+// RequireUserManagement, the single capability guarding every verb on
+// this route (Administrator only, no read/write split — see
+// authz.CanManageUsers's doc comment). The fake service and stub user
+// repository are the only stand-ins; everything about how a request
+// reaches the handler (routing, authentication, authorization, context
+// propagation) is the genuine article. This is what distinguishes these
+// tests from user_handler_test.go's: those test the handler in
 // isolation, with no middleware in front of it at all.
-//
-// Unlike internal/inventory/httpapi/authenticated_test.go (which predates
-// authz.Middleware and therefore only wires auth.Middleware), this file
-// wires both from the start, since Customer's authorization requirement
-// is explicit in this milestone's goals.
-func newAuthenticatedTestRouter(svc *fakeCustomerService, tokens *auth.TokenIssuer, role auth.Role) http.Handler {
-	handler := httpapi.NewCustomerHandler(svc)
+func newAuthenticatedTestRouter(svc *fakeUserManagementService, tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	handler := httpapi.NewUserHandler(svc)
 	authzMiddleware := authz.NewMiddleware(stubUserRepository{role: role})
 
 	r := chi.NewRouter()
-	r.Route("/customers", func(r chi.Router) {
+	r.Route("/users", func(r chi.Router) {
 		r.Use(auth.Middleware(tokens))
-
-		r.Group(func(r chi.Router) {
-			r.Use(authzMiddleware.RequireCustomerRead())
-			r.Get("/", handler.List)
-			r.Get("/{id}", handler.Get)
-		})
-
-		r.Group(func(r chi.Router) {
-			r.Use(authzMiddleware.RequireCustomerWrite())
-			r.Post("/", handler.Create)
-			r.Put("/{id}", handler.Update)
-			r.Delete("/{id}", handler.Delete)
-		})
+		r.Use(authzMiddleware.RequireUserManagement())
+		r.Get("/", handler.List)
 	})
 	return r
 }
@@ -98,41 +84,25 @@ func mustIssueToken(t *testing.T, tokens *auth.TokenIssuer) string {
 
 func TestUnauthenticatedRequestRejectedWithoutReachingHandler(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
-	router := newAuthenticatedTestRouter(newFakeCustomerService(), tokens, auth.RoleAdministrator)
+	router := newAuthenticatedTestRouter(newFakeUserManagementService(), tokens, auth.RoleAdministrator)
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/customers/", nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/users/", nil))
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
 	}
 }
 
-// TestViewerCanReadCustomers is this milestone's "Viewer can read
-// inventory" requirement, applied to Customers.
-func TestViewerCanReadCustomers(t *testing.T) {
+// TestViewerCannotManageUsers and TestOperatorCannotManageUsers prove
+// RequireUserManagement really is Administrator-only, unlike every
+// Read capability elsewhere in this codebase that all three roles share.
+func TestViewerCannotManageUsers(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
-	router := newAuthenticatedTestRouter(newFakeCustomerService(), tokens, auth.RoleViewer)
+	router := newAuthenticatedTestRouter(newFakeUserManagementService(), tokens, auth.RoleViewer)
 	token := mustIssueToken(t, tokens)
 
-	req := httptest.NewRequest(http.MethodGet, "/customers/", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-}
-
-// TestViewerCannotWriteCustomers is this milestone's "Viewer cannot
-// modify inventory" requirement, applied to Customers.
-func TestViewerCannotWriteCustomers(t *testing.T) {
-	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
-	router := newAuthenticatedTestRouter(newFakeCustomerService(), tokens, auth.RoleViewer)
-	token := mustIssueToken(t, tokens)
-
-	req := httptest.NewRequest(http.MethodPost, "/customers/", strings.NewReader(validBody))
+	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -142,37 +112,33 @@ func TestViewerCannotWriteCustomers(t *testing.T) {
 	}
 }
 
-// TestOperatorCanWriteCustomers is this milestone's "Operator can modify
-// inventory" requirement, applied to Customers.
-func TestOperatorCanWriteCustomers(t *testing.T) {
+func TestOperatorCannotManageUsers(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
-	router := newAuthenticatedTestRouter(newFakeCustomerService(), tokens, auth.RoleOperator)
+	router := newAuthenticatedTestRouter(newFakeUserManagementService(), tokens, auth.RoleOperator)
 	token := mustIssueToken(t, tokens)
 
-	req := httptest.NewRequest(http.MethodPost, "/customers/", strings.NewReader(validBody))
+	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
 }
 
-// TestAdministratorCanWriteCustomers is this milestone's "Administrator
-// can modify inventory" requirement, applied to Customers.
-func TestAdministratorCanWriteCustomers(t *testing.T) {
+func TestAdministratorCanManageUsers(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
-	router := newAuthenticatedTestRouter(newFakeCustomerService(), tokens, auth.RoleAdministrator)
+	router := newAuthenticatedTestRouter(newFakeUserManagementService(), tokens, auth.RoleAdministrator)
 	token := mustIssueToken(t, tokens)
 
-	req := httptest.NewRequest(http.MethodPost, "/customers/", strings.NewReader(validBody))
+	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 }
 
@@ -184,14 +150,11 @@ func TestAuthenticatedEndpointRejectsExpiredToken(t *testing.T) {
 		t.Fatalf("IssueToken() = %v", err)
 	}
 
-	// The router is wired with a validator whose clock is frozen after
-	// the token's expiration (same technique as
-	// internal/auth/token_test.go's TestParseTokenRejectsExpiredToken).
 	afterExpiry := authTestNow.Add(2 * time.Hour)
 	expiredValidator := auth.NewTokenIssuer(secret, time.Hour, clock.NewFrozen(afterExpiry))
-	router := newAuthenticatedTestRouter(newFakeCustomerService(), expiredValidator, auth.RoleAdministrator)
+	router := newAuthenticatedTestRouter(newFakeUserManagementService(), expiredValidator, auth.RoleAdministrator)
 
-	req := httptest.NewRequest(http.MethodGet, "/customers/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

@@ -26,6 +26,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	authpostgres "github.com/paladindigitalgh/palladium-oss/internal/auth/postgres"
+	authservice "github.com/paladindigitalgh/palladium-oss/internal/auth/service"
 	authenticationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/authentication/httpapi"
 	authenticationpostgres "github.com/paladindigitalgh/palladium-oss/internal/authentication/postgres"
 	authenticationservice "github.com/paladindigitalgh/palladium-oss/internal/authentication/service"
@@ -420,6 +421,12 @@ func run() error {
 	authService := auth.NewAuthService(userRepo, tokenIssuer)
 	loginHandler := authhttpapi.NewLoginHandler(authService, cfg.JWT.Expiration)
 
+	// userManagementSvc reuses userRepo, the same instance authService and
+	// authzMiddleware below already depend on — see authzMiddleware's own
+	// comment for why sharing one instance is preferred over a second.
+	userManagementSvc := authservice.NewUserManagementService(userRepo)
+	userHandler := authhttpapi.NewUserHandler(userManagementSvc)
+
 	// authz.Middleware reuses userRepo (the same UserRepository
 	// authService already depends on) rather than a second instance —
 	// there is no reason for two, and sharing makes it obvious both are
@@ -460,6 +467,7 @@ func run() error {
 		ConnectionProfileHandler:   connectionProfileHandler,
 		Tokens:                     tokenIssuer,
 		LoginHandler:               loginHandler,
+		UserHandler:                userHandler,
 		Authz:                      authzMiddleware,
 		AllowedOrigin:              cfg.HTTP.AllowedOrigin,
 	})

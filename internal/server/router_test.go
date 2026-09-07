@@ -101,7 +101,7 @@ type stubUserRepository struct {
 }
 
 func (s stubUserRepository) GetByID(context.Context, uuid.UUID) (auth.User, error) {
-	return auth.User{Role: s.role}, nil
+	return auth.User{Role: s.role, Status: auth.UserStatusActive}, nil
 }
 func (s stubUserRepository) GetByEmail(context.Context, string) (auth.User, error) {
 	return auth.User{}, apperror.NotFound("not implemented in this stub")
@@ -109,6 +109,13 @@ func (s stubUserRepository) GetByEmail(context.Context, string) (auth.User, erro
 func (s stubUserRepository) Create(_ context.Context, u auth.User) (auth.User, error) { return u, nil }
 func (s stubUserRepository) UpdatePasswordHash(context.Context, uuid.UUID, string) (auth.User, error) {
 	return auth.User{}, apperror.NotFound("not implemented in this stub")
+}
+func (s stubUserRepository) List(context.Context) ([]auth.User, error) { return nil, nil }
+func (s stubUserRepository) UpdateRole(_ context.Context, _ uuid.UUID, role auth.Role) (auth.User, error) {
+	return auth.User{Role: role, Status: auth.UserStatusActive}, nil
+}
+func (s stubUserRepository) UpdateStatus(_ context.Context, _ uuid.UUID, status auth.UserStatus) (auth.User, error) {
+	return auth.User{Role: s.role, Status: status}, nil
 }
 func (s stubUserRepository) Count(context.Context) (int, error) { return 0, nil }
 

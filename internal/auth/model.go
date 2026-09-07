@@ -36,11 +36,16 @@ import (
 // scope: no multiple roles per user, no role hierarchy. If that ever
 // needs to change, it is a deliberate, visible schema and model change,
 // not something that can silently happen by appending to a collection.
+//
+// Status (see status.go) was added alongside User Management: whether a
+// User may authenticate is a separate question from what Role they hold,
+// the same separation Role itself draws from authz's capabilities.
 type User struct {
 	ID           uuid.UUID
 	Email        string
 	PasswordHash string
 	Role         Role
+	Status       UserStatus
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

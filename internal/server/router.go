@@ -79,6 +79,7 @@ type Dependencies struct {
 	ConnectionProfileHandler   *connectionprofilehttpapi.ConnectionProfileHandler
 	Tokens                     *auth.TokenIssuer
 	LoginHandler               *authhttpapi.LoginHandler
+	UserHandler                *authhttpapi.UserHandler
 	Authz                      *authz.Middleware
 	// AllowedOrigin is the frontend origin CORS middleware accepts
 	// cross-origin requests from (see corsMiddleware). Empty disables
@@ -589,6 +590,24 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Put("/{id}", deps.ProviderHandler.Update)
 				r.Delete("/{id}", deps.ProviderHandler.Delete)
 			})
+		})
+
+		// /users has no Read/Write split — RequireUserManagement is the one
+		// capability guarding this whole route (Administrator only), the
+		// same shape /diagnostics uses (see authz.CanManageUsers's doc
+		// comment). There is no DELETE: Users are deactivated, never
+		// removed (see internal/auth/repository.go's UserRepository doc
+		// comment for why — both events and workflow_instances reference
+		// users(id) with ON DELETE RESTRICT).
+		r.Route("/users", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+			r.Use(deps.Authz.RequireUserManagement())
+
+			r.Post("/", deps.UserHandler.Create)
+			r.Get("/", deps.UserHandler.List)
+			r.Put("/{id}/role", deps.UserHandler.UpdateRole)
+			r.Post("/{id}/deactivate", deps.UserHandler.Deactivate)
+			r.Post("/{id}/reactivate", deps.UserHandler.Reactivate)
 		})
 
 		// /diagnostics has no read/write split — RequireDiagnostics is

@@ -49,6 +49,19 @@ func (f *fakeUserRepository) Create(_ context.Context, u auth.User) (auth.User, 
 func (f *fakeUserRepository) UpdatePasswordHash(context.Context, uuid.UUID, string) (auth.User, error) {
 	return auth.User{}, apperror.NotFound("not implemented")
 }
+func (f *fakeUserRepository) List(context.Context) ([]auth.User, error) {
+	users := make([]auth.User, 0, len(f.usersByID))
+	for _, u := range f.usersByID {
+		users = append(users, u)
+	}
+	return users, nil
+}
+func (f *fakeUserRepository) UpdateRole(context.Context, uuid.UUID, auth.Role) (auth.User, error) {
+	return auth.User{}, apperror.NotFound("not implemented")
+}
+func (f *fakeUserRepository) UpdateStatus(context.Context, uuid.UUID, auth.UserStatus) (auth.User, error) {
+	return auth.User{}, apperror.NotFound("not implemented")
+}
 func (f *fakeUserRepository) Count(context.Context) (int, error) { return len(f.usersByID), nil }
 
 var _ auth.UserRepository = (*fakeUserRepository)(nil)
@@ -67,7 +80,7 @@ func requestAs(user auth.User) *http.Request {
 }
 
 func newUser(role auth.Role) auth.User {
-	return auth.User{ID: uuid.New(), Email: "user@example.com", Role: role}
+	return auth.User{ID: uuid.New(), Email: "user@example.com", Role: role, Status: auth.UserStatusActive}
 }
 
 func assertAllowed(t *testing.T, mw func(http.Handler) http.Handler, req *http.Request) {
@@ -214,4 +227,17 @@ func TestMiddlewareDeniesUnrecognizedRole(t *testing.T) {
 	mw := authz.NewMiddleware(users).RequireInventoryRead()
 
 	assertDenied(t, mw, requestAs(corrupted), http.StatusForbidden)
+}
+
+// TestMiddlewareDeniesInactiveUser proves a deactivated account (see
+// internal/auth/service.UserManagementService.Deactivate) loses access
+// to every capability-gated route, even with an otherwise valid,
+// unexpired token and a Role that would normally satisfy the capability.
+func TestMiddlewareDeniesInactiveUser(t *testing.T) {
+	deactivated := newUser(auth.RoleAdministrator)
+	deactivated.Status = auth.UserStatusInactive
+	users := newFakeUserRepository(deactivated)
+	mw := authz.NewMiddleware(users).RequireInventoryRead()
+
+	assertDenied(t, mw, requestAs(deactivated), http.StatusForbidden)
 }

@@ -50,7 +50,7 @@ func newTestRepository(t *testing.T, ids id.Generator) (*postgres.UserRepository
 }
 
 func testUser(email string) auth.User {
-	return auth.User{Email: email, PasswordHash: "$2a$10$examplehashexamplehashexampleu", Role: auth.RoleViewer}
+	return auth.User{Email: email, PasswordHash: "$2a$10$examplehashexamplehashexampleu", Role: auth.RoleViewer, Status: auth.UserStatusActive}
 }
 
 func TestUserRepositoryCount(t *testing.T) {
@@ -99,6 +99,9 @@ func TestUserRepositoryCreate(t *testing.T) {
 	}
 	if created.Role != auth.RoleViewer {
 		t.Errorf("Role = %q, want %q", created.Role, auth.RoleViewer)
+	}
+	if created.Status != auth.UserStatusActive {
+		t.Errorf("Status = %q, want %q", created.Status, auth.UserStatusActive)
 	}
 	if created.CreatedAt.IsZero() {
 		t.Error("CreatedAt was not set")
@@ -257,6 +260,103 @@ func TestUserRepositoryUpdatePasswordHashNotFound(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
 	_, err := repo.UpdatePasswordHash(ctx, uuid.New(), "$2a$10$anewhashanewhashanewhashanewhu")
+
+	assertNotFound(t, err)
+}
+
+// TestUserRepositoryList does not assert an exact List() length: unlike
+// TestUserRepositoryCount (which has the same limitation), this
+// deliberately tolerates whatever else the shared test database already
+// holds outside this test's transaction, and only asserts that the two
+// Users just created within it are present.
+func TestUserRepositoryList(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	a, err := repo.Create(ctx, testUser("list-a@example.com"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	b, err := repo.Create(ctx, testUser("list-b@example.com"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	users, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List() = %v", err)
+	}
+
+	var foundA, foundB bool
+	for _, u := range users {
+		switch u.ID {
+		case a.ID:
+			foundA = true
+		case b.ID:
+			foundB = true
+		}
+	}
+	if !foundA || !foundB {
+		t.Errorf("List() did not include both created users (foundA=%v, foundB=%v)", foundA, foundB)
+	}
+}
+
+func TestUserRepositoryUpdateRole(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	created, err := repo.Create(ctx, testUser("jane@example.com"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	updated, err := repo.UpdateRole(ctx, created.ID, auth.RoleAdministrator)
+	if err != nil {
+		t.Fatalf("UpdateRole() = %v", err)
+	}
+
+	if updated.Role != auth.RoleAdministrator {
+		t.Errorf("Role = %q, want %q", updated.Role, auth.RoleAdministrator)
+	}
+	if updated.Email != created.Email {
+		t.Errorf("Email changed: was %q, now %q", created.Email, updated.Email)
+	}
+	if !updated.UpdatedAt.After(created.UpdatedAt) {
+		t.Errorf("UpdatedAt (%v) did not advance past the original (%v)", updated.UpdatedAt, created.UpdatedAt)
+	}
+}
+
+func TestUserRepositoryUpdateRoleNotFound(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	_, err := repo.UpdateRole(ctx, uuid.New(), auth.RoleAdministrator)
+
+	assertNotFound(t, err)
+}
+
+func TestUserRepositoryUpdateStatus(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	created, err := repo.Create(ctx, testUser("jane@example.com"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	updated, err := repo.UpdateStatus(ctx, created.ID, auth.UserStatusInactive)
+	if err != nil {
+		t.Fatalf("UpdateStatus() = %v", err)
+	}
+
+	if updated.Status != auth.UserStatusInactive {
+		t.Errorf("Status = %q, want %q", updated.Status, auth.UserStatusInactive)
+	}
+	if updated.Role != created.Role {
+		t.Errorf("Role changed: was %q, now %q; UpdateStatus must not touch it", created.Role, updated.Role)
+	}
+}
+
+func TestUserRepositoryUpdateStatusNotFound(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	_, err := repo.UpdateStatus(ctx, uuid.New(), auth.UserStatusInactive)
 
 	assertNotFound(t, err)
 }

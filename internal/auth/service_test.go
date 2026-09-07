@@ -78,6 +78,42 @@ func (f *fakeUserRepository) UpdatePasswordHash(_ context.Context, id uuid.UUID,
 	return auth.User{}, apperror.NotFound("user not found")
 }
 
+func (f *fakeUserRepository) List(_ context.Context) ([]auth.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	users := make([]auth.User, 0, len(f.byEmail))
+	for _, u := range f.byEmail {
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func (f *fakeUserRepository) UpdateRole(_ context.Context, id uuid.UUID, role auth.Role) (auth.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for email, u := range f.byEmail {
+		if u.ID == id {
+			u.Role = role
+			f.byEmail[email] = u
+			return u, nil
+		}
+	}
+	return auth.User{}, apperror.NotFound("user not found")
+}
+
+func (f *fakeUserRepository) UpdateStatus(_ context.Context, id uuid.UUID, status auth.UserStatus) (auth.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for email, u := range f.byEmail {
+		if u.ID == id {
+			u.Status = status
+			f.byEmail[email] = u
+			return u, nil
+		}
+	}
+	return auth.User{}, apperror.NotFound("user not found")
+}
+
 func (f *fakeUserRepository) Count(context.Context) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -92,7 +128,7 @@ func newTestUser(t *testing.T, email, password string) auth.User {
 	if err != nil {
 		t.Fatalf("HashPassword() = %v", err)
 	}
-	return auth.User{ID: uuid.New(), Email: email, PasswordHash: hash}
+	return auth.User{ID: uuid.New(), Email: email, PasswordHash: hash, Status: auth.UserStatusActive}
 }
 
 func TestAuthServiceAuthenticateSucceeds(t *testing.T) {
@@ -140,6 +176,24 @@ func TestAuthServiceAuthenticateFailsForWrongPassword(t *testing.T) {
 	_, err := service.Authenticate(context.Background(), "jane@example.com", "wrong password")
 
 	assertUnauthorized(t, err)
+}
+
+// TestAuthServiceAuthenticateFailsForInactiveUser is the concrete check
+// behind AuthService.Authenticate's Status check: a deactivated account
+// (see internal/auth/service.UserManagementService.Deactivate) cannot
+// obtain a new token even with the correct password.
+func TestAuthServiceAuthenticateFailsForInactiveUser(t *testing.T) {
+	user := newTestUser(t, "jane@example.com", "correct password")
+	user.Status = auth.UserStatusInactive
+	repo := newFakeUserRepository(user)
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(fixedNow))
+	service := auth.NewAuthService(repo, tokens)
+
+	_, err := service.Authenticate(context.Background(), "jane@example.com", "correct password")
+
+	if !apperror.Is(err, apperror.KindForbidden) {
+		t.Fatalf("Authenticate() error = %v, want KindForbidden", err)
+	}
 }
 
 // TestAuthServiceAuthenticateDoesNotRevealWhichCaseOccurred is the concrete

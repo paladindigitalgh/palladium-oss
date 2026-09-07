@@ -31,5 +31,9 @@ func (u User) Validate() error {
 		errs.Add("role", fmt.Sprintf("must be one of: %s", roleNames()))
 	}
 
+	if !u.Status.Valid() {
+		errs.Add("status", fmt.Sprintf("must be one of: %s", userStatusNames()))
+	}
+
 	return errs.Err()
 }

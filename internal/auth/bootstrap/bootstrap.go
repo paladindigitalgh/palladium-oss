@@ -68,7 +68,7 @@ func (a *Administrator) Create(ctx context.Context, email, password string) (aut
 		return auth.User{}, fmt.Errorf("bootstrap: hash password: %w", err)
 	}
 
-	user := auth.User{Email: email, PasswordHash: hash, Role: auth.RoleAdministrator}
+	user := auth.User{Email: email, PasswordHash: hash, Role: auth.RoleAdministrator, Status: auth.UserStatusActive}
 	if err := user.Validate(); err != nil {
 		return auth.User{}, err
 	}

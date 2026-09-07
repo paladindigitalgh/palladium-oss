@@ -14,20 +14,29 @@ import (
 //
 //   - GetByEmail exists because a login attempt starts from an email, not
 //     an ID, and this is a direct lookup rather than List-and-filter.
-//   - There is no List and no Delete: this is login and installation
-//     bootstrapping, not user administration. UpdatePasswordHash is the
-//     one mutation login-adjacent flows need (e.g. a future "change
-//     password" use case); nothing yet needs to change Email or to
-//     remove a User.
+//   - List backs User Management (internal/auth/service.UserManagementService)
+//     browsing every account — the milestone that added it explicitly
+//     needed a browse-users feature, unlike when this package was
+//     login-and-bootstrap only.
+//   - There is no Delete: Users are never removed, only deactivated (see
+//     UpdateStatus) — both events.actor_user_id and
+//     workflow_instances.requested_by_user_id reference users(id) with
+//     ON DELETE RESTRICT, so a real delete would fail for any User who
+//     has ever done anything. UpdatePasswordHash, UpdateRole, and
+//     UpdateStatus are the mutations User Management and login-adjacent
+//     flows need; nothing yet needs to change Email.
 //   - Count exists solely for internal/auth/bootstrap's "refuse to create
-//     an administrator if a user already exists" check. It is not the
-//     first step toward a List/browse-users feature: it returns a number,
-//     never User data, and answers exactly one question ("does any user
-//     exist yet?") rather than supporting pagination or search.
+//     an administrator if a user already exists" check. It predates List
+//     and was never generalized into it: Count answers exactly one
+//     question ("does any user exist yet?") without needing User data at
+//     all.
 type UserRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetByEmail(ctx context.Context, email string) (User, error)
+	List(ctx context.Context) ([]User, error)
 	Create(ctx context.Context, user User) (User, error)
 	UpdatePasswordHash(ctx context.Context, id uuid.UUID, passwordHash string) (User, error)
+	UpdateRole(ctx context.Context, id uuid.UUID, role Role) (User, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status UserStatus) (User, error)
 	Count(ctx context.Context) (int, error)
 }

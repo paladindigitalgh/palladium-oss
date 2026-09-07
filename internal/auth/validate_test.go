@@ -28,7 +28,7 @@ func assertInvalid(t *testing.T, err error) {
 }
 
 func TestUserValidate(t *testing.T) {
-	valid := auth.User{Email: "jane@example.com", PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer}
+	valid := auth.User{Email: "jane@example.com", PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer, Status: auth.UserStatusActive}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil", err)
 	}
@@ -37,7 +37,7 @@ func TestUserValidate(t *testing.T) {
 }
 
 func TestUserValidateRequiresEmail(t *testing.T) {
-	u := auth.User{PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer}
+	u := auth.User{PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer, Status: auth.UserStatusActive}
 
 	assertInvalid(t, u.Validate())
 }
@@ -52,7 +52,7 @@ func TestUserValidateRejectsMalformedEmail(t *testing.T) {
 	}
 
 	for _, email := range cases {
-		u := auth.User{Email: email, PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer}
+		u := auth.User{Email: email, PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer, Status: auth.UserStatusActive}
 		if err := u.Validate(); err == nil {
 			t.Errorf("Validate() = nil for email %q, want error", email)
 		} else {
@@ -62,13 +62,13 @@ func TestUserValidateRejectsMalformedEmail(t *testing.T) {
 }
 
 func TestUserValidateRequiresPasswordHash(t *testing.T) {
-	u := auth.User{Email: "jane@example.com", Role: auth.RoleViewer}
+	u := auth.User{Email: "jane@example.com", Role: auth.RoleViewer, Status: auth.UserStatusActive}
 
 	assertInvalid(t, u.Validate())
 }
 
 func TestUserValidateRequiresKnownRole(t *testing.T) {
-	base := auth.User{Email: "jane@example.com", PasswordHash: "$2a$10$examplehash"}
+	base := auth.User{Email: "jane@example.com", PasswordHash: "$2a$10$examplehash", Status: auth.UserStatusActive}
 
 	unrecognized := base
 	unrecognized.Role = auth.Role("SuperAdmin")
@@ -83,6 +83,26 @@ func TestUserValidateRequiresKnownRole(t *testing.T) {
 		u.Role = role
 		if err := u.Validate(); err != nil {
 			t.Errorf("Validate() (role %q) = %v, want nil", role, err)
+		}
+	}
+}
+
+func TestUserValidateRequiresKnownStatus(t *testing.T) {
+	base := auth.User{Email: "jane@example.com", PasswordHash: "$2a$10$examplehash", Role: auth.RoleViewer}
+
+	unrecognized := base
+	unrecognized.Status = auth.UserStatus("Suspended")
+	assertInvalid(t, unrecognized.Validate())
+
+	unset := base
+	unset.Status = ""
+	assertInvalid(t, unset.Validate())
+
+	for _, status := range []auth.UserStatus{auth.UserStatusActive, auth.UserStatusInactive} {
+		u := base
+		u.Status = status
+		if err := u.Validate(); err != nil {
+			t.Errorf("Validate() (status %q) = %v, want nil", status, err)
 		}
 	}
 }

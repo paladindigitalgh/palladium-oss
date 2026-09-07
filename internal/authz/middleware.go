@@ -67,6 +67,17 @@ func (m *Middleware) Require(capability Capability) func(http.Handler) http.Hand
 				return
 			}
 
+			// Checked here, not just at login, for the same reason this
+			// middleware's own doc comment gives for reading Role fresh
+			// from storage on every request rather than trusting the
+			// JWT: an Administrator deactivating a User should take
+			// effect on that User's very next request, not only once
+			// their current token happens to expire.
+			if user.Status != auth.UserStatusActive {
+				httpx.WriteError(w, apperror.Forbidden("account is inactive"))
+				return
+			}
+
 			if !capability(user.Role) {
 				httpx.WriteError(w, apperror.Forbidden("you do not have permission to perform this action"))
 				return
