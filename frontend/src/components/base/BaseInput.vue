@@ -8,7 +8,7 @@
 withDefaults(
   defineProps<{
     label: string
-    type?: 'text' | 'email'
+    type?: 'text' | 'email' | 'password'
     required?: boolean
   }>(),
   { type: 'text', required: false },

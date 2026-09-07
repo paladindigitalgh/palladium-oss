@@ -1,20 +1,48 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import BaseIcon from '@/components/base/BaseIcon.vue'
-import { NAV_ITEMS } from '@/router/navigation'
+import { NAV_ITEMS, type NavItem } from '@/router/navigation'
 import { useSidebar } from '@/composables/useSidebar'
 
 /**
  * docs' this-milestone goal 5: active state, icons, responsive behavior.
- * "Collapsible sections" is intentionally not implemented -- NAV_ITEMS
- * is a flat, eight-item list with no grouping defined anywhere in the
- * navigation docs, so there is no section boundary to collapse yet. What
- * *is* collapsible is the sidebar itself (icon-only rail via
- * useSidebar), which is the responsive/space-saving behavior goal 5
- * actually asks for.
+ *
+ * "Collapsible sections" was originally not implemented -- NAV_ITEMS was
+ * a flat list with no grouping defined anywhere in the navigation docs.
+ * Administration is now the first item with `children` (navigation.ts),
+ * at the user's explicit request: it renders as a toggle button that
+ * never navigates itself, expanding in place to reveal its children as
+ * indented links, rather than being its own page. Default collapsed,
+ * but a child route being active forces it open too (isExpanded below)
+ * -- landing on /administration/providers directly (a refresh, a
+ * bookmark) should never hide which section you're in. This is
+ * unrelated to `collapsed` (the whole sidebar's icon-only rail mode via
+ * useSidebar) -- both concepts happen to use the word "collapsed" for
+ * unrelated things, one per-item and one for the whole sidebar.
  */
 const { collapsed, toggleCollapsed, mobileOpen, closeMobile, isMobileViewport } = useSidebar()
+
+const route = useRoute()
+const expandedIds = ref<Set<string>>(new Set())
+
+function isChildActive(item: NavItem): boolean {
+  return item.children?.some((child) => route.path.startsWith(child.path)) ?? false
+}
+
+function isExpanded(item: NavItem): boolean {
+  return expandedIds.value.has(item.id) || isChildActive(item)
+}
+
+function toggleExpanded(id: string) {
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  expandedIds.value = next
+}
 
 // While off-canvas (mobile viewport and not open), the sidebar must not
 // be part of the tab order or hit-testable -- otherwise a keyboard user
@@ -46,18 +74,53 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
     </div>
 
     <nav class="app-sidebar__nav" aria-label="Primary">
-      <RouterLink
-        v-for="item in NAV_ITEMS"
-        :key="item.id"
-        :to="item.path"
-        class="app-sidebar__link"
-        active-class="app-sidebar__link--active"
-        :title="collapsed ? item.label : undefined"
-        @click="closeMobile"
-      >
-        <BaseIcon :name="item.icon" />
-        <span v-if="!collapsed" class="app-sidebar__label">{{ item.label }}</span>
-      </RouterLink>
+      <template v-for="item in NAV_ITEMS" :key="item.id">
+        <RouterLink
+          v-if="!item.children"
+          :to="item.path"
+          class="app-sidebar__link"
+          active-class="app-sidebar__link--active"
+          :title="collapsed ? item.label : undefined"
+          @click="closeMobile"
+        >
+          <BaseIcon :name="item.icon" />
+          <span v-if="!collapsed" class="app-sidebar__label">{{ item.label }}</span>
+        </RouterLink>
+
+        <template v-else>
+          <button
+            type="button"
+            class="app-sidebar__link app-sidebar__link--toggle"
+            :class="{ 'app-sidebar__link--active': isChildActive(item) }"
+            :aria-expanded="isExpanded(item)"
+            :title="collapsed ? item.label : undefined"
+            @click="toggleExpanded(item.id)"
+          >
+            <BaseIcon :name="item.icon" />
+            <span v-if="!collapsed" class="app-sidebar__label">{{ item.label }}</span>
+            <BaseIcon
+              v-if="!collapsed"
+              name="chevron-down"
+              size="sm"
+              class="app-sidebar__chevron"
+              :class="{ 'app-sidebar__chevron--collapsed': !isExpanded(item) }"
+            />
+          </button>
+
+          <div v-if="!collapsed && isExpanded(item)" class="app-sidebar__children">
+            <RouterLink
+              v-for="child in item.children"
+              :key="child.id"
+              :to="child.path"
+              class="app-sidebar__link app-sidebar__link--child"
+              active-class="app-sidebar__link--active"
+              @click="closeMobile"
+            >
+              <span class="app-sidebar__label">{{ child.label }}</span>
+            </RouterLink>
+          </div>
+        </template>
+      </template>
     </nav>
 
     <button
@@ -135,12 +198,18 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  width: 100%;
   padding: var(--space-2) var(--space-3);
+  border: none;
   border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--color-text-secondary);
   text-decoration: none;
+  font: inherit;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+  text-align: left;
+  cursor: pointer;
 }
 
 .app-sidebar__link:hover {
@@ -157,6 +226,35 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.app-sidebar__chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform var(--motion-normal) var(--motion-ease);
+}
+
+.app-sidebar__chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
+.app-sidebar__children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-1) 0;
+}
+
+.app-sidebar__link--child {
+  /* Aligns the child's label under the parent's label, not its icon:
+     parent padding-left + icon width + the gap between icon and label. */
+  padding-left: calc(var(--space-3) + var(--icon-size-md) + var(--space-3));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar__chevron {
+    transition: none;
+  }
 }
 
 .app-sidebar__collapse-toggle {

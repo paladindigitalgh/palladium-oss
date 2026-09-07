@@ -146,6 +146,16 @@ View. This Primary Navigation -> Collection View -> Detail View flow is
 not three different kinds of workspace; it is how a single Entity
 Workspace is navigated.
 
+Administration is the one exception to "clicking a primary navigation
+item opens a page" (2026-09-07, at the user's explicit request): it has
+no Collection View of its own, so clicking it expands a default-collapsed
+dropdown in place instead of navigating, revealing Providers and Users as
+sub-items (see NAV_ITEMS' `children` in navigation.ts, and AppSidebar.vue,
+which is the first and only consumer of that field). Selecting a sub-item
+navigates normally. This is a sidebar-presentation exception only --
+docs/09-WORKSPACE-SPECIFICATIONS.md section 16 ("Administration
+Workspace") has the full picture of what each sub-item's page does.
+
 ## Persistent Navigation
 
 Global navigation should remain available regardless of the current
@@ -418,6 +428,7 @@ When navigation becomes invisible, operators become more effective.
   1.0 Draft   2026-07-29   Initial draft
   1.1 Draft   2026-07-30   Scoped "every workspace follows the same layout" (section 6) to Entity Workspaces
   1.2 Draft   2026-07-30   Documented the Collection View -> Detail View navigation flow (sections 4, 5, 6, 7)
+  1.3 Draft   2026-09-07   Documented Administration as the one exception to "clicking a primary navigation item opens a page" (section 4): it expands a sidebar dropdown (Providers/Users) via NAV_ITEMS' `children` instead of navigating
 
 ------------------------------------------------------------------------
 

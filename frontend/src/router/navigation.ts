@@ -14,11 +14,12 @@ import type { IconName } from '@/components/base/BaseIcon.vue'
  * corrects that rather than the other way around, since the docs were
  * already right.
  *
- * `children` is reserved for future nested navigation (Milestone 1's
+ * `children` was reserved for future nested navigation (Milestone 1's
  * "support future nested navigation, but do not build child menus yet")
- * -- every item leaves it undefined today, and AppSidebar does not read
- * it. It exists so a future milestone can add nested items to this list
- * without a breaking shape change.
+ * and is now real: Administration is the first item to use it (a
+ * default-collapsed dropdown in AppSidebar.vue, not a page of its own --
+ * see that component's own doc comment), at the user's explicit request.
+ * Every other item still leaves it undefined.
  */
 export interface NavItem {
   id: string
@@ -85,5 +86,24 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/administration',
     icon: 'administration',
     description: 'Manage Plans and other platform configuration.',
+    // No page of its own -- /administration redirects to the first
+    // child (see router/index.ts) -- this item exists purely to group
+    // its children under one collapsible sidebar entry.
+    children: [
+      {
+        id: 'administration-providers',
+        label: 'Providers',
+        path: '/administration/providers',
+        icon: 'settings',
+        description: 'Retail ISP identities and the Plans each one sells.',
+      },
+      {
+        id: 'administration-users',
+        label: 'Users',
+        path: '/administration/users',
+        icon: 'user',
+        description: 'Platform login accounts and their roles.',
+      },
+    ],
   },
 ]

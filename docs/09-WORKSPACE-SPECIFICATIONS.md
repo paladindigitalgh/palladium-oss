@@ -1055,43 +1055,98 @@ attention?"**
 -   Configure integrations
 -   Review audit logs
 
-## Primary Panels
+## Structure: a sidebar dropdown, not a page of its own
 
 Administration centralizes independent platform-configuration concerns
 rather than managing one object, so it is not a Detail Workspace and
-does not use section 6, "Detail Workspace Structure."
+does not use section 6, "Detail Workspace Structure" -- that much is
+unchanged. What changed (2026-09-07, at the user's explicit request, in
+two steps) is how each concern below is reached:
 
--   Providers -- a Provider (internal/provider) is the retail ISP
-    identity a Plan belongs to, meaningful only on an open-access
-    network carrying more than one ISP over shared infrastructure; in a
-    single-ISP deployment exactly one Provider exists and this panel is
-    a one-time setup step, never revisited. Flat create-and-list, no
-    edit yet.
--   Plans -- the first real panel built here (AdministrationView.vue). A
-    "Plan" is a Product (docs/03-DOMAIN-MODEL.md section 21 -- what the
-    ISP sells, e.g. "Residential Internet 500 Mbps") paired with a
-    ProvisioningProfile (internal/provisioning) naming the OLT vendor
-    profile an operator already configured by hand to deliver it (rate
-    limiting, VLAN assignment, ...), and belonging to exactly one
-    Provider. "New Plan" creates the Product and ProvisioningProfile
-    together in one guided step; a Provider picker appears in that
-    dialog, and a Provider column appears in this table, only once a
-    second Provider actually exists (see ProviderFormDialog.vue's and
-    PlanFormDialog.vue's own doc comments) -- a single-ISP deployment
-    never sees either. Neither Product nor ProvisioningProfile has a
-    dedicated Detail Workspace of its own yet -- this panel is a flat
-    create-and-list table, not a Collection View.
+-   First, each concern was split off of a single stacked-panel page
+    into its own route (/administration/providers,
+    /administration/users).
+-   Then the same day, the /administration landing page itself was
+    removed in favor of a sidebar-native dropdown: "Administration" in
+    AppSidebar.vue is a default-collapsed toggle (docs/04-NAVIGATION.md
+    section 4's global navigation list, via NAV_ITEMS' `children` --
+    see navigation.ts) that expands in place to Providers/Users, rather
+    than navigating anywhere itself. Expanding is manual, but a child
+    route being active forces it open too, so landing directly on
+    /administration/providers (a refresh, a bookmark) never hides which
+    section you're in. /administration itself still exists as a bare
+    redirect to /administration/providers (docs/04-NAVIGATION.md
+    section 7: a bookmarked URL should always restore to something
+    real), but AdministrationView.vue -- the page that used to render
+    at that path -- is gone; nothing renders there anymore.
+
+/administration/providers and /administration/users are still real,
+independent routes, and still not Detail Workspaces: neither has a
+single shared object, a Contents-nav, or uses
+SectionCard/DetailWorkspace. docs/04-NAVIGATION.md section 7's "URLs
+are flat, never resource-nested" rule already accommodates a plain
+multi-segment path like this.
+
+### Providers (/administration/providers)
+
+A Provider (internal/provider) is the retail ISP identity a Plan
+belongs to, meaningful only on an open-access network carrying more
+than one ISP over shared infrastructure; in a single-ISP deployment
+exactly one Provider exists. "New Provider" is flat create-and-list, no
+edit yet.
+
+Each Provider renders as a top-level, independently expandable section
+(BaseDisclosure.vue -- a small primitive distinct from SectionCard.vue
+specifically because SectionCard is hard-coupled to a single object's
+DetailWorkspace Contents-nav registry, the wrong fit for a flat list of
+N sibling Providers). Collapsed by default; expanding one reveals that
+Provider's own Plans nested inside.
+
+A "Plan" is a Product (docs/03-DOMAIN-MODEL.md section 21 -- what the
+ISP sells, e.g. "Residential Internet 500 Mbps") paired with a
+ProvisioningProfile (internal/provisioning) naming the OLT vendor
+profile an operator already configured by hand to deliver it (rate
+limiting, VLAN assignment, ...), and belonging to exactly one Provider.
+"New Plan," opened from inside a Provider's expanded section, creates
+the Product and ProvisioningProfile together in one guided step,
+scoped to that Provider (PlanFormDialog.vue receives that one Provider
+as its `providers` prop, so its own Provider picker -- shown only when
+more than one Provider is passed in -- never appears here; see that
+dialog's own doc comment). Neither Product nor ProvisioningProfile has
+a dedicated Detail Workspace of its own yet -- each Provider's nested
+Plans list is a flat create-and-list table, not a Collection View.
+
+### Users (/administration/users)
+
+Platform login identities (internal/auth), independent of everything
+else in this workspace: managing who can sign in and what Role they
+hold has nothing to do with how the ISP sells or delivers service.
+Administrator-only (RequireUserManagement guards every verb on /users,
+no read/write split -- the same shape /diagnostics uses). "New User"
+creates an account with an Administrator-typed initial password (there
+is no invite/email infrastructure to send one through instead); Role
+is changed inline via a per-row select, not a dialog. There is no
+Delete: both events.actor_user_id and
+workflow_instances.requested_by_user_id reference users(id) with
+ON DELETE RESTRICT, so Deactivate/Reactivate (flips auth.UserStatus)
+stands in for it -- a deactivated account cannot log in and loses every
+capability-gated route on its very next request, but its history stays
+intact. Palladium refuses any action (deactivate, or a Role change away
+from Administrator) that would leave zero active Administrators.
+
+### Still unbuilt
+
 -   System Health
--   User Management
 -   Roles & Permissions
 -   Plugin Management
 -   Integrations
 -   Audit Log
 -   Platform Settings
 
-Only Plans is built. The rest of this list is not implemented at all --
-AdministrationView.vue (which replaced PlaceholderWorkspaceView.vue for
-this route once Plans existed) has no panel for any of them yet.
+Only Providers and Users are built, each on its own page reached via
+the Administration sidebar dropdown. The rest of this list is not
+implemented at all, and that dropdown does not stub out entries for
+pages that do not exist yet.
 
 ------------------------------------------------------------------------
 
@@ -1193,6 +1248,9 @@ understanding, investigating, and acting on the network.
   1.8 Draft   2026-09-04   Documented the Plans panel on the Administration Workspace (section 16): the first real panel built there, pairing a Product with a new ProvisioningProfile domain that maps it to a hand-configured OLT vendor profile
   1.9 Draft   2026-09-04   Documented the Providers panel (section 16): Plans now belong to exactly one Provider (the retail ISP identity, for open-access networks), surfaced only once a second Provider actually exists so a single-ISP deployment never sees it
   1.10 Draft  2026-09-04   Corrected the Service Workspace Header (section 9): shows the resolved Product/Provider label, not "Service identifier," which moved to metadata; corrected the stale claim that Product has no read model yet (section 16's Plans panel gives it one). Noted the same label resolution on the Customer Workspace's Services section (section 8)
+  1.11 Draft  2026-09-06   Documented the Users panel on the Administration Workspace (section 16): platform login identities (internal/auth), Administrator-only, with Deactivate/Reactivate standing in for Delete
+  1.12 Draft  2026-09-07   Restructured Administration (section 16) from one page of stacked panels into a landing hub plus two dedicated pages, at the user's explicit request: /administration/providers (each Provider now an independently expandable section with its own nested Plans) and /administration/users; documented BaseDisclosure.vue as the reason SectionCard/DetailWorkspace was not reused for the Providers page
+  1.13 Draft  2026-09-07   Replaced the /administration landing hub (same day, user's further request) with a sidebar-native dropdown -- AppSidebar.vue's Administration item now expands in place via NAV_ITEMS' `children`; /administration is a bare redirect and AdministrationView.vue no longer exists
 
 ------------------------------------------------------------------------
 

@@ -14,6 +14,12 @@ import { useAuth } from '@/composables/useAuth'
  * own doc comment) until a workspace has a real implementation, at which
  * point its nav id is added to VIEW_COMPONENTS below. Explorer is the
  * only remaining placeholder; every other nav item is implemented.
+ *
+ * Items with NAV_ITEMS children (Administration) are excluded from this
+ * generated list: they are a sidebar-only grouping with no page of their
+ * own (see AppSidebar.vue and navigation.ts's own doc comments) -- their
+ * children each get their own explicit route below instead, and the
+ * parent's path is just a redirect to the first child.
  */
 const VIEW_COMPONENTS: Record<string, () => Promise<{ default: Component }>> = {
   dashboard: () => import('@/views/DashboardView.vue'),
@@ -22,10 +28,9 @@ const VIEW_COMPONENTS: Record<string, () => Promise<{ default: Component }>> = {
   services: () => import('@/views/ServiceCollectionView.vue'),
   network: () => import('@/views/NetworkCollectionView.vue'),
   inventory: () => import('@/views/InventoryCollectionView.vue'),
-  administration: () => import('@/views/AdministrationView.vue'),
 }
 
-const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.map((item) => ({
+const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.filter((item) => !item.children).map((item) => ({
   path: item.path,
   name: item.id,
   component: VIEW_COMPONENTS[item.id] ?? (() => import('@/views/PlaceholderWorkspaceView.vue')),
@@ -136,6 +141,32 @@ const routes: RouteRecordRaw[] = [
     path: '/inventory/racks/:id',
     name: 'rack-detail',
     component: () => import('@/views/RackDetailView.vue'),
+  },
+  {
+    // Administration has no page of its own -- it's a sidebar-only
+    // dropdown grouping its children (see navigation.ts and
+    // AppSidebar.vue). A direct visit or stale bookmark still lands
+    // somewhere real rather than 404ing, the same reasoning
+    // { path: '/', redirect: '/dashboard' } above already establishes.
+    path: '/administration',
+    redirect: '/administration/providers',
+  },
+  {
+    // The Providers page -- reached from the sidebar's Administration
+    // dropdown, same "not in NAV_ITEMS' generated routes, reached by
+    // clicking through" pattern as /customers/:id above. Not a Detail
+    // Workspace (no single shared object, no SectionCard/DetailWorkspace)
+    // -- see AdministrationProvidersView.vue's own doc comment.
+    path: '/administration/providers',
+    name: 'administration-providers',
+    component: () => import('@/views/AdministrationProvidersView.vue'),
+  },
+  {
+    // The Users page -- reached from the sidebar's Administration
+    // dropdown, same pattern as /administration/providers above.
+    path: '/administration/users',
+    name: 'administration-users',
+    component: () => import('@/views/AdministrationUsersView.vue'),
   },
   {
     path: '/:pathMatch(.*)*',

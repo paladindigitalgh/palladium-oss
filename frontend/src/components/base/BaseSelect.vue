@@ -10,17 +10,27 @@ import BaseIcon from './BaseIcon.vue'
  * widget (docs/09-WORKSPACE-SPECIFICATIONS.md, "Do not overcomplicate
  * filtering").
  */
-defineProps<{
-  label: string
-  options: { value: string; label: string }[]
-}>()
+withDefaults(
+  defineProps<{
+    label: string
+    options: { value: string; label: string }[]
+    /**
+     * Visually hides the label (e.g. a per-row control in a table whose
+     * column header already names the field) while keeping it in the DOM
+     * for assistive technology -- never omit the label prop itself just
+     * because a caller sets this.
+     */
+    hideLabel?: boolean
+  }>(),
+  { hideLabel: false },
+)
 
 const model = defineModel<string>({ required: true })
 </script>
 
 <template>
   <label class="base-select">
-    <span class="base-select__label">{{ label }}</span>
+    <span class="base-select__label" :class="{ 'base-select__label--hidden': hideLabel }">{{ label }}</span>
     <span class="base-select__control">
       <select v-model="model" class="base-select__input">
         <option v-for="option in options" :key="option.value" :value="option.value">
@@ -45,6 +55,18 @@ const model = defineModel<string>({ required: true })
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.base-select__label--hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .base-select__control {
