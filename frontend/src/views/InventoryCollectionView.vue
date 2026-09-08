@@ -36,20 +36,24 @@ function rowLabel(site: Site): string {
 }
 
 function openSite(site: Site) {
-  router.push(`/inventory/${site.id}`)
+  router.push(`/administration/inventory/${site.id}`)
 }
 
 const showNewSiteDialog = ref(false)
 
 function handleSiteCreated(site: Site) {
   showNewSiteDialog.value = false
-  router.push(`/inventory/${site.id}`)
+  router.push(`/administration/inventory/${site.id}`)
 }
 </script>
 
 <template>
   <div class="inventory-collection-view">
-    <WorkspaceHeader title="Inventory" subtitle="Search sites, buildings, rooms, and racks.">
+    <WorkspaceHeader
+      title="Inventory"
+      subtitle="Search sites, buildings, rooms, and racks."
+      :breadcrumbs="[{ label: 'Administration', to: '/administration' }]"
+    >
       <template #actions>
         <WorkspaceActions>
           <template #primary>

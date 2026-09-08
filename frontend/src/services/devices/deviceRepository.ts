@@ -39,6 +39,15 @@ function fromDto(dto: DeviceDto): Device {
 export interface DeviceListQuery {
   search?: string
   status?: Device['status'] | 'all'
+  /**
+   * When status is 'all' (no specific status picked), Retired and
+   * Disposed devices are excluded by default -- a deauthorized ONU
+   * (internal/provisioning/kontron/service.DeauthorizationService marks
+   * it Retired) should stop cluttering the default device list. Set
+   * true to include them, or pick status: 'Retired'/'Disposed' directly
+   * to see only those.
+   */
+  includeRetired?: boolean
   sortKey?: 'name' | 'status'
   sortDirection?: 'asc' | 'desc'
   page?: number
@@ -81,11 +90,23 @@ export async function listDevicesByRackId(rackId: string): Promise<Device[]> {
 
 /** Fetches every Device and applies search/filter/sort/pagination client-side. */
 export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceListResult> {
-  const { search = '', status = 'all', sortKey = 'name', sortDirection = 'asc', page = 1, pageSize = 15 } = query
+  const {
+    search = '',
+    status = 'all',
+    includeRetired = false,
+    sortKey = 'name',
+    sortDirection = 'asc',
+    page = 1,
+    pageSize = 15,
+  } = query
 
   let results = (await listAllDevices()).filter((device) => matchesSearch(device, search))
 
-  if (status !== 'all') results = results.filter((device) => device.status === status)
+  if (status !== 'all') {
+    results = results.filter((device) => device.status === status)
+  } else if (!includeRetired) {
+    results = results.filter((device) => device.status !== 'Retired' && device.status !== 'Disposed')
+  }
 
   results = results.slice().sort(compareDevices(sortKey, sortDirection === 'desc' ? -1 : 1))
 

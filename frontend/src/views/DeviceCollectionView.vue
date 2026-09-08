@@ -5,6 +5,7 @@ import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import BaseCard from '@/components/base/BaseCard.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
+import BaseCheckbox from '@/components/base/BaseCheckbox.vue'
 import BaseBadge from '@/components/base/BaseBadge.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import CollectionToolbar from '@/components/data-display/CollectionToolbar.vue'
@@ -26,7 +27,8 @@ import { useDeviceCollection, type DeviceSortKey } from '@/composables/useDevice
  */
 const router = useRouter()
 
-const { search, status, sortKey, sortDirection, toggleSort, page, pageSize, devices, total, loading } = useDeviceCollection()
+const { search, status, includeRetired, sortKey, sortDirection, toggleSort, page, pageSize, devices, total, loading } =
+  useDeviceCollection()
 
 const columns: DataTableColumn[] = [
   { key: 'device', label: 'Device', sortable: true },
@@ -115,6 +117,7 @@ function handleONUAuthorized({ serialNumber }: { serialNumber: string }) {
 
     <CollectionToolbar v-model:search="search" search-placeholder="Search by name, serial, manufacturer, or model">
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
+      <BaseCheckbox v-if="status === 'all'" v-model="includeRetired" label="Include Retired / Disposed" />
     </CollectionToolbar>
 
     <BaseCard :padded="false">

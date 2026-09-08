@@ -82,7 +82,7 @@ const buildingColumns: SimpleTableColumn[] = [
 ]
 
 function openBuilding(building: Building) {
-  router.push(`/inventory/buildings/${building.id}`)
+  router.push(`/administration/inventory/buildings/${building.id}`)
 }
 
 const timelineEntries = computed(() =>
@@ -142,7 +142,7 @@ async function confirmDeleteSite() {
   deleteError.value = null
   try {
     await deleteSite(site.value.id)
-    router.push('/inventory')
+    router.push('/administration/inventory')
   } catch (err) {
     deleteError.value =
       err instanceof ApiError && err.kind === 'conflict'
@@ -161,7 +161,7 @@ async function confirmDeleteSite() {
 
   <div v-else-if="notFound" class="site-detail-view__status">
     <BaseErrorState title="Site not found" description="This site may have been removed, or the link may be out of date.">
-      <BaseButton variant="secondary" @click="router.push('/inventory')">Back to Inventory</BaseButton>
+      <BaseButton variant="secondary" @click="router.push('/administration/inventory')">Back to Inventory</BaseButton>
     </BaseErrorState>
   </div>
 

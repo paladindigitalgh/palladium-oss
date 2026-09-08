@@ -133,7 +133,7 @@ async function confirmDeleteRack() {
   deleteError.value = null
   try {
     await deleteRack(rack.value.id)
-    router.push(room.value ? `/inventory/rooms/${room.value.id}` : '/inventory')
+    router.push(room.value ? `/administration/inventory/rooms/${room.value.id}` : '/administration/inventory')
   } catch (err) {
     deleteError.value =
       err instanceof ApiError && err.kind === 'conflict'
@@ -155,7 +155,7 @@ async function confirmDeleteRack() {
       title="Rack not found"
       description="This rack may have been removed, or the link may be out of date."
     >
-      <BaseButton variant="secondary" @click="router.push('/inventory')">Back to Inventory</BaseButton>
+      <BaseButton variant="secondary" @click="router.push('/administration/inventory')">Back to Inventory</BaseButton>
     </BaseErrorState>
   </div>
 
@@ -201,7 +201,7 @@ async function confirmDeleteRack() {
         v-if="room"
         eyebrow="Room"
         :title="room.name"
-        :to="`/inventory/rooms/${room.id}`"
+        :to="`/administration/inventory/rooms/${room.id}`"
         action-label="View Room"
       />
       <p v-else class="no-relationship">This rack is not assigned to a room.</p>

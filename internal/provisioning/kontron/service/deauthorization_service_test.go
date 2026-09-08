@@ -10,6 +10,7 @@ import (
 
 	"github.com/paladindigitalgh/palladium-oss/internal/accessattachment"
 	"github.com/paladindigitalgh/palladium-oss/internal/accesstopology"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/olt"
 	"github.com/paladindigitalgh/palladium-oss/internal/oltmodel"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
@@ -67,6 +68,36 @@ func (f *fakeAccessAttachmentStore) Update(_ context.Context, a accessattachment
 	return a, nil
 }
 
+// fakeDeviceStore scripts Get and records every Update call made to it.
+// Defaults to an Installed Device if no device is set, matching the
+// common case (DeauthorizeONU is only ever offered for an Installed
+// Device — see DeviceDetailView.vue's canDeleteONU).
+type fakeDeviceStore struct {
+	device      inventory.Device
+	getErr      error
+	updateErr   error
+	updateCalls []inventory.Device
+}
+
+func (f *fakeDeviceStore) Get(_ context.Context, id uuid.UUID) (inventory.Device, error) {
+	if f.getErr != nil {
+		return inventory.Device{}, f.getErr
+	}
+	d := f.device
+	if d.Status == "" {
+		d = inventory.Device{Metadata: inventory.Metadata{ID: id}, Status: inventory.DeviceStatusInstalled}
+	}
+	return d, nil
+}
+
+func (f *fakeDeviceStore) Update(_ context.Context, d inventory.Device) (inventory.Device, error) {
+	f.updateCalls = append(f.updateCalls, d)
+	if f.updateErr != nil {
+		return inventory.Device{}, f.updateErr
+	}
+	return d, nil
+}
+
 func newTestDeauthorizationService(
 	dial dialer,
 	equipment latestServiceEquipmentGetter,
@@ -76,9 +107,10 @@ func newTestDeauthorizationService(
 	models oltModelGetter,
 	attachments accessAttachmentGetter,
 	attachmentsSvc accessAttachmentUpdater,
+	devices *fakeDeviceStore,
 	c clock.Clock,
 ) *DeauthorizationService {
-	return NewDeauthorizationService(dial, equipment, equipmentSvc, locate, olts, models, attachments, attachmentsSvc, c)
+	return NewDeauthorizationService(dial, equipment, equipmentSvc, locate, olts, models, attachments, attachmentsSvc, devices, devices, c)
 }
 
 var fixedClockTime = time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
@@ -99,7 +131,7 @@ func TestDeauthorizationServiceSucceedsAndMarksRecordsRemoved(t *testing.T) {
 	attachmentStore := &fakeAccessAttachmentStore{attachment: accessattachment.AccessAttachment{ID: attachmentID, ServiceEquipmentID: equipmentID}}
 	c := clock.NewFrozen(fixedClockTime)
 
-	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, c)
+	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, &fakeDeviceStore{}, c)
 
 	iface, err := s.DeauthorizeONU(context.Background(), deviceID)
 	if err != nil {
@@ -152,7 +184,7 @@ func TestDeauthorizationServiceSucceedsWithNoActiveAttachment(t *testing.T) {
 	attachmentStore := &fakeAccessAttachmentStore{getErr: apperror.NotFound("no active attachment")}
 	c := clock.NewFrozen(fixedClockTime)
 
-	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, c)
+	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, &fakeDeviceStore{}, c)
 
 	_, err := s.DeauthorizeONU(context.Background(), deviceID)
 	if err != nil {
@@ -190,7 +222,7 @@ func TestDeauthorizationServiceSucceedsWhenEquipmentAlreadyRemovedByCustomerRemo
 	attachmentStore := &fakeAccessAttachmentStore{getErr: apperror.NotFound("no active attachment")}
 	c := clock.NewFrozen(fixedClockTime)
 
-	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, c)
+	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, &fakeDeviceStore{}, c)
 
 	iface, err := s.DeauthorizeONU(context.Background(), deviceID)
 	if err != nil {
@@ -204,12 +236,63 @@ func TestDeauthorizationServiceSucceedsWhenEquipmentAlreadyRemovedByCustomerRemo
 	}
 }
 
+func TestDeauthorizationServiceRetiresTheDevice(t *testing.T) {
+	deviceID := uuid.New()
+	oltID := uuid.New()
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), DeviceID: deviceID, Role: serviceequipment.EquipmentRoleONU}
+
+	shell := &fakeShell{outputs: map[string]string{}}
+	dialer := &fakeDialer{shell: shell}
+	equipmentStore := &fakeServiceEquipmentStore{equipment: equipment}
+	locator := &fakeLocator{location: accesstopology.Location{OLTID: oltID, Interface: "xgs/6/3"}}
+	olts := &fakeOLTGetter{olt: olt.OLT{ID: oltID, OLTModelID: kontronOLTModel.ID}}
+	models := &fakeOLTModelGetter{model: kontronOLTModel}
+	attachmentStore := &fakeAccessAttachmentStore{getErr: apperror.NotFound("no active attachment")}
+	devices := &fakeDeviceStore{device: inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusInstalled}}
+
+	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, devices, clock.NewFrozen(fixedClockTime))
+
+	if _, err := s.DeauthorizeONU(context.Background(), deviceID); err != nil {
+		t.Fatalf("DeauthorizeONU() = %v", err)
+	}
+	if len(devices.updateCalls) != 1 {
+		t.Fatalf("device Update calls = %d, want 1", len(devices.updateCalls))
+	}
+	if devices.updateCalls[0].Status != inventory.DeviceStatusRetired {
+		t.Errorf("device Status = %q, want %q", devices.updateCalls[0].Status, inventory.DeviceStatusRetired)
+	}
+}
+
+func TestDeauthorizationServiceDoesNotRewriteAnAlreadyTerminalDeviceStatus(t *testing.T) {
+	deviceID := uuid.New()
+	oltID := uuid.New()
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), DeviceID: deviceID, Role: serviceequipment.EquipmentRoleONU}
+
+	shell := &fakeShell{outputs: map[string]string{}}
+	dialer := &fakeDialer{shell: shell}
+	equipmentStore := &fakeServiceEquipmentStore{equipment: equipment}
+	locator := &fakeLocator{location: accesstopology.Location{OLTID: oltID, Interface: "xgs/6/3"}}
+	olts := &fakeOLTGetter{olt: olt.OLT{ID: oltID, OLTModelID: kontronOLTModel.ID}}
+	models := &fakeOLTModelGetter{model: kontronOLTModel}
+	attachmentStore := &fakeAccessAttachmentStore{getErr: apperror.NotFound("no active attachment")}
+	devices := &fakeDeviceStore{device: inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusDisposed}}
+
+	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, devices, clock.NewFrozen(fixedClockTime))
+
+	if _, err := s.DeauthorizeONU(context.Background(), deviceID); err != nil {
+		t.Fatalf("DeauthorizeONU() = %v", err)
+	}
+	if len(devices.updateCalls) != 0 {
+		t.Errorf("device Update calls = %d, want 0 (already Disposed, nothing to retire)", len(devices.updateCalls))
+	}
+}
+
 func TestDeauthorizationServiceErrorsForNonONURole(t *testing.T) {
 	deviceID := uuid.New()
 	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), DeviceID: deviceID, Role: serviceequipment.EquipmentRoleRouter}
 
 	equipmentStore := &fakeServiceEquipmentStore{equipment: equipment}
-	s := newTestDeauthorizationService(&fakeDialer{}, equipmentStore, equipmentStore, &fakeLocator{}, &fakeOLTGetter{}, &fakeOLTModelGetter{}, &fakeAccessAttachmentStore{}, &fakeAccessAttachmentStore{}, clock.NewFrozen(fixedClockTime))
+	s := newTestDeauthorizationService(&fakeDialer{}, equipmentStore, equipmentStore, &fakeLocator{}, &fakeOLTGetter{}, &fakeOLTModelGetter{}, &fakeAccessAttachmentStore{}, &fakeAccessAttachmentStore{}, &fakeDeviceStore{}, clock.NewFrozen(fixedClockTime))
 
 	_, err := s.DeauthorizeONU(context.Background(), deviceID)
 	if !apperror.Is(err, apperror.KindInvalid) {
@@ -227,7 +310,7 @@ func TestDeauthorizationServiceErrorsForNonKontronOLT(t *testing.T) {
 	olts := &fakeOLTGetter{olt: olt.OLT{OLTModelID: nokiaModel.ID}}
 	models := &fakeOLTModelGetter{model: nokiaModel}
 
-	s := newTestDeauthorizationService(&fakeDialer{}, equipmentStore, equipmentStore, locator, olts, models, &fakeAccessAttachmentStore{}, &fakeAccessAttachmentStore{}, clock.NewFrozen(fixedClockTime))
+	s := newTestDeauthorizationService(&fakeDialer{}, equipmentStore, equipmentStore, locator, olts, models, &fakeAccessAttachmentStore{}, &fakeAccessAttachmentStore{}, &fakeDeviceStore{}, clock.NewFrozen(fixedClockTime))
 
 	_, err := s.DeauthorizeONU(context.Background(), deviceID)
 	if !apperror.Is(err, apperror.KindInvalid) {
@@ -237,7 +320,7 @@ func TestDeauthorizationServiceErrorsForNonKontronOLT(t *testing.T) {
 
 func TestDeauthorizationServicePropagatesNoActiveEquipmentAsNotFound(t *testing.T) {
 	equipmentStore := &fakeServiceEquipmentStore{getErr: apperror.NotFound("no active equipment")}
-	s := newTestDeauthorizationService(&fakeDialer{}, equipmentStore, equipmentStore, &fakeLocator{}, &fakeOLTGetter{}, &fakeOLTModelGetter{}, &fakeAccessAttachmentStore{}, &fakeAccessAttachmentStore{}, clock.NewFrozen(fixedClockTime))
+	s := newTestDeauthorizationService(&fakeDialer{}, equipmentStore, equipmentStore, &fakeLocator{}, &fakeOLTGetter{}, &fakeOLTModelGetter{}, &fakeAccessAttachmentStore{}, &fakeAccessAttachmentStore{}, &fakeDeviceStore{}, clock.NewFrozen(fixedClockTime))
 
 	_, err := s.DeauthorizeONU(context.Background(), uuid.New())
 	if !apperror.Is(err, apperror.KindNotFound) {
@@ -258,7 +341,7 @@ func TestDeauthorizationServiceDoesNotMarkRecordsRemovedWhenCommandFails(t *test
 	models := &fakeOLTModelGetter{model: kontronOLTModel}
 	attachmentStore := &fakeAccessAttachmentStore{attachment: accessattachment.AccessAttachment{ID: uuid.New()}}
 
-	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, clock.NewFrozen(fixedClockTime))
+	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, &fakeDeviceStore{}, clock.NewFrozen(fixedClockTime))
 
 	_, err := s.DeauthorizeONU(context.Background(), deviceID)
 	if err == nil {
@@ -285,7 +368,7 @@ func TestDeauthorizationServiceSurfacesErrorWhenRecordUpdateFailsAfterCommandSuc
 	models := &fakeOLTModelGetter{model: kontronOLTModel}
 	attachmentStore := &fakeAccessAttachmentStore{attachment: accessattachment.AccessAttachment{ID: uuid.New()}}
 
-	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, clock.NewFrozen(fixedClockTime))
+	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, &fakeDeviceStore{}, clock.NewFrozen(fixedClockTime))
 
 	// This proves the documented partial-failure edge: the OLT command
 	// (scripted to succeed via shell's empty outputs) has already run by

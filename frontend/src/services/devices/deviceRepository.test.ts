@@ -64,6 +64,44 @@ describe('listDevices', () => {
     expect(result.items.map((d) => d.id)).toEqual(['d2'])
   })
 
+  it('excludes Retired and Disposed devices from the default (status: all) view', async () => {
+    apiFetch.mockResolvedValue({
+      devices: [
+        deviceDto({ id: 'd1', status: 'Installed' }),
+        deviceDto({ id: 'd2', status: 'Retired' }),
+        deviceDto({ id: 'd3', status: 'Disposed' }),
+      ],
+    })
+
+    const result = await listDevices()
+
+    expect(result.items.map((d) => d.id)).toEqual(['d1'])
+  })
+
+  it('includes Retired and Disposed devices when includeRetired is set', async () => {
+    apiFetch.mockResolvedValue({
+      devices: [
+        deviceDto({ id: 'd1', status: 'Installed' }),
+        deviceDto({ id: 'd2', status: 'Retired' }),
+        deviceDto({ id: 'd3', status: 'Disposed' }),
+      ],
+    })
+
+    const result = await listDevices({ includeRetired: true })
+
+    expect(result.items.map((d) => d.id).sort()).toEqual(['d1', 'd2', 'd3'])
+  })
+
+  it('does not apply includeRetired when a specific status is picked', async () => {
+    apiFetch.mockResolvedValue({
+      devices: [deviceDto({ id: 'd1', status: 'Retired' }), deviceDto({ id: 'd2', status: 'Disposed' })],
+    })
+
+    const result = await listDevices({ status: 'Retired', includeRetired: false })
+
+    expect(result.items.map((d) => d.id)).toEqual(['d1'])
+  })
+
   it('sorts by name ascending by default', async () => {
     apiFetch.mockResolvedValue({ devices: [deviceDto({ id: 'd1', name: 'Zeta' }), deviceDto({ id: 'd2', name: 'Alpha' })] })
 
@@ -77,7 +115,7 @@ describe('listDevices', () => {
       devices: [deviceDto({ id: 'd1', status: 'Retired' }), deviceDto({ id: 'd2', status: 'InStock' })],
     })
 
-    const result = await listDevices({ sortKey: 'status' })
+    const result = await listDevices({ sortKey: 'status', includeRetired: true })
 
     expect(result.items.map((d) => d.status)).toEqual(['InStock', 'Retired'])
   })

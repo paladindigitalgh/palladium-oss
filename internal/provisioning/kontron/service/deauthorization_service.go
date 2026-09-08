@@ -7,6 +7,7 @@ import (
 
 	"github.com/paladindigitalgh/palladium-oss/internal/accessattachment"
 	"github.com/paladindigitalgh/palladium-oss/internal/accesstopology"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/oltmodel"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
@@ -55,6 +56,22 @@ type accessAttachmentUpdater interface {
 	Update(ctx context.Context, a accessattachment.AccessAttachment) (accessattachment.AccessAttachment, error)
 }
 
+// deviceGetter and deviceUpdater are the seams DeauthorizationService
+// depends on instead of the full inventory.DeviceRepository, satisfied
+// by the real *inventoryservice.DeviceService so its Validate() logic
+// runs on this write like every other caller's. Once an ONU is
+// genuinely deauthorized from its OLT, the Device itself is no longer
+// installed anywhere real — see markDeviceRetired's own doc comment for
+// why this service moves it to DeviceStatusRetired rather than leaving
+// it Installed forever.
+type deviceGetter interface {
+	Get(ctx context.Context, id uuid.UUID) (inventory.Device, error)
+}
+
+type deviceUpdater interface {
+	Update(ctx context.Context, d inventory.Device) (inventory.Device, error)
+}
+
 // DeauthorizationService fully removes an ONU's authorization from its
 // OLT — the mirror image of AuthorizationService, and a step further
 // than ServiceProfileService.Remove: Suspend/Disconnect only remove the
@@ -66,16 +83,20 @@ type accessAttachmentUpdater interface {
 // than a ServiceID/ServiceEquipmentID a caller already has in hand.
 //
 // Once the OLT command succeeds, it also marks the active
-// AccessAttachment and ServiceEquipment for this device removed: after
-// this call, the OLT genuinely has no record of this ONU, so Palladium's
-// own data must stop claiming it is still attached and in service (see
-// CLAUDE.md's "always model the real world"). There is no cross-
-// repository transaction in this codebase (see OLTService.Create's own
-// doc comment on the same limitation for its port-creation cascade): if
-// either Update call fails after the OLT command has already succeeded,
+// AccessAttachment and ServiceEquipment for this device removed, and the
+// Device itself Retired (see markDeviceRetired): after this call, the
+// OLT genuinely has no record of this ONU, so Palladium's own data must
+// stop claiming it is still attached, in service, and Installed (see
+// CLAUDE.md's "always model the real world"). Retiring the Device is
+// also what lets it drop out of the Device Collection View's default
+// filter — at the user's explicit request, a deauthorized ONU should not
+// keep cluttering the default device list. There is no cross-repository
+// transaction in this codebase (see OLTService.Create's own doc comment
+// on the same limitation for its port-creation cascade): if any of these
+// Update calls fails after the OLT command has already succeeded,
 // DeauthorizeONU returns that error, but the OLT-side change has already
 // taken effect and cannot be rolled back from here — a caller seeing
-// this error must reconcile the two records manually.
+// this error must reconcile the records manually.
 type DeauthorizationService struct {
 	dial           dialer
 	equipment      latestServiceEquipmentGetter
@@ -85,6 +106,8 @@ type DeauthorizationService struct {
 	models         oltModelGetter
 	attachments    accessAttachmentGetter
 	attachmentsSvc accessAttachmentUpdater
+	devices        deviceGetter
+	devicesSvc     deviceUpdater
 	clock          clock.Clock
 }
 
@@ -108,12 +131,15 @@ func NewDeauthorizationService(
 	models oltModelGetter,
 	attachments accessAttachmentGetter,
 	attachmentsSvc accessAttachmentUpdater,
+	devices deviceGetter,
+	devicesSvc deviceUpdater,
 	c clock.Clock,
 ) *DeauthorizationService {
 	return &DeauthorizationService{
 		dial: dial, equipment: equipment, equipmentSvc: equipmentSvc,
 		locate: locate, olts: olts, models: models,
-		attachments: attachments, attachmentsSvc: attachmentsSvc, clock: c,
+		attachments: attachments, attachmentsSvc: attachmentsSvc,
+		devices: devices, devicesSvc: devicesSvc, clock: c,
 	}
 }
 
@@ -171,7 +197,41 @@ func (s *DeauthorizationService) DeauthorizeONU(ctx context.Context, deviceID uu
 		return "", err
 	}
 
+	if err := s.markDeviceRetired(ctx, deviceID); err != nil {
+		return "", err
+	}
+
 	return location.Interface, nil
+}
+
+// markDeviceRetired transitions deviceID's Device to
+// inventory.DeviceStatusRetired, once the OLT-side deauthorization and
+// record-marking have already succeeded — see DeauthorizeONU's own doc
+// comment on why a failure here cannot be rolled back. A Device that has
+// been deauthorized from its OLT is no longer installed anywhere real
+// (see CLAUDE.md's "always model the real world"), and Retired is this
+// domain's lifecycle state for exactly that: no longer in service, not
+// yet disposed of (docs/03-DOMAIN-MODEL.md's Device lifecycle). This is
+// what lets a deauthorized ONU drop out of the Device Collection View's
+// default (non-Retired) filter without a second, separate action.
+//
+// A no-op if the Device is already Retired or Disposed — this can
+// happen on a retry after a prior partial failure, and re-writing an
+// already-terminal status would be pointless.
+func (s *DeauthorizationService) markDeviceRetired(ctx context.Context, deviceID uuid.UUID) error {
+	device, err := s.devices.Get(ctx, deviceID)
+	if err != nil {
+		return classify("OLT was deauthorized, but the device could not be loaded to retire it", err)
+	}
+	if device.Status == inventory.DeviceStatusRetired || device.Status == inventory.DeviceStatusDisposed {
+		return nil
+	}
+
+	device.Status = inventory.DeviceStatusRetired
+	if _, err := s.devicesSvc.Update(ctx, device); err != nil {
+		return classify("OLT was deauthorized, but the device could not be marked retired", err)
+	}
+	return nil
 }
 
 // markRemoved sets RemovedAt on the active AccessAttachment (if any) and

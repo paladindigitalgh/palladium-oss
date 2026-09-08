@@ -129,10 +129,8 @@ The primary navigation consists of:
 
 -   Dashboard
 -   Customers
--   Services
 -   Devices
 -   Network
--   Inventory
 -   Explorer
 -   Administration
 
@@ -146,15 +144,30 @@ View. This Primary Navigation -> Collection View -> Detail View flow is
 not three different kinds of workspace; it is how a single Entity
 Workspace is navigated.
 
+Services has no Collection View at all (2026-09-08, at the user's
+explicit request: "my workflow will always be search for customer and
+see their service, never search for a service directly"). A Service is
+reached only through a Customer's Detail Workspace or a Device's
+Assignment section -- never browsed as its own primary destination. Its
+Detail View still exists and is still linked to from both of those
+places; only the collection page and the primary-navigation entry are
+gone.
+
 Administration is the one exception to "clicking a primary navigation
 item opens a page" (2026-09-07, at the user's explicit request): it has
 no Collection View of its own, so clicking it expands a default-collapsed
-dropdown in place instead of navigating, revealing Providers and Users as
-sub-items (see NAV_ITEMS' `children` in navigation.ts, and AppSidebar.vue,
-which is the first and only consumer of that field). Selecting a sub-item
-navigates normally. This is a sidebar-presentation exception only --
-docs/09-WORKSPACE-SPECIFICATIONS.md section 16 ("Administration
-Workspace") has the full picture of what each sub-item's page does.
+dropdown in place instead of navigating, revealing Providers, Users,
+Hardware, and Inventory as sub-items (see NAV_ITEMS' `children` in
+navigation.ts, and AppSidebar.vue, which is the first and only consumer
+of that field). Selecting a sub-item navigates normally. Inventory moved
+here from its own former primary-navigation entry (2026-09-08, at the
+user's explicit request, mirroring how Providers/Users/Hardware are
+already grouped) -- it keeps its full Collection View and Site -> Building
+-> Room -> Rack detail hierarchy, just nested under Administration in the
+sidebar and under /administration/inventory in the URL. This is a
+sidebar-presentation exception only -- docs/09-WORKSPACE-SPECIFICATIONS.md
+section 16 ("Administration Workspace") has the full picture of what each
+sub-item's page does.
 
 ## Persistent Navigation
 

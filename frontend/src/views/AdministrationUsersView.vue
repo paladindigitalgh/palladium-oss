@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import BaseCard from '@/components/base/BaseCard.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
+import BaseCheckbox from '@/components/base/BaseCheckbox.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/SimpleTable.vue'
 import UserFormDialog from '@/components/dialogs/UserFormDialog.vue'
@@ -40,6 +41,17 @@ onMounted(async () => {
   users.value = await listUsers()
   loading.value = false
 })
+
+/**
+ * Inactive accounts are excluded from the default view -- the common
+ * workflow only cares about who can currently sign in -- with a
+ * checkbox to bring them back for the rarer "review who's been
+ * deactivated" task.
+ */
+const includeInactive = ref(false)
+const visibleUsers = computed(() =>
+  includeInactive.value ? users.value : users.value.filter((user) => user.status !== 'Inactive'),
+)
 
 const userColumns: SimpleTableColumn[] = [
   { key: 'email', label: 'Email' },
@@ -104,6 +116,8 @@ async function handleToggleStatus(user: User) {
 
     <p v-if="userActionError" class="user-action-error" role="alert">{{ userActionError }}</p>
 
+    <BaseCheckbox v-model="includeInactive" label="Include Inactive" />
+
     <BaseCard>
       <div v-if="loading" class="page-status">
         <BaseLoadingState :lines="3" />
@@ -112,7 +126,7 @@ async function handleToggleStatus(user: User) {
       <SimpleTable
         v-else
         :columns="userColumns"
-        :rows="users"
+        :rows="visibleUsers"
         :row-key="(user) => user.id"
         empty-icon="settings"
         empty-title="No users yet"

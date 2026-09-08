@@ -7,12 +7,23 @@ import type { IconName } from '@/components/base/BaseIcon.vue'
  * and AppSidebar (what operators see) read from this list, so the two
  * can never drift apart.
  *
- * This is exactly docs/04-NAVIGATION.md section 4's list: Dashboard,
- * Customers, Services, Devices, Network, Inventory, Explorer,
- * Administration. An earlier milestone's NAV_ITEMS had drifted from this
- * (it still had Workflows and Plugins, and no Explorer); this list
- * corrects that rather than the other way around, since the docs were
- * already right.
+ * This is docs/04-NAVIGATION.md section 4's list: Dashboard, Customers,
+ * Devices, Network, Explorer, Administration. An earlier milestone's
+ * NAV_ITEMS had drifted from this (it still had Workflows and Plugins,
+ * and no Explorer); this list corrects that rather than the other way
+ * around, since the docs were already right.
+ *
+ * Services and Inventory are deliberately not top-level items. Services
+ * has no Collection View of its own at all (2026-09-08, at the user's
+ * explicit request: "my workflow will always be search for customer and
+ * see their service, never search for a service directly") -- a Service
+ * is only ever reached through a Customer's Detail Workspace, or a
+ * Device's Assignment section, never browsed on its own; ServiceDetailView
+ * and its /services/:id route are unaffected, only the collection page
+ * and nav entry are gone. Inventory still has a real Collection View, but
+ * lives as a child under Administration instead (see below) -- also the
+ * user's explicit request, mirroring how Providers/Users/Hardware are
+ * grouped there.
  *
  * `children` was reserved for future nested navigation (Milestone 1's
  * "support future nested navigation, but do not build child menus yet")
@@ -46,13 +57,6 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Search, filter, and open a customer workspace.',
   },
   {
-    id: 'services',
-    label: 'Services',
-    path: '/services',
-    icon: 'services',
-    description: 'Find what is being delivered, and to whom.',
-  },
-  {
     id: 'devices',
     label: 'Devices',
     path: '/devices',
@@ -65,13 +69,6 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/network',
     icon: 'network',
     description: 'Search access networks, OLTs, and PON ports.',
-  },
-  {
-    id: 'inventory',
-    label: 'Inventory',
-    path: '/inventory',
-    icon: 'inventory',
-    description: 'Search sites, buildings, rooms, and racks.',
   },
   {
     id: 'explorer',
@@ -110,6 +107,13 @@ export const NAV_ITEMS: NavItem[] = [
         path: '/administration/hardware',
         icon: 'settings',
         description: 'Physical equipment catalogs, starting with OLT chassis types and their PON port counts.',
+      },
+      {
+        id: 'administration-inventory',
+        label: 'Inventory',
+        path: '/administration/inventory',
+        icon: 'inventory',
+        description: 'Search sites, buildings, rooms, and racks.',
       },
     ],
   },

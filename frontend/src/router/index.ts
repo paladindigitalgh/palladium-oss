@@ -25,9 +25,7 @@ const VIEW_COMPONENTS: Record<string, () => Promise<{ default: Component }>> = {
   dashboard: () => import('@/views/DashboardView.vue'),
   customers: () => import('@/views/CustomerCollectionView.vue'),
   devices: () => import('@/views/DeviceCollectionView.vue'),
-  services: () => import('@/views/ServiceCollectionView.vue'),
   network: () => import('@/views/NetworkCollectionView.vue'),
-  inventory: () => import('@/views/InventoryCollectionView.vue'),
 }
 
 const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.filter((item) => !item.children).map((item) => ({
@@ -114,31 +112,37 @@ const routes: RouteRecordRaw[] = [
   {
     // The Site Detail Workspace, root of the Inventory hierarchy --
     // reached from the Inventory Collection View, same pattern as
-    // /customers/:id above.
-    path: '/inventory/:id',
+    // /customers/:id above. Prefixed /administration/ (2026-09-08) along
+    // with its collection view, since Inventory now lives under
+    // Administration in the sidebar (see navigation.ts) -- keeping the
+    // detail routes under the same prefix is what lets AppSidebar's
+    // isChildActive keep the Administration section expanded while
+    // browsing any depth of the Inventory hierarchy.
+    path: '/administration/inventory/:id',
     name: 'site-detail',
     component: () => import('@/views/SiteDetailView.vue'),
   },
   {
     // The Building Detail Workspace -- reached from a Site Detail
-    // Workspace's Buildings section, same pattern as /inventory/:id
-    // above.
-    path: '/inventory/buildings/:id',
+    // Workspace's Buildings section, same pattern as
+    // /administration/inventory/:id above.
+    path: '/administration/inventory/buildings/:id',
     name: 'building-detail',
     component: () => import('@/views/BuildingDetailView.vue'),
   },
   {
     // The Room Detail Workspace -- reached from a Building Detail
-    // Workspace's Rooms section, same pattern as /inventory/buildings/:id
-    // above.
-    path: '/inventory/rooms/:id',
+    // Workspace's Rooms section, same pattern as
+    // /administration/inventory/buildings/:id above.
+    path: '/administration/inventory/rooms/:id',
     name: 'room-detail',
     component: () => import('@/views/RoomDetailView.vue'),
   },
   {
     // The Rack Detail Workspace -- reached from a Room Detail Workspace's
-    // Racks section, same pattern as /inventory/rooms/:id above.
-    path: '/inventory/racks/:id',
+    // Racks section, same pattern as /administration/inventory/rooms/:id
+    // above.
+    path: '/administration/inventory/racks/:id',
     name: 'rack-detail',
     component: () => import('@/views/RackDetailView.vue'),
   },
@@ -176,6 +180,16 @@ const routes: RouteRecordRaw[] = [
     path: '/administration/hardware',
     name: 'administration-hardware',
     component: () => import('@/views/AdministrationHardwareView.vue'),
+  },
+  {
+    // The Inventory Collection View -- moved under Administration
+    // (2026-09-08, at the user's explicit request, mirroring
+    // Providers/Users/Hardware above) from its own former top-level nav
+    // item. Its own nested detail routes below (/inventory/:id and
+    // deeper) are unchanged -- only this entry point moved.
+    path: '/administration/inventory',
+    name: 'inventory',
+    component: () => import('@/views/InventoryCollectionView.vue'),
   },
   {
     path: '/:pathMatch(.*)*',

@@ -141,7 +141,9 @@ Version 1 has exactly one Landing Workspace: **Dashboard** (section 7).
 -   Use WorkspaceLayout
 
 Version 1's primary-navigation Entity Workspaces are **Customers,
-Services, Devices, Network, Inventory, Explorer, Administration**.
+Devices, Network, Explorer, Administration** (Inventory moved under
+Administration, and Services has no primary-navigation entry at all --
+see docs/04-NAVIGATION.md section 4).
 
 Every other workspace specified later in this document -- Customer,
 Service, Device, OLT, Site, Workflow, and Search Results -- is also an
@@ -203,6 +205,16 @@ Collection Views should **not**:
 -   Duplicate Detail View functionality
 -   Present large amounts of object-specific information
 
+A Collection View's default (no status filter picked) excludes an
+entity's terminal/inactive lifecycle states, with a checkbox to bring
+them back (2026-09-08, at the user's explicit request): the Customer
+Collection View excludes Archived customers ("Include Archived"), the
+Device Collection View excludes Retired and Disposed devices ("Include
+Retired / Disposed"), and the Users page (section 16) excludes Inactive
+accounts ("Include Inactive"). Picking a specific status explicitly
+(e.g. "Archived") always shows exactly that status regardless of the
+checkbox.
+
 The exact columns vary by entity, but every Collection View should
 remain intentionally minimal. For example:
 
@@ -241,14 +253,19 @@ Collection View.
 
 -   Customers -> Customer Collection View -> Customer Detail View
 -   Devices -> Device Collection View -> Device Detail View
--   Services -> Service Collection View -> Service Detail View
--   Inventory -> Inventory Collection View -> Inventory Asset Detail View
 -   Network -> Network Collection View -> appropriate operational Detail
     View (OLT, Site, etc.)
+-   Administration -> Inventory (sidebar child) -> Inventory Collection
+    View -> Inventory Asset Detail View
 
 Explorer remains a special case: it is a query engine that links into
 existing Detail Views rather than owning its own operational entities,
 so it has no Collection View of its own in the same sense.
+
+Service has no Collection View at all (2026-09-08, at the user's
+explicit request -- see docs/04-NAVIGATION.md section 4): its Detail
+View is reached only from a Customer Detail View's Services section or
+a Device Detail View's Assignment section, never browsed on its own.
 
 ## Canonical Detail Views
 
@@ -1070,8 +1087,9 @@ two steps) is how each concern below is reached:
     removed in favor of a sidebar-native dropdown: "Administration" in
     AppSidebar.vue is a default-collapsed toggle (docs/04-NAVIGATION.md
     section 4's global navigation list, via NAV_ITEMS' `children` --
-    see navigation.ts) that expands in place to Providers/Users, rather
-    than navigating anywhere itself. Expanding is manual, but a child
+    see navigation.ts) that expands in place to
+    Providers/Users/Hardware/Inventory, rather than navigating anywhere
+    itself. Expanding is manual, but a child
     route being active forces it open too, so landing directly on
     /administration/providers (a refresh, a bookmark) never hides which
     section you're in. /administration itself still exists as a bare
@@ -1134,6 +1152,23 @@ capability-gated route on its very next request, but its history stays
 intact. Palladium refuses any action (deactivate, or a Role change away
 from Administrator) that would leave zero active Administrators.
 
+### Hardware (/administration/hardware)
+
+Physical equipment catalogs -- OLT chassis types (oltmodel) and their
+PON port counts, for now. Named generically, not "OLT Models," since it
+is meant to hold other physical-equipment catalogs later.
+
+### Inventory (/administration/inventory)
+
+The Inventory Collection View and its Site -> Building -> Room -> Rack
+detail hierarchy (section 12), moved here (2026-09-08, at the user's
+explicit request) from its own former primary-navigation entry --
+mirroring how Providers/Users/Hardware are already grouped under
+Administration. This is the one sub-item that is a real Collection
+View with its own multi-level Detail Workspace hierarchy rather than a
+flat page; everything in section 12 is otherwise unchanged, including
+its detail routes (now prefixed /administration/inventory/... to match).
+
 ### Still unbuilt
 
 -   System Health
@@ -1143,7 +1178,7 @@ from Administrator) that would leave zero active Administrators.
 -   Audit Log
 -   Platform Settings
 
-Only Providers and Users are built, each on its own page reached via
+Providers, Users, Hardware, and Inventory are built, each reached via
 the Administration sidebar dropdown. The rest of this list is not
 implemented at all, and that dropdown does not stub out entries for
 pages that do not exist yet.

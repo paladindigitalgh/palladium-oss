@@ -34,6 +34,13 @@ function fromDto(dto: CustomerDto): Customer {
 export interface CustomerListQuery {
   search?: string
   status?: Customer['status'] | 'all'
+  /**
+   * When status is 'all' (no specific status picked), Archived customers
+   * are excluded by default -- the common workflow only cares about
+   * customers currently being served. Set true to include them, or pick
+   * status: 'Archived' directly to see only those.
+   */
+  includeArchived?: boolean
   customerType?: Customer['customerType'] | 'all'
   sortKey?: 'name' | 'status'
   sortDirection?: 'asc' | 'desc'
@@ -64,6 +71,7 @@ export async function listCustomers(query: CustomerListQuery = {}): Promise<Cust
   const {
     search = '',
     status = 'all',
+    includeArchived = false,
     customerType = 'all',
     sortKey = 'name',
     sortDirection = 'asc',
@@ -74,7 +82,11 @@ export async function listCustomers(query: CustomerListQuery = {}): Promise<Cust
   const { customers } = await apiFetch<{ customers: CustomerDto[] }>('/customers/')
   let results = customers.map(fromDto).filter((customer) => matchesSearch(customer, search))
 
-  if (status !== 'all') results = results.filter((customer) => customer.status === status)
+  if (status !== 'all') {
+    results = results.filter((customer) => customer.status === status)
+  } else if (!includeArchived) {
+    results = results.filter((customer) => customer.status !== 'Archived')
+  }
   if (customerType !== 'all') results = results.filter((customer) => customer.customerType === customerType)
 
   results = results.slice().sort(compareCustomers(sortKey, sortDirection === 'desc' ? -1 : 1))

@@ -17,6 +17,7 @@ const PAGE_SIZE = 15
 export function useCustomerCollection() {
   const search = ref('')
   const status = ref<Customer['status'] | 'all'>('all')
+  const includeArchived = ref(false)
   const customerType = ref<Customer['customerType'] | 'all'>('all')
   const sortKey = ref<CustomerSortKey>('name')
   const sortDirection = ref<CustomerSortDirection>('asc')
@@ -38,6 +39,7 @@ export function useCustomerCollection() {
       const result = await listCustomers({
         search: search.value,
         status: status.value,
+        includeArchived: includeArchived.value,
         customerType: customerType.value,
         sortKey: sortKey.value,
         sortDirection: sortDirection.value,
@@ -66,7 +68,7 @@ export function useCustomerCollection() {
   }
 
   watch(
-    [search, status, customerType, sortKey, sortDirection],
+    [search, status, includeArchived, customerType, sortKey, sortDirection],
     () => {
       page.value = 1
       fetchCustomers()
@@ -79,6 +81,7 @@ export function useCustomerCollection() {
   return {
     search,
     status,
+    includeArchived,
     customerType,
     sortKey,
     sortDirection,

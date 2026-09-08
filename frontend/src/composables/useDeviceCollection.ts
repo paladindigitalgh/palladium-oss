@@ -17,6 +17,7 @@ const PAGE_SIZE = 15
 export function useDeviceCollection() {
   const search = ref('')
   const status = ref<Device['status'] | 'all'>('all')
+  const includeRetired = ref(false)
   const sortKey = ref<DeviceSortKey>('name')
   const sortDirection = ref<DeviceSortDirection>('asc')
   const page = ref(1)
@@ -37,6 +38,7 @@ export function useDeviceCollection() {
       const result = await listDevices({
         search: search.value,
         status: status.value,
+        includeRetired: includeRetired.value,
         sortKey: sortKey.value,
         sortDirection: sortDirection.value,
         page: page.value,
@@ -64,7 +66,7 @@ export function useDeviceCollection() {
   }
 
   watch(
-    [search, status, sortKey, sortDirection],
+    [search, status, includeRetired, sortKey, sortDirection],
     () => {
       page.value = 1
       fetchDevices()
@@ -77,6 +79,7 @@ export function useDeviceCollection() {
   return {
     search,
     status,
+    includeRetired,
     sortKey,
     sortDirection,
     toggleSort,

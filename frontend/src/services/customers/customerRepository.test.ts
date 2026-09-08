@@ -54,6 +54,40 @@ describe('listCustomers', () => {
     expect(result.items.map((c) => c.id)).toEqual(['c2'])
   })
 
+  it('excludes Archived customers from the default (status: all) view', async () => {
+    apiFetch.mockResolvedValue({
+      customers: [
+        customerDto({ id: 'c1', status: 'Active' }),
+        customerDto({ id: 'c2', status: 'Inactive' }),
+        customerDto({ id: 'c3', status: 'Archived' }),
+      ],
+    })
+
+    const result = await listCustomers()
+
+    expect(result.items.map((c) => c.id).sort()).toEqual(['c1', 'c2'])
+  })
+
+  it('includes Archived customers when includeArchived is set', async () => {
+    apiFetch.mockResolvedValue({
+      customers: [customerDto({ id: 'c1', status: 'Active' }), customerDto({ id: 'c2', status: 'Archived' })],
+    })
+
+    const result = await listCustomers({ includeArchived: true })
+
+    expect(result.items.map((c) => c.id).sort()).toEqual(['c1', 'c2'])
+  })
+
+  it('does not apply includeArchived when a specific status is picked', async () => {
+    apiFetch.mockResolvedValue({
+      customers: [customerDto({ id: 'c1', status: 'Active' }), customerDto({ id: 'c2', status: 'Archived' })],
+    })
+
+    const result = await listCustomers({ status: 'Active', includeArchived: true })
+
+    expect(result.items.map((c) => c.id)).toEqual(['c1'])
+  })
+
   it('sorts by name ascending by default', async () => {
     apiFetch.mockResolvedValue({ customers: [customerDto({ id: 'c1', name: 'Zeta' }), customerDto({ id: 'c2', name: 'Alpha' })] })
 

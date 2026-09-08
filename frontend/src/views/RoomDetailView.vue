@@ -91,7 +91,7 @@ const rackColumns: SimpleTableColumn[] = [
 ]
 
 function openRack(rack: Rack) {
-  router.push(`/inventory/racks/${rack.id}`)
+  router.push(`/administration/inventory/racks/${rack.id}`)
 }
 
 const timelineEntries = computed(() =>
@@ -151,7 +151,7 @@ async function confirmDeleteRoom() {
   deleteError.value = null
   try {
     await deleteRoom(room.value.id)
-    router.push(building.value ? `/inventory/buildings/${building.value.id}` : '/inventory')
+    router.push(building.value ? `/administration/inventory/buildings/${building.value.id}` : '/administration/inventory')
   } catch (err) {
     deleteError.value =
       err instanceof ApiError && err.kind === 'conflict'
@@ -173,7 +173,7 @@ async function confirmDeleteRoom() {
       title="Room not found"
       description="This room may have been removed, or the link may be out of date."
     >
-      <BaseButton variant="secondary" @click="router.push('/inventory')">Back to Inventory</BaseButton>
+      <BaseButton variant="secondary" @click="router.push('/administration/inventory')">Back to Inventory</BaseButton>
     </BaseErrorState>
   </div>
 
@@ -219,7 +219,7 @@ async function confirmDeleteRoom() {
         v-if="building"
         eyebrow="Building"
         :title="building.name"
-        :to="`/inventory/buildings/${building.id}`"
+        :to="`/administration/inventory/buildings/${building.id}`"
         action-label="View Building"
       />
       <p v-else class="no-relationship">No building on file for this room.</p>

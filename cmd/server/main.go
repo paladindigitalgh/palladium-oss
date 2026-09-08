@@ -479,13 +479,16 @@ func run() error {
 	// Plugin: it is triggered from the Device Detail page (a DeviceID in
 	// hand, nothing else), fully removes the ONU's base authorization,
 	// and — once that succeeds — marks the active AccessAttachment and
-	// ServiceEquipment for the device removed. It reuses kontronDialer,
-	// serviceEquipmentRepo/serviceEquipmentSvc, accessTopologyResolver,
-	// oltRepo, oltModelRepo, and accessAttachmentRepo/accessAttachmentSvc
-	// — all already built above for their own callers.
+	// ServiceEquipment for the device removed, and the Device itself
+	// Retired (see markDeviceRetired's own doc comment). It reuses
+	// kontronDialer, serviceEquipmentRepo/serviceEquipmentSvc,
+	// accessTopologyResolver, oltRepo, oltModelRepo,
+	// accessAttachmentRepo/accessAttachmentSvc, and deviceService — all
+	// already built above for their own callers.
 	provisioningKontronDeauthorizationSvc := provisioningkontronservice.NewDeauthorizationService(
 		kontronDialer, serviceEquipmentRepo, serviceEquipmentSvc, accessTopologyResolver,
-		oltRepo, oltModelRepo, accessAttachmentRepo, accessAttachmentSvc, clock.New())
+		oltRepo, oltModelRepo, accessAttachmentRepo, accessAttachmentSvc,
+		deviceService, deviceService, clock.New())
 	provisioningKontronDeauthorizationHandler := provisioningkontronhttpapi.NewDeauthorizationHandler(provisioningKontronDeauthorizationSvc)
 
 	// Customer removal ("Remove Customer",

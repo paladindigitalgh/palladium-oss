@@ -5,6 +5,7 @@ import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import BaseCard from '@/components/base/BaseCard.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
+import BaseCheckbox from '@/components/base/BaseCheckbox.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import CollectionToolbar from '@/components/data-display/CollectionToolbar.vue'
 import DataTable, { type DataTableColumn } from '@/components/data-display/DataTable.vue'
@@ -27,6 +28,7 @@ const router = useRouter()
 const {
   search,
   status,
+  includeArchived,
   customerType,
   sortKey,
   sortDirection,
@@ -111,6 +113,7 @@ function handleCustomerCreated(customer: Customer) {
     <CollectionToolbar v-model:search="search" search-placeholder="Search by name or customer ID">
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
       <BaseSelect v-model="customerType" label="Customer Type" :options="typeOptions" />
+      <BaseCheckbox v-if="status === 'all'" v-model="includeArchived" label="Include Archived" />
     </CollectionToolbar>
 
     <BaseCard :padded="false">

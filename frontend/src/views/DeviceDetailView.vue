@@ -142,16 +142,21 @@ async function confirmDeleteDevice() {
   }
 }
 
-// --- Delete ONU ---
+// --- Deauthorize ONU ---
+// Distinct from Delete Device below: this removes the ONU's
+// authorization from its real OLT and retires the Device record, but
+// never erases it -- Delete Device is the only one of the two that is a
+// permanent, irreversible removal from inventory (and is blocked
+// whenever the Device has any real Service history, by design).
 
 /**
  * Only offered for an Installed device: internal/provisioning/kontron/
- * service.DeauthorizationService resolves the rest (active
- * ServiceEquipment, OLT, interface) server-side, and errors cleanly if
- * that resolution fails -- Installed is just the cheap client-side gate
- * that avoids offering the action when it plainly cannot apply.
+ * service.DeauthorizationService resolves the rest (equipment, OLT,
+ * interface) server-side, and errors cleanly if that resolution fails --
+ * Installed is just the cheap client-side gate that avoids offering the
+ * action when it plainly cannot apply.
  */
-const canDeleteONU = computed(() => device.value?.status === 'Installed')
+const canDeauthorizeONU = computed(() => device.value?.status === 'Installed')
 
 const showDeauthorizeDialog = ref(false)
 const deauthorizePending = ref(false)
@@ -169,7 +174,7 @@ async function confirmDeauthorizeONU() {
     if (err instanceof ApiError && err.kind === 'invalid') {
       deauthorizeError.value = 'This device is not an ONU/ONT on a Kontron OLT.'
     } else if (err instanceof ApiError && err.kind === 'not_found') {
-      deauthorizeError.value = 'This device has no active service assignment to deauthorize.'
+      deauthorizeError.value = 'This device has never been assigned to a Service, so there is nothing to deauthorize.'
     } else {
       deauthorizeError.value = err instanceof ApiError ? err.message : 'The ONU could not be deauthorized.'
     }
@@ -204,8 +209,8 @@ async function confirmDeauthorizeONU() {
         <WorkspaceActions>
           <template #secondary>
             <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit Device</BaseButton>
-            <BaseButton v-if="canDeleteONU" variant="destructive" size="sm" @click="showDeauthorizeDialog = true">
-              Delete ONU
+            <BaseButton v-if="canDeauthorizeONU" variant="destructive" size="sm" @click="showDeauthorizeDialog = true">
+              Deauthorize ONU
             </BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete Device</BaseButton>
           </template>
@@ -218,7 +223,7 @@ async function confirmDeauthorizeONU() {
     <ConfirmationDialog
       :open="showDeleteDialog"
       title="Delete Device"
-      :description="`Permanently delete ${device.name}? This cannot be undone.`"
+      :description="`Permanently erase ${device.name} from inventory? This cannot be undone, and is blocked if it has ever been part of a Service — deauthorize it instead so its history is preserved.`"
       confirm-label="Delete Device"
       destructive
       :pending="deletePending"
@@ -229,9 +234,9 @@ async function confirmDeauthorizeONU() {
 
     <ConfirmationDialog
       :open="showDeauthorizeDialog"
-      title="Delete ONU"
-      :description="`Remove ${device.name} (Serial ${device.serialNumber}) from its OLT and unassign it from its current service? This cannot be undone.`"
-      confirm-label="Delete ONU"
+      title="Deauthorize ONU"
+      :description="`Remove ${device.name} (Serial ${device.serialNumber}) from its OLT and unassign it from its current service, then mark the Device Retired. The inventory record stays -- this does not delete it. This cannot be undone.`"
+      confirm-label="Deauthorize ONU"
       destructive
       :pending="deauthorizePending"
       :error="deauthorizeError"
@@ -247,7 +252,7 @@ async function confirmDeauthorizeONU() {
         class="device-rack-card"
         eyebrow="Rack"
         :title="rack.name"
-        :to="`/inventory/racks/${rack.id}`"
+        :to="`/administration/inventory/racks/${rack.id}`"
         action-label="View Rack"
       />
     </SectionCard>
