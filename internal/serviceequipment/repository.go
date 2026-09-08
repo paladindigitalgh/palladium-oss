@@ -36,6 +36,16 @@ import (
 // router, a WiFi access point, ...) where a Device can only ever have
 // one active assignment.
 //
+// GetLatestByDeviceID exists for callers that need to know where a
+// Device's equipment record last was, regardless of whether it is still
+// active — e.g. tearing down an ONU's authorization on its OLT after a
+// customer removal has already marked the assignment removed for
+// billing purposes, but the physical device has not yet been pulled off
+// the OLT. It returns the most recently created record for deviceID
+// (ordered by created_at DESC), active or not, and an
+// apperror.KindNotFound error only when the Device has never had a
+// ServiceEquipment record at all.
+//
 // Nothing in this package implements ServiceEquipmentRepository — no SQL,
 // no migrations — so the domain has zero dependency on any storage
 // technology. A concrete implementation (internal/serviceequipment/postgres)
@@ -47,5 +57,6 @@ type ServiceEquipmentRepository interface {
 	Update(ctx context.Context, equipment ServiceEquipment) (ServiceEquipment, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (ServiceEquipment, error)
+	GetLatestByDeviceID(ctx context.Context, deviceID uuid.UUID) (ServiceEquipment, error)
 	ListActiveByServiceID(ctx context.Context, serviceID uuid.UUID) ([]ServiceEquipment, error)
 }

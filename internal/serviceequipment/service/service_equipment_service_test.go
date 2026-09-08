@@ -88,6 +88,21 @@ func (f *fakeServiceEquipmentRepository) GetActiveByDeviceID(_ context.Context, 
 	return serviceequipment.ServiceEquipment{}, apperror.NotFound("no active service equipment assignment for device")
 }
 
+func (f *fakeServiceEquipmentRepository) GetLatestByDeviceID(_ context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error) {
+	var latest serviceequipment.ServiceEquipment
+	found := false
+	for _, e := range f.byID {
+		if e.DeviceID == deviceID && (!found || e.CreatedAt.After(latest.CreatedAt)) {
+			latest = e
+			found = true
+		}
+	}
+	if !found {
+		return serviceequipment.ServiceEquipment{}, apperror.NotFound("no service equipment assignment for device")
+	}
+	return latest, nil
+}
+
 func (f *fakeServiceEquipmentRepository) ListActiveByServiceID(_ context.Context, serviceID uuid.UUID) ([]serviceequipment.ServiceEquipment, error) {
 	var equipment []serviceequipment.ServiceEquipment
 	for _, e := range f.byID {

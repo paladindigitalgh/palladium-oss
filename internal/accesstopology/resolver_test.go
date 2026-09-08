@@ -33,6 +33,14 @@ func (f *fakeAttachmentGetter) GetActiveByServiceEquipmentID(_ context.Context, 
 	return f.attachment, nil
 }
 
+func (f *fakeAttachmentGetter) GetLatestByServiceEquipmentID(_ context.Context, serviceEquipmentID uuid.UUID) (accessattachment.AccessAttachment, error) {
+	f.gotID = serviceEquipmentID
+	if f.err != nil {
+		return accessattachment.AccessAttachment{}, f.err
+	}
+	return f.attachment, nil
+}
+
 type fakeInterfaceGetter struct {
 	iface  accessinterface.AccessInterface
 	err    error

@@ -38,6 +38,9 @@ func (stubAccessAttachmentRepository) Delete(context.Context, uuid.UUID) error {
 func (stubAccessAttachmentRepository) GetActiveByServiceEquipmentID(context.Context, uuid.UUID) (accessattachment.AccessAttachment, error) {
 	return accessattachment.AccessAttachment{}, apperror.NotFound("no active attachment")
 }
+func (stubAccessAttachmentRepository) GetLatestByServiceEquipmentID(context.Context, uuid.UUID) (accessattachment.AccessAttachment, error) {
+	return accessattachment.AccessAttachment{}, apperror.NotFound("no attachment")
+}
 
 var _ accessattachment.AccessAttachmentRepository = (*stubAccessAttachmentRepository)(nil)
 

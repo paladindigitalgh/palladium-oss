@@ -27,6 +27,13 @@ import (
 // serviceEquipmentID — that is the expected, common case (equipment with
 // no current attachment), not an exceptional one.
 //
+// GetLatestByServiceEquipmentID mirrors
+// serviceequipment.ServiceEquipmentRepository.GetLatestByDeviceID: it
+// returns the most recently created attachment for serviceEquipmentID,
+// active or not, for callers that need to know where equipment last was
+// wired even after its attachment has already been marked removed (see
+// that method's own doc comment for why).
+//
 // Nothing in this package implements AccessAttachmentRepository — no
 // SQL, no migrations — so the domain has zero dependency on any storage
 // technology. A concrete implementation
@@ -38,4 +45,5 @@ type AccessAttachmentRepository interface {
 	Update(ctx context.Context, attachment AccessAttachment) (AccessAttachment, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetActiveByServiceEquipmentID(ctx context.Context, serviceEquipmentID uuid.UUID) (AccessAttachment, error)
+	GetLatestByServiceEquipmentID(ctx context.Context, serviceEquipmentID uuid.UUID) (AccessAttachment, error)
 }

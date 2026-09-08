@@ -61,6 +61,7 @@ type Location struct {
 // from not also having to stub the rest of each repository's shape.
 type attachmentGetter interface {
 	GetActiveByServiceEquipmentID(ctx context.Context, serviceEquipmentID uuid.UUID) (accessattachment.AccessAttachment, error)
+	GetLatestByServiceEquipmentID(ctx context.Context, serviceEquipmentID uuid.UUID) (accessattachment.AccessAttachment, error)
 }
 
 type interfaceGetter interface {
@@ -108,7 +109,27 @@ func (r *Resolver) Locate(ctx context.Context, serviceEquipmentID uuid.UUID) (Lo
 	if err != nil {
 		return Location{}, err
 	}
+	return r.locateFromAttachment(ctx, attachment)
+}
 
+// LocateLatest resolves the Location of the equipment identified by
+// serviceEquipmentID the same way Locate does, but from its most
+// recently created AccessAttachment rather than requiring one still
+// active. It exists for teardown actions like ONU deauthorization: a
+// caller tearing down a real OLT-side authorization needs to know where
+// the equipment physically was even after Palladium's own records (e.g.
+// following a customer removal) have already marked that attachment
+// removed — the OLT itself does not forget just because Palladium's
+// billing-facing state moved on.
+func (r *Resolver) LocateLatest(ctx context.Context, serviceEquipmentID uuid.UUID) (Location, error) {
+	attachment, err := r.attachments.GetLatestByServiceEquipmentID(ctx, serviceEquipmentID)
+	if err != nil {
+		return Location{}, err
+	}
+	return r.locateFromAttachment(ctx, attachment)
+}
+
+func (r *Resolver) locateFromAttachment(ctx context.Context, attachment accessattachment.AccessAttachment) (Location, error) {
 	iface, err := r.interfaces.Get(ctx, attachment.AccessInterfaceID)
 	if err != nil {
 		return Location{}, err

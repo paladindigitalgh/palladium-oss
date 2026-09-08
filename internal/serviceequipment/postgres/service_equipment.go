@@ -207,6 +207,32 @@ func (r *ServiceEquipmentRepository) GetActiveByDeviceID(ctx context.Context, de
 	return e, nil
 }
 
+// GetLatestByDeviceID returns the most recently created ServiceEquipment
+// record for deviceID, active or not, or an apperror.KindNotFound error
+// if the Device has never had one. See this method's doc comment on
+// ServiceEquipmentRepository for why a caller would want this instead of
+// GetActiveByDeviceID.
+func (r *ServiceEquipmentRepository) GetLatestByDeviceID(ctx context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error) {
+	const query = `
+		SELECT id, service_id, device_id, role, description,
+		       installed_at, removed_at, created_at, updated_at
+		FROM service_equipment
+		WHERE device_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	e, err := scanServiceEquipment(r.db.QueryRow(ctx, query, deviceID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return serviceequipment.ServiceEquipment{}, apperror.NotFound(
+				fmt.Sprintf("no service equipment assignment for device %s", deviceID))
+		}
+		return serviceequipment.ServiceEquipment{}, translateError("get latest service equipment by device", err)
+	}
+	return e, nil
+}
+
 // ListActiveByServiceID returns every active (removed_at IS NULL)
 // ServiceEquipment record for serviceID, ordered by created_at — the
 // query internal/provisioning/engine uses to find every piece of

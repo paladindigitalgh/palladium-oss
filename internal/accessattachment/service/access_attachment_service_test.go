@@ -88,6 +88,21 @@ func (f *fakeAccessAttachmentRepository) GetActiveByServiceEquipmentID(_ context
 	return accessattachment.AccessAttachment{}, apperror.NotFound("no active access attachment for service equipment")
 }
 
+func (f *fakeAccessAttachmentRepository) GetLatestByServiceEquipmentID(_ context.Context, serviceEquipmentID uuid.UUID) (accessattachment.AccessAttachment, error) {
+	var latest accessattachment.AccessAttachment
+	found := false
+	for _, a := range f.byID {
+		if a.ServiceEquipmentID == serviceEquipmentID && (!found || a.CreatedAt.After(latest.CreatedAt)) {
+			latest = a
+			found = true
+		}
+	}
+	if !found {
+		return accessattachment.AccessAttachment{}, apperror.NotFound("no access attachment for service equipment")
+	}
+	return latest, nil
+}
+
 var _ accessattachment.AccessAttachmentRepository = (*fakeAccessAttachmentRepository)(nil)
 
 func validAccessAttachment() accessattachment.AccessAttachment {

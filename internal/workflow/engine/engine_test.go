@@ -81,6 +81,9 @@ func (f fakeEquipmentRepo) Delete(context.Context, uuid.UUID) error { return nil
 func (f fakeEquipmentRepo) GetActiveByDeviceID(context.Context, uuid.UUID) (serviceequipment.ServiceEquipment, error) {
 	return serviceequipment.ServiceEquipment{}, nil
 }
+func (f fakeEquipmentRepo) GetLatestByDeviceID(context.Context, uuid.UUID) (serviceequipment.ServiceEquipment, error) {
+	return serviceequipment.ServiceEquipment{}, nil
+}
 func (f fakeEquipmentRepo) ListActiveByServiceID(context.Context, uuid.UUID) ([]serviceequipment.ServiceEquipment, error) {
 	return f.active, f.err
 }

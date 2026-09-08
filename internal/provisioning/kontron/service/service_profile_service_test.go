@@ -31,6 +31,14 @@ func (f *fakeLocator) Locate(_ context.Context, serviceEquipmentID uuid.UUID) (a
 	return f.location, nil
 }
 
+// LocateLatest lets fakeLocator double as a latestLocator for
+// DeauthorizationService's tests (deauthorization_service_test.go) —
+// same scripted result, since the fake has no concept of "active vs.
+// latest" to distinguish.
+func (f *fakeLocator) LocateLatest(ctx context.Context, serviceEquipmentID uuid.UUID) (accesstopology.Location, error) {
+	return f.Locate(ctx, serviceEquipmentID)
+}
+
 // fakeOLTGetter scripts olt.OLTRepository.Get's result.
 type fakeOLTGetter struct {
 	olt olt.OLT

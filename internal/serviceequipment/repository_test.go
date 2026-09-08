@@ -37,6 +37,9 @@ func (stubServiceEquipmentRepository) Delete(context.Context, uuid.UUID) error {
 func (stubServiceEquipmentRepository) GetActiveByDeviceID(context.Context, uuid.UUID) (serviceequipment.ServiceEquipment, error) {
 	return serviceequipment.ServiceEquipment{}, apperror.NotFound("no active assignment")
 }
+func (stubServiceEquipmentRepository) GetLatestByDeviceID(context.Context, uuid.UUID) (serviceequipment.ServiceEquipment, error) {
+	return serviceequipment.ServiceEquipment{}, apperror.NotFound("no assignment")
+}
 func (stubServiceEquipmentRepository) ListActiveByServiceID(context.Context, uuid.UUID) ([]serviceequipment.ServiceEquipment, error) {
 	return nil, nil
 }

@@ -595,6 +595,51 @@ func TestAccessAttachmentRepositoryGetActiveByServiceEquipmentIDNotFoundWhenNone
 	assertNotFound(t, err)
 }
 
+// TestAccessAttachmentRepositoryGetLatestByServiceEquipmentIDReturnsRemovedAttachment
+// proves GetLatestByServiceEquipmentID (unlike
+// GetActiveByServiceEquipmentID) still finds an attachment after it has
+// been marked removed — the case a "Remove Customer" cascade leaves
+// behind, and that
+// internal/provisioning/kontron/service.DeauthorizationService now
+// depends on (via internal/accesstopology.Resolver.LocateLatest) to
+// still locate an ONU it needs to deauthorize for real.
+func TestAccessAttachmentRepositoryGetLatestByServiceEquipmentIDReturnsRemovedAttachment(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	iface := createTestAccessInterface(t, ctx, q)
+	eq := createTestServiceEquipment(t, ctx, q)
+	repo := postgres.NewAccessAttachmentRepository(q, clock.New(), id.New())
+
+	created, err := repo.Create(ctx, testAccessAttachment(iface.ID, eq.ID))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	removedAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	created.RemovedAt = &removedAt
+	if _, err := repo.Update(ctx, created); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+
+	latest, err := repo.GetLatestByServiceEquipmentID(ctx, eq.ID)
+	if err != nil {
+		t.Fatalf("GetLatestByServiceEquipmentID() = %v, want the removed attachment, not an error", err)
+	}
+	if latest.ID != created.ID {
+		t.Errorf("GetLatestByServiceEquipmentID() = %+v, want %+v", latest, created)
+	}
+}
+
+// TestAccessAttachmentRepositoryGetLatestByServiceEquipmentIDNotFoundWhenNeverAttached
+// proves GetLatestByServiceEquipmentID still reports not-found for
+// equipment that has never had any AccessAttachment record at all.
+func TestAccessAttachmentRepositoryGetLatestByServiceEquipmentIDNotFoundWhenNeverAttached(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	eq := createTestServiceEquipment(t, ctx, q)
+	repo := postgres.NewAccessAttachmentRepository(q, clock.New(), id.New())
+
+	_, err := repo.GetLatestByServiceEquipmentID(ctx, eq.ID)
+	assertNotFound(t, err)
+}
+
 // TestAccessInterfaceRepositoryDeleteBlockedByExistingAccessAttachment
 // lives here, not in internal/accessinterface/postgres, so that
 // package's existing test files stay untouched — the same reasoning

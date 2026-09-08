@@ -212,6 +212,32 @@ func (r *AccessAttachmentRepository) GetActiveByServiceEquipmentID(ctx context.C
 	return a, nil
 }
 
+// GetLatestByServiceEquipmentID returns the most recently created
+// AccessAttachment for serviceEquipmentID, active or not, or an
+// apperror.KindNotFound error if that ServiceEquipment has never had
+// one. Mirrors
+// serviceequipment.postgres.ServiceEquipmentRepository.GetLatestByDeviceID.
+func (r *AccessAttachmentRepository) GetLatestByServiceEquipmentID(ctx context.Context, serviceEquipmentID uuid.UUID) (accessattachment.AccessAttachment, error) {
+	const query = `
+		SELECT id, access_interface_id, service_equipment_id, installed_at,
+		       removed_at, removal_reason, created_at, updated_at
+		FROM access_attachments
+		WHERE service_equipment_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	a, err := scanAccessAttachment(r.db.QueryRow(ctx, query, serviceEquipmentID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return accessattachment.AccessAttachment{}, apperror.NotFound(
+				fmt.Sprintf("no access attachment for service equipment %s", serviceEquipmentID))
+		}
+		return accessattachment.AccessAttachment{}, translateError("get latest access attachment by service equipment", err)
+	}
+	return a, nil
+}
+
 func attachmentNotFound(id uuid.UUID) error {
 	return apperror.NotFound(fmt.Sprintf("access attachment %s not found", id))
 }

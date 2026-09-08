@@ -543,6 +543,49 @@ func TestServiceEquipmentRepositoryGetActiveByDeviceIDNotFoundWhenNoneActive(t *
 	assertNotFound(t, err)
 }
 
+// TestServiceEquipmentRepositoryGetLatestByDeviceIDReturnsRemovedAssignment
+// proves GetLatestByDeviceID (unlike GetActiveByDeviceID) still finds a
+// Device's assignment after it has been marked removed — the case a
+// "Remove Customer" cascade leaves behind, and that
+// internal/provisioning/kontron/service.DeauthorizationService now
+// depends on to still locate an ONU it needs to deauthorize for real.
+func TestServiceEquipmentRepositoryGetLatestByDeviceIDReturnsRemovedAssignment(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	s := createTestService(t, ctx, q)
+	d := createTestDevice(t, ctx, q)
+	repo := postgres.NewServiceEquipmentRepository(q, clock.New(), id.New())
+
+	created, err := repo.Create(ctx, testServiceEquipment(s.ID, d.ID))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	removedAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	created.RemovedAt = &removedAt
+	if _, err := repo.Update(ctx, created); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+
+	latest, err := repo.GetLatestByDeviceID(ctx, d.ID)
+	if err != nil {
+		t.Fatalf("GetLatestByDeviceID() = %v, want the removed assignment, not an error", err)
+	}
+	if latest.ID != created.ID {
+		t.Errorf("GetLatestByDeviceID() = %+v, want %+v", latest, created)
+	}
+}
+
+// TestServiceEquipmentRepositoryGetLatestByDeviceIDNotFoundWhenNeverAssigned
+// proves GetLatestByDeviceID still reports not-found for a Device that
+// has never had any ServiceEquipment record at all.
+func TestServiceEquipmentRepositoryGetLatestByDeviceIDNotFoundWhenNeverAssigned(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	d := createTestDevice(t, ctx, q)
+	repo := postgres.NewServiceEquipmentRepository(q, clock.New(), id.New())
+
+	_, err := repo.GetLatestByDeviceID(ctx, d.ID)
+	assertNotFound(t, err)
+}
+
 // TestServiceEquipmentRepositoryListActiveByServiceIDReturnsOnlyActiveAssignmentsForThatService
 // proves ListActiveByServiceID (added for internal/provisioning/engine —
 // see its doc comment on ServiceEquipmentRepository in

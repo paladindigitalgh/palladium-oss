@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/accessattachment"
+	"github.com/paladindigitalgh/palladium-oss/internal/accesstopology"
 	"github.com/paladindigitalgh/palladium-oss/internal/oltmodel"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
@@ -13,10 +14,20 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 )
 
-// serviceEquipmentGetter is the seam DeauthorizationService depends on
-// instead of the full serviceequipment.ServiceEquipmentRepository.
-type serviceEquipmentGetter interface {
-	GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error)
+// latestServiceEquipmentGetter is the seam DeauthorizationService
+// depends on instead of the full
+// serviceequipment.ServiceEquipmentRepository. It deliberately asks for
+// the device's *latest* ServiceEquipment record rather than its active
+// one (contrast internal/provisioning/kontron/service's other seams,
+// e.g. AuthorizeONU's, which need an active assignment): a "Remove
+// Customer" cascade (internal/customer/removal) already marks
+// ServiceEquipment removed to untie a Device from a Customer without
+// deleting the Device itself, but the real OLT does not forget the ONU
+// just because Palladium's billing-facing record moved on. Deauthorizing
+// it for real must still be possible after that point, so it resolves
+// from whatever equipment record exists most recently, active or not.
+type latestServiceEquipmentGetter interface {
+	GetLatestByDeviceID(ctx context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error)
 }
 
 // serviceEquipmentUpdater is the seam DeauthorizationService depends on
@@ -67,9 +78,9 @@ type accessAttachmentUpdater interface {
 // this error must reconcile the two records manually.
 type DeauthorizationService struct {
 	dial           dialer
-	equipment      serviceEquipmentGetter
+	equipment      latestServiceEquipmentGetter
 	equipmentSvc   serviceEquipmentUpdater
-	locate         locator
+	locate         latestLocator
 	olts           oltGetter
 	models         oltModelGetter
 	attachments    accessAttachmentGetter
@@ -77,12 +88,22 @@ type DeauthorizationService struct {
 	clock          clock.Clock
 }
 
+// latestLocator is the seam DeauthorizationService depends on instead of
+// the concrete *accesstopology.Resolver, mirroring locator
+// (service_profile_service.go) but calling LocateLatest instead of
+// Locate — see latestServiceEquipmentGetter's own doc comment for why
+// deauthorization must resolve location from records that may no longer
+// be active.
+type latestLocator interface {
+	LocateLatest(ctx context.Context, serviceEquipmentID uuid.UUID) (accesstopology.Location, error)
+}
+
 // NewDeauthorizationService builds a DeauthorizationService.
 func NewDeauthorizationService(
 	dial dialer,
-	equipment serviceEquipmentGetter,
+	equipment latestServiceEquipmentGetter,
 	equipmentSvc serviceEquipmentUpdater,
-	locate locator,
+	locate latestLocator,
 	olts oltGetter,
 	models oltModelGetter,
 	attachments accessAttachmentGetter,
@@ -96,11 +117,13 @@ func NewDeauthorizationService(
 	}
 }
 
-// DeauthorizeONU resolves deviceID's active ServiceEquipment and OLT
-// interface, confirms the OLT is Kontron-vendored, runs the
+// DeauthorizeONU resolves deviceID's latest ServiceEquipment and OLT
+// interface — active or already removed, per latestServiceEquipmentGetter's
+// doc comment — confirms the OLT is Kontron-vendored, runs the
 // deauthorization command, and — only once that succeeds — marks the
-// active AccessAttachment and ServiceEquipment removed. It returns the
-// interface deauthorized.
+// active AccessAttachment and ServiceEquipment removed (a no-op if a
+// prior cascade already removed them). It returns the interface
+// deauthorized.
 //
 // Unlike ServiceProfileService's run (which is called once per active
 // equipment item by internal/workflow/engine's loop, so a non-PON role
@@ -108,15 +131,15 @@ func NewDeauthorizationService(
 // Device a caller already identified by DeviceID: a role other than ONU
 // or ONT is a real error, not something to skip past quietly.
 func (s *DeauthorizationService) DeauthorizeONU(ctx context.Context, deviceID uuid.UUID) (string, error) {
-	equipment, err := s.equipment.GetActiveByDeviceID(ctx, deviceID)
+	equipment, err := s.equipment.GetLatestByDeviceID(ctx, deviceID)
 	if err != nil {
-		return "", classify("could not load active equipment for device", err)
+		return "", classify("could not load equipment for device", err)
 	}
 	if equipment.Role != serviceequipment.EquipmentRoleONU && equipment.Role != serviceequipment.EquipmentRoleONT {
 		return "", apperror.Invalid("device is not an ONU or ONT")
 	}
 
-	location, err := s.locate.Locate(ctx, equipment.ID)
+	location, err := s.locate.LocateLatest(ctx, equipment.ID)
 	if err != nil {
 		return "", classify("could not locate equipment on the access network", err)
 	}
@@ -171,6 +194,14 @@ func (s *DeauthorizationService) markRemoved(ctx context.Context, equipment serv
 		// to be marked removed.
 	default:
 		return classify("OLT was deauthorized, but the active access attachment could not be loaded", err)
+	}
+
+	if equipment.RemovedAt != nil {
+		// Already marked removed by an earlier cascade (e.g. Remove
+		// Customer un-tying this Device) — nothing left to persist here,
+		// and re-writing it would overwrite the original removal time for
+		// no reason.
+		return nil
 	}
 
 	equipment.RemovedAt = &now

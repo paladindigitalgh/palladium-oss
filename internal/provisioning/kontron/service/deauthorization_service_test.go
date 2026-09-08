@@ -17,7 +17,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 )
 
-// fakeServiceEquipmentStore scripts GetActiveByDeviceID and records
+// fakeServiceEquipmentStore scripts GetLatestByDeviceID and records
 // every Update call made to it.
 type fakeServiceEquipmentStore struct {
 	equipment   serviceequipment.ServiceEquipment
@@ -27,7 +27,7 @@ type fakeServiceEquipmentStore struct {
 	gotDeviceID uuid.UUID
 }
 
-func (f *fakeServiceEquipmentStore) GetActiveByDeviceID(_ context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error) {
+func (f *fakeServiceEquipmentStore) GetLatestByDeviceID(_ context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error) {
 	f.gotDeviceID = deviceID
 	if f.getErr != nil {
 		return serviceequipment.ServiceEquipment{}, f.getErr
@@ -69,9 +69,9 @@ func (f *fakeAccessAttachmentStore) Update(_ context.Context, a accessattachment
 
 func newTestDeauthorizationService(
 	dial dialer,
-	equipment serviceEquipmentGetter,
+	equipment latestServiceEquipmentGetter,
 	equipmentSvc serviceEquipmentUpdater,
-	locate locator,
+	locate latestLocator,
 	olts oltGetter,
 	models oltModelGetter,
 	attachments accessAttachmentGetter,
@@ -163,6 +163,44 @@ func TestDeauthorizationServiceSucceedsWithNoActiveAttachment(t *testing.T) {
 	}
 	if len(equipmentStore.updateCalls) != 1 {
 		t.Fatalf("equipment Update calls = %d, want 1", len(equipmentStore.updateCalls))
+	}
+}
+
+func TestDeauthorizationServiceSucceedsWhenEquipmentAlreadyRemovedByCustomerRemoval(t *testing.T) {
+	deviceID := uuid.New()
+	oltID := uuid.New()
+	equipmentID := uuid.New()
+	removedAt := fixedClockTime.Add(-time.Hour)
+
+	// Mirrors what internal/customer/removal.RemovalService leaves behind:
+	// ServiceEquipment (and its AccessAttachment) already marked removed
+	// to untie the Device from the Customer, while the ONU itself is
+	// still authorized on the real OLT and needs Delete ONU to finish the
+	// job.
+	equipment := serviceequipment.ServiceEquipment{
+		ID: equipmentID, DeviceID: deviceID, Role: serviceequipment.EquipmentRoleONU,
+		RemovedAt: &removedAt,
+	}
+	shell := &fakeShell{outputs: map[string]string{}}
+	dialer := &fakeDialer{shell: shell}
+	equipmentStore := &fakeServiceEquipmentStore{equipment: equipment}
+	locator := &fakeLocator{location: accesstopology.Location{OLTID: oltID, Interface: "xgs/1/2"}}
+	olts := &fakeOLTGetter{olt: olt.OLT{ID: oltID, OLTModelID: kontronOLTModel.ID}}
+	models := &fakeOLTModelGetter{model: kontronOLTModel}
+	attachmentStore := &fakeAccessAttachmentStore{getErr: apperror.NotFound("no active attachment")}
+	c := clock.NewFrozen(fixedClockTime)
+
+	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, c)
+
+	iface, err := s.DeauthorizeONU(context.Background(), deviceID)
+	if err != nil {
+		t.Fatalf("DeauthorizeONU() = %v, want success even though ServiceEquipment was already removed", err)
+	}
+	if iface != "xgs/1/2" {
+		t.Errorf("DeauthorizeONU() interface = %q, want %q", iface, "xgs/1/2")
+	}
+	if len(equipmentStore.updateCalls) != 0 {
+		t.Errorf("equipment Update calls = %d, want 0 (already removed, nothing new to persist)", len(equipmentStore.updateCalls))
 	}
 }
 
