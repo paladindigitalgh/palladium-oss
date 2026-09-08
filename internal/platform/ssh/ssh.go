@@ -59,6 +59,21 @@
 // is not supported, since nothing in this milestone's scope calls for
 // it.
 //
+// Password contributes two candidate methods, not one: keyboard-
+// interactive (tried first) and the plain "password" SSH method itself
+// (kept as a fallback for any server that does not offer keyboard-
+// interactive at all). This is not redundancy for its own sake — a real
+// Kontron/Iskratel C16 was confirmed to authenticate an identical
+// account successfully either way, but land it in a lower-privilege CLI
+// mode (enough for every read-only diagnostic, not enough for a
+// config-mode write command) when the plain "password" method is used,
+// reserving full privilege for keyboard-interactive. The keyboard-
+// interactive callback answers every question it is asked with
+// Password, mirroring what an interactive terminal client does by
+// default when a user types their password at a "Password:" style
+// prompt — which is exactly why devices with this quirk treat the two
+// differently in the first place.
+//
 // # Timeout behavior
 //
 // Config.Timeout serves two distinct purposes, both governed by the

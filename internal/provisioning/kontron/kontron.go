@@ -86,13 +86,34 @@ func NewClient(shell ssh.Shell) *Client {
 // run executes command and wraps any failure with the command itself, so
 // an error surfaced further up the stack says what was actually run —
 // the same reasoning internal/diagnostics/kontron.Client's own run gives
-// for doing the same.
+// for doing the same. The returned string has command's own echo
+// stripped from its front (see stripEcho) before every caller in this
+// file checks it against the empty string for the "did this step
+// succeed" convention each of them documents.
 func (c *Client) run(ctx context.Context, command string) (string, error) {
 	out, err := c.shell.RunCommand(ctx, command, diagnosticskontron.Pager)
 	if err != nil {
 		return "", fmt.Errorf("kontron: %s: %w", command, err)
 	}
-	return out, nil
+	return stripEcho(out, command), nil
+}
+
+// stripEcho removes command's own echo from the front of out, if
+// present. Confirmed firsthand against a real Kontron/Iskratel C16: raw
+// output for a genuinely successful command is not actually empty, it
+// is exactly the device's own echo of what was sent (e.g. "configure"
+// itself produced the raw string "configure\n\r") — internal/platform/
+// ssh.Shell's own doc comment already documents that a device may echo
+// typed input regardless of the requested PTY's ECHO mode, but this
+// package's own "empty output means success" convention did not
+// account for it until this was caught against real hardware, since
+// every existing test's fake Shell never modeled this echo happening
+// at all. A leading '\r' or '\n' before the echo — the same PTY prompt-
+// redraw artifact internal/platform/ssh's detectInitialPrompt already
+// tolerates — is stripped first, so the remaining, real device response
+// (if any) is what every caller's emptiness check actually sees.
+func stripEcho(out, command string) string {
+	return strings.TrimPrefix(strings.TrimLeft(out, "\r\n"), command)
 }
 
 // AuthorizeONU runs the seven-command sequence confirmed by the person
@@ -106,12 +127,29 @@ func (c *Client) run(ctx context.Context, command string) (string, error) {
 //	exit
 //	save config
 //
-// in order, over c's shell. Every one of these commands is Cisco-style
-// nested config mode (interface drops into a sub-mode where onu
-// serial-number and service-profile then run; the two exits climb back
-// out, first to config mode, then to the top-level prompt) and each
-// takes effect immediately — there is no separate commit step beyond
-// save config, which persists the change across a reboot.
+// in order, over c's shell. configure requires privileged EXEC
+// ("HOSTNAME#") — confirmed firsthand against a real Kontron/Iskratel
+// C16 that the account this connects as lands in unprivileged user EXEC
+// ("HOSTNAME>") when authenticated via the plain "password" SSH method,
+// where configure fails with "% Invalid input detected", but in
+// privileged EXEC when authenticated via keyboard-interactive instead —
+// a quirk of this device's own AAA, not anything about the account
+// itself (see internal/platform/ssh's client construction, which tries
+// keyboard-interactive first for exactly this reason). No "enable" step
+// exists to elevate privilege after connecting: it is not a valid
+// command at all on this device's CLI, confirmed firsthand.
+//
+// Every command from configure onward is Cisco-style nested config mode
+// (interface drops into a sub-mode where onu serial-number and
+// service-profile then run; the two exits climb back out, first to
+// config mode, then to the top-level prompt) and each takes effect
+// immediately — there is no separate commit step beyond save config,
+// which persists the change across a reboot. Entering and leaving these
+// modes changes the device's prompt text ("HOSTNAME#" <->
+// "HOSTNAME(Config)#"), which internal/platform/ssh/interactive.go's
+// promptPattern is what recognizes as "the prompt is back" — a literal-
+// string match cannot, since the mode suffix differs from whatever
+// prompt was first detected at connection time.
 //
 // managementServiceProfile is always applied, on every ONU, unlike a
 // subscriber's actual service profile (a separate, later step that

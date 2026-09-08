@@ -43,9 +43,9 @@ const (
 	// before treating whatever is at the end of the buffer as a
 	// candidate prompt line. This is only used once, immediately after a
 	// Shell is opened, before any command has been sent — every
-	// RunCommand afterward matches the exact, literal prompt text
-	// detected here, which needs no idle timing at all (see
-	// matchLiteralPrompt).
+	// RunCommand afterward matches against promptPattern, derived once
+	// from that detected line, which needs no idle timing at all (see
+	// matchPrompt).
 	promptIdleWindow = 300 * time.Millisecond
 
 	// promptDetectionTimeout bounds the entire initial prompt-detection
@@ -68,8 +68,30 @@ type shell struct {
 	sess    interactiveSession
 	stdin   io.WriteCloser
 	timeout time.Duration
-	prompt  string
-	closed  bool
+	// prompt is the exact, literal prompt line detected once at
+	// connection time (see detectInitialPrompt) — kept for diagnostics
+	// and tests. RunCommand itself never matches against this literal
+	// string directly; see promptPattern for why.
+	prompt string
+	// promptPattern is derived from prompt's hostname portion (see
+	// extractHostname) and is what RunCommand actually matches against.
+	// A literal-string match would break the instant any command changes
+	// the prompt's mode suffix — confirmed firsthand against a real
+	// Kontron/Iskratel C16, which changes its prompt at every config-mode
+	// transition: "test-olt#" -> "test-olt(Config)#" on "configure", then
+	// -> "test-olt(Interface xgs/1/2)#" on "interface xgs/1/2" — and
+	// RunCommand hung until timeout on each, waiting for a prompt shape
+	// that could never reappear. The mode suffix is not just non-
+	// whitespace text, either: "(Interface xgs/1/2)" itself contains a
+	// space, which is why this matches "the hostname, then anything up
+	// to the next # or > on that line" rather than restricting the
+	// suffix to \S* — a first attempt at this fix used \S* and still hung
+	// on exactly this prompt, since it could not span the space before
+	// "xgs/1/2". promptPattern instead recognizes any of these
+	// transitions as "the prompt is back," not just the exact shape
+	// first seen.
+	promptPattern *regexp.Regexp
+	closed        bool
 
 	// chunks and readErr are fed by the single background goroutine
 	// (see readLoop) that owns the only Read call ever made against
@@ -156,6 +178,7 @@ func newShellWithTiming(ctx context.Context, sess interactiveSession, timeout, i
 		return nil, err
 	}
 	sh.prompt = prompt
+	sh.promptPattern = regexp.MustCompile(regexp.QuoteMeta(extractHostname(prompt)) + `[^\r\n]*[#>]\s*$`)
 
 	return sh, nil
 }
@@ -251,20 +274,36 @@ func lastPromptLine(buf string) (string, bool) {
 	return "", false
 }
 
-// matchLiteralPrompt reports whether buf ends (allowing only trailing
-// whitespace after) with the exact, literal reappearance of prompt — no
-// idle timing needed, since the exact text to wait for is already known
-// once a Shell's prompt has been detected. On a match it returns
-// everything before that trailing prompt occurrence.
-func matchLiteralPrompt(buf, prompt string) (string, bool) {
-	idx := strings.LastIndex(buf, prompt)
-	if idx == -1 {
+// extractHostname returns promptLine's hostname portion — the part
+// before any parenthetical mode suffix (e.g. "(Config)", "(Config-if)")
+// and before its trailing '#' or '>' — after trimming any leading
+// whitespace or stray '\r' a device's own prompt redraw may prepend
+// (confirmed firsthand: a real Kontron/Iskratel C16 sent "\rHOSTNAME>"
+// as its very first detected prompt line). "HOSTNAME>", "HOSTNAME#", and
+// "HOSTNAME(Config)#" all yield "HOSTNAME" — see promptPattern's own
+// doc comment on why matching stays anchored to this portion alone
+// across every mode transition.
+func extractHostname(promptLine string) string {
+	trimmed := strings.TrimLeft(promptLine, "\r\n\t ")
+	if idx := strings.IndexByte(trimmed, '('); idx != -1 {
+		return trimmed[:idx]
+	}
+	return strings.TrimRight(trimmed, "#> \t")
+}
+
+// matchPrompt reports whether buf ends (allowing only trailing
+// whitespace after) with a reappearance of sh's prompt — matched via
+// promptPattern (hostname plus any mode suffix, ending in '#' or '>'),
+// not an exact literal string, so a command that changes the prompt's
+// mode suffix (see promptPattern's own doc comment) is still recognized
+// as "the prompt is back." On a match it returns everything before that
+// trailing prompt occurrence.
+func (sh *shell) matchPrompt(buf string) (string, bool) {
+	loc := sh.promptPattern.FindStringIndex(buf)
+	if loc == nil {
 		return "", false
 	}
-	if strings.Trim(buf[idx+len(prompt):], " \t\r\n") != "" {
-		return "", false
-	}
-	return buf[:idx], true
+	return buf[:loc[0]], true
 }
 
 // stripPagerTrigger looks for the first (in argument order) PagerPrompt
@@ -310,7 +349,7 @@ func (sh *shell) RunCommand(ctx context.Context, command string, pagers ...Pager
 			// short line that could otherwise be mistaken for the real
 			// one if it happened to end the same way, so any pager
 			// hit is handled — and removed from the buffer entirely —
-			// before matchLiteralPrompt ever looks at this chunk.
+			// before matchPrompt ever looks at this chunk.
 			if stripped, response, hit := stripPagerTrigger(buf.String(), pagers); hit {
 				buf.Reset()
 				buf.WriteString(stripped)
@@ -320,7 +359,7 @@ func (sh *shell) RunCommand(ctx context.Context, command string, pagers ...Pager
 				continue
 			}
 
-			if out, done := matchLiteralPrompt(buf.String(), sh.prompt); done {
+			if out, done := sh.matchPrompt(buf.String()); done {
 				return out, nil
 			}
 

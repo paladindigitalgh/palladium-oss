@@ -127,6 +127,49 @@ func TestAuthorizeONURejectsManagementServiceProfileWithNewline(t *testing.T) {
 	}
 }
 
+// TestApplyServiceProfileSucceedsWithRealisticDeviceEcho proves the
+// actual bug fix confirmed against a real Kontron/Iskratel C16: raw
+// output for a genuinely successful command is not empty, it is the
+// device's own echo of the command just sent (e.g. "configure" itself
+// produced literal output "configure\n\r") — this must still be
+// recognized as success, not mistaken for a device-reported failure the
+// way it was before stripEcho existed.
+func TestApplyServiceProfileSucceedsWithRealisticDeviceEcho(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{
+		"configure":                       "configure\n\r",
+		"interface xgs/6/3":               "interface xgs/6/3\n\r",
+		"service-profile residential-500": "service-profile residential-500\n\r",
+		"exit":                            "exit\n\r",
+		"save config":                     "save config\n\r",
+	}}
+	client := kontron.NewClient(shell)
+
+	if err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500"); err != nil {
+		t.Fatalf("ApplyServiceProfile() = %v, want success despite the device echoing every command back", err)
+	}
+}
+
+// TestApplyServiceProfileAbortsOnFirstNonEmptyOutputWithRealisticEcho
+// proves a genuine device-reported failure is still correctly detected
+// once its own echo prefix (present on every response, not just
+// failures) is stripped off first.
+func TestApplyServiceProfileAbortsOnFirstNonEmptyOutputWithRealisticEcho(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{
+		"configure":                       "configure\n\r",
+		"interface xgs/6/3":               "interface xgs/6/3\n\r",
+		"service-profile residential-500": "service-profile residential-500\r\nunknown service profile\r\n",
+	}}
+	client := kontron.NewClient(shell)
+
+	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500")
+	if err == nil {
+		t.Fatal("ApplyServiceProfile() error = nil, want an error")
+	}
+	if got := err.Error(); !strings.Contains(got, "unknown service profile") || strings.Contains(got, "service-profile residential-500\r\nunknown") {
+		t.Errorf("ApplyServiceProfile() error = %q, want the echoed command stripped and only the real device message left", got)
+	}
+}
+
 func TestApplyServiceProfileSucceedsAndRunsAllSixStepsInOrder(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{}}
 	client := kontron.NewClient(shell)

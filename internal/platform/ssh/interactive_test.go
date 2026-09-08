@@ -130,6 +130,123 @@ func TestInteractiveDetectsPromptAndRunsCommand(t *testing.T) {
 	<-device
 }
 
+// TestInteractiveRunCommandFollowsPromptModeChange proves the actual bug
+// fix: a command that changes the device's prompt (elevating from
+// "HOSTNAME>" to "HOSTNAME#" via "enable", the same transition confirmed
+// firsthand to hang indefinitely against a real Kontron/Iskratel C16
+// before this fix) is still recognized as "the prompt is back," not
+// mistaken for a hang. A literal-string match (the pre-fix behavior)
+// would wait forever here, since "PineCreek-OLT01>" never reappears once
+// the device elevates to "PineCreek-OLT01#".
+func TestInteractiveRunCommandFollowsPromptModeChange(t *testing.T) {
+	sess := newFakeInteractiveSession()
+
+	device := make(chan struct{})
+	go func() {
+		defer close(device)
+		_, _ = io.WriteString(sess.stdoutW, "PineCreek-OLT01>")
+
+		cmd := sess.readLine(t)
+		if cmd != "enable" {
+			t.Errorf("command = %q, want %q", cmd, "enable")
+		}
+		// Silent elevation: no password, no output, just a new prompt
+		// ending in "#" instead of ">".
+		_, _ = io.WriteString(sess.stdoutW, "enable\r\nPineCreek-OLT01#")
+	}()
+
+	sh, err := newShellWithTiming(context.Background(), sess, time.Second, testTiming, 2*time.Second)
+	if err != nil {
+		t.Fatalf("newShellWithTiming() = %v", err)
+	}
+	t.Cleanup(func() { _ = sh.Close() })
+
+	out, err := sh.RunCommand(context.Background(), "enable")
+	if err != nil {
+		t.Fatalf("RunCommand() = %v, want it to return once the elevated prompt appears, not hang", err)
+	}
+	if strings.Contains(out, "PineCreek-OLT01#") {
+		t.Errorf("RunCommand() = %q, want the trailing prompt excluded", out)
+	}
+
+	<-device
+}
+
+// TestInteractiveRunCommandFollowsConfigModePrompt proves the same fix
+// for entering a parenthetical config-mode prompt suffix
+// ("HOSTNAME#" -> "HOSTNAME(Config)#"), the transition "configure"
+// itself triggers.
+func TestInteractiveRunCommandFollowsConfigModePrompt(t *testing.T) {
+	sess := newFakeInteractiveSession()
+
+	device := make(chan struct{})
+	go func() {
+		defer close(device)
+		_, _ = io.WriteString(sess.stdoutW, "PineCreek-OLT01#")
+
+		cmd := sess.readLine(t)
+		if cmd != "configure" {
+			t.Errorf("command = %q, want %q", cmd, "configure")
+		}
+		_, _ = io.WriteString(sess.stdoutW, "configure\r\nPineCreek-OLT01(Config)#")
+	}()
+
+	sh, err := newShellWithTiming(context.Background(), sess, time.Second, testTiming, 2*time.Second)
+	if err != nil {
+		t.Fatalf("newShellWithTiming() = %v", err)
+	}
+	t.Cleanup(func() { _ = sh.Close() })
+
+	out, err := sh.RunCommand(context.Background(), "configure")
+	if err != nil {
+		t.Fatalf("RunCommand() = %v, want it to return once the config-mode prompt appears, not hang", err)
+	}
+	if strings.Contains(out, "PineCreek-OLT01(Config)#") {
+		t.Errorf("RunCommand() = %q, want the trailing prompt excluded", out)
+	}
+
+	<-device
+}
+
+// TestInteractiveRunCommandFollowsPromptWithSpaceInModeSuffix proves the
+// fix for the actual real-hardware failure: a real Kontron/Iskratel C16
+// changes its prompt to "test-olt(Interface xgs/1/2)#" on
+// "interface xgs/1/2" — a mode suffix containing a space, not just
+// non-whitespace text. A first attempt at promptPattern used `\S*` for
+// the suffix and hung on exactly this prompt, unable to span the space
+// before "xgs/1/2".
+func TestInteractiveRunCommandFollowsPromptWithSpaceInModeSuffix(t *testing.T) {
+	sess := newFakeInteractiveSession()
+
+	device := make(chan struct{})
+	go func() {
+		defer close(device)
+		_, _ = io.WriteString(sess.stdoutW, "test-olt(Config)#")
+
+		cmd := sess.readLine(t)
+		if cmd != "interface xgs/1/2" {
+			t.Errorf("command = %q, want %q", cmd, "interface xgs/1/2")
+		}
+		_, _ = io.WriteString(sess.stdoutW, "interface xgs/1/2\r\ntest-olt(Interface xgs/1/2)#")
+	}()
+
+	sh, err := newShellWithTiming(context.Background(), sess, time.Second, testTiming, 2*time.Second)
+	if err != nil {
+		t.Fatalf("newShellWithTiming() = %v", err)
+	}
+	t.Cleanup(func() { _ = sh.Close() })
+
+	out, err := sh.RunCommand(context.Background(), "interface xgs/1/2")
+	if err != nil {
+		t.Fatalf("RunCommand() = %v, want it to return once the space-containing prompt appears, not hang", err)
+	}
+	if strings.Contains(out, "test-olt(Interface xgs/1/2)#") {
+		t.Errorf("RunCommand() = %q, want the trailing prompt excluded", out)
+	}
+
+	<-device
+}
+
 // TestInteractiveRunCommandReusesSameShellAcrossCalls proves a Shell is
 // one long-lived process, not a fresh one per RunCommand: two commands
 // in a row, each waiting for the same literal prompt.
@@ -353,5 +470,27 @@ func TestClientInteractiveWrapsNewInteractiveSessionFailure(t *testing.T) {
 	_, err := c.Interactive(context.Background())
 	if !errors.Is(err, sessionErr) {
 		t.Fatalf("Interactive() error = %v, want it to wrap %v", err, sessionErr)
+	}
+}
+
+// TestExtractHostname covers the exact prompt shapes confirmed firsthand
+// against a real Kontron/Iskratel C16: a leading '\r' its own prompt
+// redraw prepends, plain user/privileged EXEC prompts, and a
+// parenthetical config-mode suffix.
+func TestExtractHostname(t *testing.T) {
+	cases := []struct {
+		promptLine string
+		want       string
+	}{
+		{"\rtest-olt>", "test-olt"},
+		{"test-olt#", "test-olt"},
+		{"test-olt(Config)#", "test-olt"},
+		{"test-olt(Config-if)#", "test-olt"},
+		{"PineCreek-OLT01#", "PineCreek-OLT01"},
+	}
+	for _, tc := range cases {
+		if got := extractHostname(tc.promptLine); got != tc.want {
+			t.Errorf("extractHostname(%q) = %q, want %q", tc.promptLine, got, tc.want)
+		}
 	}
 }

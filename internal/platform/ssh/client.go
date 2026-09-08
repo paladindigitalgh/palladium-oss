@@ -108,7 +108,32 @@ func newClient(cfg Config, dial dialFunc) (*client, error) {
 
 	var authMethods []gossh.AuthMethod
 	if cfg.Password != "" {
-		authMethods = append(authMethods, gossh.Password(cfg.Password))
+		// KeyboardInteractive is tried first, not Password alone: a real
+		// Kontron/Iskratel C16 was confirmed to authenticate identically
+		// either way, but grants a lower privilege level (its CLI's user
+		// EXEC, not privileged EXEC — enough to run every read-only
+		// diagnostic command, but not a config-mode write command like
+		// AuthorizeONU's) for the plain "password" SSH auth method,
+		// reserving full privilege for keyboard-interactive — a known
+		// quirk of some devices' AAA backends. Answering every question
+		// with cfg.Password (there is normally exactly one, "Password:")
+		// mirrors what an interactive terminal client does by default,
+		// which is why this device treats it differently in the first
+		// place. Password is kept as a fallback for any server that does
+		// not offer keyboard-interactive at all — gossh tries each Auth
+		// entry in order and only moves on if the server itself rejects
+		// that auth type, so this adds a method rather than replacing
+		// one.
+		authMethods = append(authMethods,
+			gossh.KeyboardInteractive(func(_, _ string, questions []string, _ []bool) ([]string, error) {
+				answers := make([]string, len(questions))
+				for i := range questions {
+					answers[i] = cfg.Password
+				}
+				return answers, nil
+			}),
+			gossh.Password(cfg.Password),
+		)
 	}
 	if len(cfg.PrivateKey) > 0 {
 		signer, err := gossh.ParsePrivateKey(cfg.PrivateKey)

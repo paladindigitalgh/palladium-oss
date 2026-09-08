@@ -220,6 +220,11 @@ func TestNewClientHonorsConfiguredTimeout(t *testing.T) {
 // TestNewClientBuildsAuthMethodsFromPasswordAndPrivateKey proves both
 // Password and PrivateKey, when both are set, are offered as candidate
 // auth methods — see this package's doc comment, "Authentication."
+// Password contributes two entries, not one: KeyboardInteractive is
+// tried before Password itself (see newClient's own doc comment on why
+// — a real Kontron/Iskratel C16 was confirmed to grant a different,
+// lower privilege level for the plain "password" SSH auth method than
+// for keyboard-interactive, even for the identical account).
 func TestNewClientBuildsAuthMethodsFromPasswordAndPrivateKey(t *testing.T) {
 	conn := &fakeConnection{session: &fakeSession{}}
 	var gotAuthLen int
@@ -233,8 +238,8 @@ func TestNewClientBuildsAuthMethodsFromPasswordAndPrivateKey(t *testing.T) {
 	if _, err := newClient(cfg, dial); err != nil {
 		t.Fatalf("newClient() = %v", err)
 	}
-	if gotAuthLen != 2 {
-		t.Errorf("len(ClientConfig.Auth) = %d, want 2 (Password and PrivateKey both set)", gotAuthLen)
+	if gotAuthLen != 3 {
+		t.Errorf("len(ClientConfig.Auth) = %d, want 3 (KeyboardInteractive + Password, and PrivateKey)", gotAuthLen)
 	}
 }
 
