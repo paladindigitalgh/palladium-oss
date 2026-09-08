@@ -1,4 +1,4 @@
-import type { CustomerEquipmentLocation } from '@/types/onuDiagnostics'
+import type { BlacklistedONU, CustomerEquipmentLocation, UnreachableOLT } from '@/types/onuDiagnostics'
 import { apiFetch } from '@/services/api/httpClient'
 
 interface CustomerEquipmentLocationDto {
@@ -23,6 +23,50 @@ export async function listCustomerEquipmentLocations(customerId: string): Promis
     `/diagnostics/customers/${customerId}/equipment-locations`,
   )
   return locations.map(fromDto)
+}
+
+interface BlacklistedONUDto {
+  olt_id: string
+  olt_name: string
+  interface: string
+  serial_number: string
+  registration_id: string
+  cause: string
+}
+
+interface UnreachableOLTDto {
+  olt_id: string
+  olt_name: string
+  reason: string
+}
+
+interface ONUBlacklistDto {
+  onus: BlacklistedONUDto[]
+  unreachable_olts: UnreachableOLTDto[]
+}
+
+/**
+ * Scans every Kontron OLT for physically-detected-but-unauthorized ONUs
+ * (internal/diagnostics/kontron/service.KontronService.AggregatedBlacklist),
+ * for a picker UI to let an operator choose one to authorize -- see
+ * DiscoverONUDialog.vue, this function's one caller. A scan that could
+ * not reach every OLT still returns whatever it found: `unreachableOlts`
+ * says which OLTs were skipped and why, not whether to treat the whole
+ * result as failed.
+ */
+export async function getAggregatedBlacklist(): Promise<{ onus: BlacklistedONU[]; unreachableOlts: UnreachableOLT[] }> {
+  const dto = await apiFetch<ONUBlacklistDto>('/diagnostics/onu-blacklist', { method: 'POST' })
+  return {
+    onus: dto.onus.map((o) => ({
+      oltId: o.olt_id,
+      oltName: o.olt_name,
+      interface: o.interface,
+      serialNumber: o.serial_number,
+      registrationId: o.registration_id,
+      cause: o.cause,
+    })),
+    unreachableOlts: dto.unreachable_olts.map((u) => ({ oltId: u.olt_id, oltName: u.olt_name, reason: u.reason })),
+  }
 }
 
 interface CommandOutputDto {

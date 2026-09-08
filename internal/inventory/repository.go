@@ -56,6 +56,14 @@ type RackRepository interface {
 // DeviceRepository persists Devices.
 type DeviceRepository interface {
 	Get(ctx context.Context, id uuid.UUID) (Device, error)
+	// GetBySerialNumber returns the Device whose SerialNumber matches
+	// serialNumber exactly, or an apperror.KindNotFound error if none
+	// exists. serial_number has no unique constraint at the database
+	// layer, so this returns whichever row matches first if more than one
+	// somehow does -- a caller using this to avoid creating a duplicate
+	// (see internal/provisioning/kontron's blacklist-picker flow) only
+	// needs "does at least one already exist," not every match.
+	GetBySerialNumber(ctx context.Context, serialNumber string) (Device, error)
 	List(ctx context.Context) ([]Device, error)
 	Create(ctx context.Context, device Device) (Device, error)
 	Update(ctx context.Context, device Device) (Device, error)

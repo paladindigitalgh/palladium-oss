@@ -20,7 +20,7 @@ import type { Rack } from '@/types/rack'
  * serial number, asset tag, status, description, and (see below) rack.
  * Identity (id, createdAt/updatedAt) never was.
  */
-const props = defineProps<{ open: boolean; device?: Device | null }>()
+const props = defineProps<{ open: boolean; device?: Device | null; initialSerialNumber?: string }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', device: Device): void
@@ -66,7 +66,7 @@ function reset() {
   name.value = ''
   manufacturer.value = ''
   model.value = ''
-  serialNumber.value = ''
+  serialNumber.value = props.initialSerialNumber ?? ''
   assetTag.value = ''
   status.value = 'InStock'
   description.value = ''

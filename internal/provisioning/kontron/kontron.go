@@ -60,6 +60,12 @@ var ErrInvalidSerialNumber = errors.New("kontron: serial number value contains a
 // interpolates into a command line.
 var ErrInvalidManagementServiceProfile = errors.New("kontron: management service profile value contains a newline")
 
+// ErrInvalidProfileName is ErrInvalidInterface's counterpart for
+// ApplyServiceProfile's profileName argument — the same command-
+// injection shape, on the second and last argument that method
+// interpolates into a command line.
+var ErrInvalidProfileName = errors.New("kontron: profile name value contains a newline")
+
 // Client runs the Kontron/Iskratel C16 ONU-authorization command
 // sequence over an already-open interactive shell.
 //
@@ -145,6 +151,157 @@ func (c *Client) AuthorizeONU(ctx context.Context, iface, serialNumber, manageme
 		fmt.Sprintf("interface %s", iface),
 		fmt.Sprintf("onu serial-number %s", serialNumber),
 		fmt.Sprintf("service-profile %s", managementServiceProfile),
+		"exit",
+		"exit",
+		"save config",
+	}
+	for _, step := range steps {
+		out, err := c.run(ctx, step)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(out) != "" {
+			return fmt.Errorf("kontron: %s: %s", step, strings.TrimSpace(out))
+		}
+	}
+	return nil
+}
+
+// RemoveServiceProfile runs the six-command sequence confirmed by the
+// person operating this equipment for removing a subscriber's service
+// profile from an already-authorized ONU — the mirror image of
+// ApplyServiceProfile:
+//
+//	configure
+//	interface <iface>
+//	no service-profile <profileName>
+//	exit
+//	exit
+//	save config
+//
+// This is used for both Suspend and Disconnect: at the Kontron config
+// level they are the identical action (take the named profile back
+// off), the difference between them living entirely in
+// internal/workflow/engine's own mapping of Capability to the Service's
+// resulting lifecycle status, not in anything this package does
+// differently. The ONU's own authorization (see AuthorizeONU) and its
+// management service-profile are untouched — only the profile named by
+// profileName is removed.
+//
+// Success/failure detection follows ApplyServiceProfile's exact
+// convention: the first step whose output is non-empty aborts the
+// sequence and becomes the returned error.
+func (c *Client) RemoveServiceProfile(ctx context.Context, iface, profileName string) error {
+	if strings.ContainsAny(iface, "\n\r") {
+		return ErrInvalidInterface
+	}
+	if strings.ContainsAny(profileName, "\n\r") {
+		return ErrInvalidProfileName
+	}
+
+	steps := []string{
+		"configure",
+		fmt.Sprintf("interface %s", iface),
+		fmt.Sprintf("no service-profile %s", profileName),
+		"exit",
+		"exit",
+		"save config",
+	}
+	for _, step := range steps {
+		out, err := c.run(ctx, step)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(out) != "" {
+			return fmt.Errorf("kontron: %s: %s", step, strings.TrimSpace(out))
+		}
+	}
+	return nil
+}
+
+// ApplyServiceProfile runs the six-command sequence confirmed by the
+// person operating this equipment for applying a subscriber's own
+// service profile to an already-authorized ONU:
+//
+//	configure
+//	interface <iface>
+//	service-profile <profileName>
+//	exit
+//	exit
+//	save config
+//
+// in order, over c's shell. Unlike AuthorizeONU, this does not run "onu
+// serial-number" — the ONU on iface is assumed already authorized (see
+// AuthorizeONU), and this stacks a second, product-specific
+// service-profile on top of the management one AuthorizeONU already
+// applied, in the same interface context. profileName names a
+// ProvisioningProfile.ProfileName (see internal/provisioning) — the
+// vendor-side profile a specific commercial Product maps to, not a fixed
+// literal this package owns.
+//
+// Success/failure detection follows AuthorizeONU's exact convention: the
+// first step whose output is non-empty aborts the sequence and becomes
+// the returned error.
+func (c *Client) ApplyServiceProfile(ctx context.Context, iface, profileName string) error {
+	if strings.ContainsAny(iface, "\n\r") {
+		return ErrInvalidInterface
+	}
+	if strings.ContainsAny(profileName, "\n\r") {
+		return ErrInvalidProfileName
+	}
+
+	steps := []string{
+		"configure",
+		fmt.Sprintf("interface %s", iface),
+		fmt.Sprintf("service-profile %s", profileName),
+		"exit",
+		"exit",
+		"save config",
+	}
+	for _, step := range steps {
+		out, err := c.run(ctx, step)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(out) != "" {
+			return fmt.Errorf("kontron: %s: %s", step, strings.TrimSpace(out))
+		}
+	}
+	return nil
+}
+
+// DeauthorizeONU runs the six-command sequence confirmed by the person
+// operating this equipment for fully removing an ONU's authorization
+// from an interface — the mirror image of AuthorizeONU, not of
+// ApplyServiceProfile/RemoveServiceProfile: those two leave the ONU's
+// base authorization and management service-profile in place, changing
+// only the subscriber-specific profile on top of it, so that a
+// suspended or disconnected ONU stays reachable on the management
+// network. DeauthorizeONU removes that base authorization entirely —
+// for decommissioning, swapping, or otherwise fully pulling a device
+// out of service:
+//
+//	configure
+//	interface <iface>
+//	no onu serial-number
+//	exit
+//	exit
+//	save config
+//
+// Unlike AuthorizeONU, no serial number is supplied here: "no onu
+// serial-number" takes no argument, clearing whatever is currently
+// authorized on iface. Success/failure detection follows every other
+// Client method's exact convention: the first step whose output is
+// non-empty aborts the sequence and becomes the returned error.
+func (c *Client) DeauthorizeONU(ctx context.Context, iface string) error {
+	if strings.ContainsAny(iface, "\n\r") {
+		return ErrInvalidInterface
+	}
+
+	steps := []string{
+		"configure",
+		fmt.Sprintf("interface %s", iface),
+		"no onu serial-number",
 		"exit",
 		"exit",
 		"save config",

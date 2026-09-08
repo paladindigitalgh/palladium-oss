@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   listCustomerEquipmentLocations,
+  getAggregatedBlacklist,
   runONUSummary,
   runONUStatusSummary,
   runONURunningConfig,
@@ -46,6 +47,49 @@ describe('listCustomerEquipmentLocations', () => {
     const result = await listCustomerEquipmentLocations('customer1')
 
     expect(result).toEqual([])
+  })
+})
+
+describe('getAggregatedBlacklist', () => {
+  it('camelCases every onu and unreachable-OLT entry', async () => {
+    apiFetch.mockResolvedValue({
+      onus: [
+        {
+          olt_id: 'olt1',
+          olt_name: 'OLT 1',
+          interface: 'xgs/6',
+          serial_number: 'ISKT2308DD88',
+          registration_id: '',
+          cause: 'Serial Number not known',
+        },
+      ],
+      unreachable_olts: [{ olt_id: 'olt2', olt_name: 'OLT 2', reason: 'connection refused' }],
+    })
+
+    const result = await getAggregatedBlacklist()
+
+    expect(apiFetch).toHaveBeenCalledWith('/diagnostics/onu-blacklist', { method: 'POST' })
+    expect(result).toEqual({
+      onus: [
+        {
+          oltId: 'olt1',
+          oltName: 'OLT 1',
+          interface: 'xgs/6',
+          serialNumber: 'ISKT2308DD88',
+          registrationId: '',
+          cause: 'Serial Number not known',
+        },
+      ],
+      unreachableOlts: [{ oltId: 'olt2', oltName: 'OLT 2', reason: 'connection refused' }],
+    })
+  })
+
+  it('returns empty arrays, not errors, when nothing is blacklisted and every OLT is reachable', async () => {
+    apiFetch.mockResolvedValue({ onus: [], unreachable_olts: [] })
+
+    const result = await getAggregatedBlacklist()
+
+    expect(result).toEqual({ onus: [], unreachableOlts: [] })
   })
 })
 

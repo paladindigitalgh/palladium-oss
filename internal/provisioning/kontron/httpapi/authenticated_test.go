@@ -85,6 +85,26 @@ func authorizeONURequestBody() string {
 	return `{"port":"xgs/6","serial_number":"ISKT2308DD88"}`
 }
 
+// newDeauthorizationAuthenticatedTestRouter mirrors
+// newAuthenticatedTestRouter for DeauthorizationHandler, exactly as
+// internal/server/router.go wires
+// /api/v1/provisioning/devices/{deviceId}/... in production.
+func newDeauthorizationAuthenticatedTestRouter(svc *fakeDeauthorizationService, tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	handler := httpapi.NewDeauthorizationHandler(svc)
+	authzMiddleware := authz.NewMiddleware(stubUserRepository{role: role})
+
+	r := chi.NewRouter()
+	r.Route("/provisioning/devices/{deviceId}", func(r chi.Router) {
+		r.Use(auth.Middleware(tokens))
+
+		r.Group(func(r chi.Router) {
+			r.Use(authzMiddleware.RequireProvisioning())
+			r.Post("/deauthorize-onu", handler.DeauthorizeONU)
+		})
+	})
+	return r
+}
+
 func TestUnauthenticatedRequestRejectedWithoutReachingHandler(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
 	router := newAuthenticatedTestRouter(&fakeAuthorizationService{iface: "xgs/6/2"}, tokens, auth.RoleAdministrator)
@@ -144,6 +164,40 @@ func TestAdministratorCanAuthorizeONU(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/provisioning/olts/"+uuid.New().String()+"/authorize-onu",
 		strings.NewReader(authorizeONURequestBody()))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestViewerCannotDeauthorizeONU is "apply the standard RBAC matrix",
+// applied here: Viewer cannot run a live provisioning action.
+func TestViewerCannotDeauthorizeONU(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
+	router := newDeauthorizationAuthenticatedTestRouter(&fakeDeauthorizationService{iface: "xgs/6/2"}, tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/provisioning/devices/"+uuid.New().String()+"/deauthorize-onu", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestOperatorCanDeauthorizeONU is "apply the standard RBAC matrix",
+// applied here: Operator can run.
+func TestOperatorCanDeauthorizeONU(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
+	router := newDeauthorizationAuthenticatedTestRouter(&fakeDeauthorizationService{iface: "xgs/6/2"}, tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/provisioning/devices/"+uuid.New().String()+"/deauthorize-onu", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

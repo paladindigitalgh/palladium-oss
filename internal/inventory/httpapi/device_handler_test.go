@@ -44,6 +44,18 @@ func (f *fakeDeviceService) Get(_ context.Context, id uuid.UUID) (inventory.Devi
 	return d, nil
 }
 
+func (f *fakeDeviceService) GetBySerialNumber(_ context.Context, serialNumber string) (inventory.Device, error) {
+	if f.err != nil {
+		return inventory.Device{}, f.err
+	}
+	for _, d := range f.devices {
+		if d.SerialNumber == serialNumber {
+			return d, nil
+		}
+	}
+	return inventory.Device{}, apperror.NotFound("device not found")
+}
+
 func (f *fakeDeviceService) List(context.Context) ([]inventory.Device, error) {
 	if f.err != nil {
 		return nil, f.err
@@ -98,6 +110,7 @@ func newDeviceTestRouter(svc *fakeDeviceService) http.Handler {
 	r.Post("/devices", handler.Create)
 	r.Get("/devices", handler.List)
 	r.Get("/devices/{id}", handler.Get)
+	r.Get("/devices/by-serial-number/{serialNumber}", handler.GetBySerialNumber)
 	r.Put("/devices/{id}", handler.Update)
 	r.Delete("/devices/{id}", handler.Delete)
 	return r
@@ -202,6 +215,31 @@ func TestDeviceHandlerGetNotFound(t *testing.T) {
 	router := newDeviceTestRouter(newFakeDeviceService())
 
 	req := httptest.NewRequest(http.MethodGet, "/devices/"+uuid.New().String(), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestDeviceHandlerGetBySerialNumber(t *testing.T) {
+	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "ONT-Main-01"}, SerialNumber: "CXNK00112233", Status: inventory.DeviceStatusInStock}
+	router := newDeviceTestRouter(newFakeDeviceService(device))
+
+	req := httptest.NewRequest(http.MethodGet, "/devices/by-serial-number/CXNK00112233", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+func TestDeviceHandlerGetBySerialNumberNotFound(t *testing.T) {
+	router := newDeviceTestRouter(newFakeDeviceService())
+
+	req := httptest.NewRequest(http.MethodGet, "/devices/by-serial-number/does-not-exist", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

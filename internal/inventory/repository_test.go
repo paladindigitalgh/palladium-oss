@@ -77,6 +77,9 @@ type stubDeviceRepository struct{}
 func (stubDeviceRepository) Get(context.Context, uuid.UUID) (inventory.Device, error) {
 	return inventory.Device{}, nil
 }
+func (stubDeviceRepository) GetBySerialNumber(context.Context, string) (inventory.Device, error) {
+	return inventory.Device{}, nil
+}
 func (stubDeviceRepository) List(context.Context) ([]inventory.Device, error) { return nil, nil }
 func (stubDeviceRepository) Create(_ context.Context, d inventory.Device) (inventory.Device, error) {
 	return d, nil

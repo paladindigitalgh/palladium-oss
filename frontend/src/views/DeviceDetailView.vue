@@ -16,6 +16,7 @@ import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
 import DeviceFormDialog from '@/components/dialogs/DeviceFormDialog.vue'
 import { getDeviceById, deleteDevice } from '@/services/devices/deviceRepository'
 import { listServiceEquipmentByDeviceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
+import { deauthorizeONU } from '@/services/provisioning/provisioningRepository'
 import { getServiceById } from '@/services/services/serviceRepository'
 import { getRackById } from '@/services/racks/rackRepository'
 import { listEvents } from '@/services/events/eventRepository'
@@ -140,6 +141,42 @@ async function confirmDeleteDevice() {
     deletePending.value = false
   }
 }
+
+// --- Delete ONU ---
+
+/**
+ * Only offered for an Installed device: internal/provisioning/kontron/
+ * service.DeauthorizationService resolves the rest (active
+ * ServiceEquipment, OLT, interface) server-side, and errors cleanly if
+ * that resolution fails -- Installed is just the cheap client-side gate
+ * that avoids offering the action when it plainly cannot apply.
+ */
+const canDeleteONU = computed(() => device.value?.status === 'Installed')
+
+const showDeauthorizeDialog = ref(false)
+const deauthorizePending = ref(false)
+const deauthorizeError = ref<string | null>(null)
+
+async function confirmDeauthorizeONU() {
+  if (!device.value) return
+  deauthorizePending.value = true
+  deauthorizeError.value = null
+  try {
+    await deauthorizeONU(device.value.id)
+    showDeauthorizeDialog.value = false
+    await load(device.value.id)
+  } catch (err) {
+    if (err instanceof ApiError && err.kind === 'invalid') {
+      deauthorizeError.value = 'This device is not an ONU/ONT on a Kontron OLT.'
+    } else if (err instanceof ApiError && err.kind === 'not_found') {
+      deauthorizeError.value = 'This device has no active service assignment to deauthorize.'
+    } else {
+      deauthorizeError.value = err instanceof ApiError ? err.message : 'The ONU could not be deauthorized.'
+    }
+  } finally {
+    deauthorizePending.value = false
+  }
+}
 </script>
 
 <template>
@@ -167,6 +204,9 @@ async function confirmDeleteDevice() {
         <WorkspaceActions>
           <template #secondary>
             <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit Device</BaseButton>
+            <BaseButton v-if="canDeleteONU" variant="destructive" size="sm" @click="showDeauthorizeDialog = true">
+              Delete ONU
+            </BaseButton>
             <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete Device</BaseButton>
           </template>
         </WorkspaceActions>
@@ -185,6 +225,18 @@ async function confirmDeleteDevice() {
       :error="deleteError"
       @confirm="confirmDeleteDevice"
       @cancel="showDeleteDialog = false"
+    />
+
+    <ConfirmationDialog
+      :open="showDeauthorizeDialog"
+      title="Delete ONU"
+      :description="`Remove ${device.name} (Serial ${device.serialNumber}) from its OLT and unassign it from its current service? This cannot be undone.`"
+      confirm-label="Delete ONU"
+      destructive
+      :pending="deauthorizePending"
+      :error="deauthorizeError"
+      @confirm="confirmDeauthorizeONU"
+      @cancel="showDeauthorizeDialog = false"
     />
 
     <SectionCard title="Summary" icon="devices">

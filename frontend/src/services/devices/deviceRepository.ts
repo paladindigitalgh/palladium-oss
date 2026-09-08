@@ -105,6 +105,22 @@ export async function getDeviceById(id: string): Promise<Device | null> {
   }
 }
 
+/**
+ * Fetches the Device with this exact serial number, returning null (not
+ * throwing) when none exists -- the normal case for a newly-discovered
+ * ONU, not an error. Used by DiscoverONUDialog.vue to avoid creating a
+ * duplicate Device for a serial number already in inventory.
+ */
+export async function getDeviceBySerialNumber(serialNumber: string): Promise<Device | null> {
+  try {
+    const dto = await apiFetch<DeviceDto>(`/devices/by-serial-number/${encodeURIComponent(serialNumber)}`)
+    return fromDto(dto)
+  } catch (err) {
+    if (err instanceof ApiError && err.kind === 'not_found') return null
+    throw err
+  }
+}
+
 export interface CreateDeviceInput {
   name: string
   manufacturer: string

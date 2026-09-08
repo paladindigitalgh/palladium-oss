@@ -127,6 +127,213 @@ func TestAuthorizeONURejectsManagementServiceProfileWithNewline(t *testing.T) {
 	}
 }
 
+func TestApplyServiceProfileSucceedsAndRunsAllSixStepsInOrder(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	if err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500"); err != nil {
+		t.Fatalf("ApplyServiceProfile() = %v", err)
+	}
+
+	want := []string{
+		"configure",
+		"interface xgs/6/3",
+		"service-profile residential-500",
+		"exit",
+		"exit",
+		"save config",
+	}
+	if len(shell.calls) != len(want) {
+		t.Fatalf("calls = %v, want %v", shell.calls, want)
+	}
+	for i, c := range want {
+		if shell.calls[i] != c {
+			t.Errorf("calls[%d] = %q, want %q", i, shell.calls[i], c)
+		}
+	}
+}
+
+// TestApplyServiceProfileAbortsOnFirstNonEmptyOutput proves
+// ApplyServiceProfile follows AuthorizeONU's exact generic
+// failure-handling convention: any non-empty output aborts immediately,
+// with no further steps run.
+func TestApplyServiceProfileAbortsOnFirstNonEmptyOutput(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{
+		"service-profile residential-500": "unknown service profile",
+	}}
+	client := kontron.NewClient(shell)
+
+	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500")
+	if err == nil {
+		t.Fatal("ApplyServiceProfile() error = nil, want an error")
+	}
+	if got := err.Error(); got == "" || !strings.Contains(got, "unknown service profile") {
+		t.Errorf("ApplyServiceProfile() error = %q, want it to contain the device's raw message", got)
+	}
+
+	want := []string{"configure", "interface xgs/6/3", "service-profile residential-500"}
+	if len(shell.calls) != len(want) {
+		t.Fatalf("calls = %v, want exactly %v (save config must not run)", shell.calls, want)
+	}
+}
+
+func TestApplyServiceProfileRejectsInterfaceWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3\nrm -rf /", "residential-500")
+	if !errors.Is(err, kontron.ErrInvalidInterface) {
+		t.Errorf("ApplyServiceProfile() error = %v, want ErrInvalidInterface", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
+func TestApplyServiceProfileRejectsProfileNameWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500\nconfigure")
+	if !errors.Is(err, kontron.ErrInvalidProfileName) {
+		t.Errorf("ApplyServiceProfile() error = %v, want ErrInvalidProfileName", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
+func TestRemoveServiceProfileSucceedsAndRunsAllSixStepsInOrder(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	if err := client.RemoveServiceProfile(context.Background(), "xgs/6/3", "residential-500"); err != nil {
+		t.Fatalf("RemoveServiceProfile() = %v", err)
+	}
+
+	want := []string{
+		"configure",
+		"interface xgs/6/3",
+		"no service-profile residential-500",
+		"exit",
+		"exit",
+		"save config",
+	}
+	if len(shell.calls) != len(want) {
+		t.Fatalf("calls = %v, want %v", shell.calls, want)
+	}
+	for i, c := range want {
+		if shell.calls[i] != c {
+			t.Errorf("calls[%d] = %q, want %q", i, shell.calls[i], c)
+		}
+	}
+}
+
+func TestRemoveServiceProfileAbortsOnFirstNonEmptyOutput(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{
+		"no service-profile residential-500": "profile not assigned to interface",
+	}}
+	client := kontron.NewClient(shell)
+
+	err := client.RemoveServiceProfile(context.Background(), "xgs/6/3", "residential-500")
+	if err == nil {
+		t.Fatal("RemoveServiceProfile() error = nil, want an error")
+	}
+	if got := err.Error(); got == "" || !strings.Contains(got, "profile not assigned to interface") {
+		t.Errorf("RemoveServiceProfile() error = %q, want it to contain the device's raw message", got)
+	}
+
+	want := []string{"configure", "interface xgs/6/3", "no service-profile residential-500"}
+	if len(shell.calls) != len(want) {
+		t.Fatalf("calls = %v, want exactly %v (save config must not run)", shell.calls, want)
+	}
+}
+
+func TestRemoveServiceProfileRejectsInterfaceWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.RemoveServiceProfile(context.Background(), "xgs/6/3\nrm -rf /", "residential-500")
+	if !errors.Is(err, kontron.ErrInvalidInterface) {
+		t.Errorf("RemoveServiceProfile() error = %v, want ErrInvalidInterface", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
+func TestRemoveServiceProfileRejectsProfileNameWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.RemoveServiceProfile(context.Background(), "xgs/6/3", "residential-500\nconfigure")
+	if !errors.Is(err, kontron.ErrInvalidProfileName) {
+		t.Errorf("RemoveServiceProfile() error = %v, want ErrInvalidProfileName", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
+func TestDeauthorizeONUSucceedsAndRunsAllSixStepsInOrder(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	if err := client.DeauthorizeONU(context.Background(), "xgs/6/3"); err != nil {
+		t.Fatalf("DeauthorizeONU() = %v", err)
+	}
+
+	want := []string{
+		"configure",
+		"interface xgs/6/3",
+		"no onu serial-number",
+		"exit",
+		"exit",
+		"save config",
+	}
+	if len(shell.calls) != len(want) {
+		t.Fatalf("calls = %v, want %v", shell.calls, want)
+	}
+	for i, c := range want {
+		if shell.calls[i] != c {
+			t.Errorf("calls[%d] = %q, want %q", i, shell.calls[i], c)
+		}
+	}
+}
+
+func TestDeauthorizeONUAbortsOnFirstNonEmptyOutput(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{
+		"no onu serial-number": "no onu configured on this interface",
+	}}
+	client := kontron.NewClient(shell)
+
+	err := client.DeauthorizeONU(context.Background(), "xgs/6/3")
+	if err == nil {
+		t.Fatal("DeauthorizeONU() error = nil, want an error")
+	}
+	if got := err.Error(); got == "" || !strings.Contains(got, "no onu configured on this interface") {
+		t.Errorf("DeauthorizeONU() error = %q, want it to contain the device's raw message", got)
+	}
+
+	want := []string{"configure", "interface xgs/6/3", "no onu serial-number"}
+	if len(shell.calls) != len(want) {
+		t.Fatalf("calls = %v, want exactly %v (save config must not run)", shell.calls, want)
+	}
+}
+
+func TestDeauthorizeONURejectsInterfaceWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.DeauthorizeONU(context.Background(), "xgs/6/3\nrm -rf /")
+	if !errors.Is(err, kontron.ErrInvalidInterface) {
+		t.Errorf("DeauthorizeONU() error = %v, want ErrInvalidInterface", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
 func TestNextFreeIndexFillsGaps(t *testing.T) {
 	entries := []diagnosticskontron.ONUSummaryEntry{
 		{Interface: "xgs/6/1"},

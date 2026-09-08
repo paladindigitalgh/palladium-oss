@@ -35,7 +35,10 @@ func (req authorizeONURequest) validate() error {
 }
 
 // authorizeONUResponse is the JSON representation of AuthorizeONU's
-// result: the interface it assigned the new ONU.
+// result: the interface it assigned the new ONU. DeauthorizationHandler
+// reuses this same shape for DeauthorizeONU's result — both are exactly
+// "the interface this call acted on," so a second, identically-shaped
+// type would add nothing.
 type authorizeONUResponse struct {
 	Interface string `json:"interface"`
 }

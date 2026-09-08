@@ -85,6 +85,7 @@ import (
 	providerservice "github.com/paladindigitalgh/palladium-oss/internal/provider/service"
 	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	provisioningkontronhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/httpapi"
+	provisioningkontronplugin "github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/plugin"
 	provisioningkontronservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/service"
 	provisioningpostgres "github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
 	provisioningservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/service"
@@ -288,9 +289,17 @@ func run() error {
 	// once, at startup — the same "every Register call happens before
 	// the HTTP server starts" assumption
 	// internal/plugin.DefaultRegistry's own doc comment documents.
-	// MockPlugin is the only plugin registered today: there is no real
-	// OLT/router vendor plugin yet, so every workflow capability is
-	// fulfilled by the simulated vendor until one is built.
+	// MockPlugin is registered first, for every capability, so every
+	// workflow capability defaults to the simulated vendor. The real
+	// Kontron plugin (registered further below, once its dependencies —
+	// oltRepo, oltModelRepo, kontronDialer, accessTopologyResolver,
+	// provisioningProfileRepo — are built) is registered afterward and,
+	// per Registry.Register's documented last-write-wins-per-capability
+	// semantics, replaces MockPlugin for plugin.ProvisionService,
+	// plugin.ResumeService, plugin.SuspendService, and
+	// plugin.DisconnectService — the four capabilities it declares.
+	// Reprovision/Synchronize still run through MockPlugin until real
+	// Kontron support for those exists.
 	pluginRegistry := plugin.NewDefaultRegistry()
 	pluginRegistry.Register(pluginmock.NewMockPlugin(logger))
 
@@ -448,6 +457,36 @@ func run() error {
 	customerResolver := accesstopology.NewCustomerResolver(locationRepo, serviceRepo, serviceEquipmentRepo, accessTopologyResolver)
 	accessTopologyHandler := accesstopologyhttpapi.NewAccessTopologyHandler(customerResolver)
 
+	// Kontron's Plugin (internal/provisioning/kontron/plugin) is this
+	// codebase's first real Plugin: applying (Provision/Resume) or
+	// removing (Suspend/Disconnect) a Service's Product-specific Kontron
+	// service-profile on its ONU, wired through internal/workflow's
+	// Capability/Registry system rather than a standalone REST endpoint
+	// (unlike provisioningKontronHandler above). It reuses kontronDialer,
+	// oltRepo, oltModelRepo, accessTopologyResolver, and
+	// provisioningProfileRepo — all already built above for their own
+	// callers — rather than constructing anything new. See the
+	// pluginRegistry comment above for how this registration interacts
+	// with MockPlugin's.
+	provisioningKontronServiceProfileSvc := provisioningkontronservice.NewServiceProfileService(
+		kontronDialer, accessTopologyResolver, oltRepo, oltModelRepo, provisioningProfileRepo)
+	pluginRegistry.Register(provisioningkontronplugin.New(provisioningKontronServiceProfileSvc))
+
+	// Kontron ONU deauthorization ("Delete ONU", internal/provisioning/
+	// kontron/service.DeauthorizationService) is a standalone REST
+	// endpoint like provisioningKontronHandler above, not a workflow
+	// Plugin: it is triggered from the Device Detail page (a DeviceID in
+	// hand, nothing else), fully removes the ONU's base authorization,
+	// and — once that succeeds — marks the active AccessAttachment and
+	// ServiceEquipment for the device removed. It reuses kontronDialer,
+	// serviceEquipmentRepo/serviceEquipmentSvc, accessTopologyResolver,
+	// oltRepo, oltModelRepo, and accessAttachmentRepo/accessAttachmentSvc
+	// — all already built above for their own callers.
+	provisioningKontronDeauthorizationSvc := provisioningkontronservice.NewDeauthorizationService(
+		kontronDialer, serviceEquipmentRepo, serviceEquipmentSvc, accessTopologyResolver,
+		oltRepo, oltModelRepo, accessAttachmentRepo, accessAttachmentSvc, clock.New())
+	provisioningKontronDeauthorizationHandler := provisioningkontronhttpapi.NewDeauthorizationHandler(provisioningKontronDeauthorizationSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -489,27 +528,28 @@ func run() error {
 		ProviderHandler:            providerHandler,
 		ProvisioningProfileHandler: provisioningProfileHandler,
 		ProvisioningKontronHandler: provisioningKontronHandler,
-		ServiceProfileHandler:      serviceProfileHandler,
-		DiagnosticsHandler:         diagnosticsHandler,
-		KontronHandler:             kontronHandler,
-		AccessTopologyHandler:      accessTopologyHandler,
-		ServiceHandler:             serviceHandler,
-		ServiceEquipmentHandler:    serviceEquipmentHandler,
-		WorkflowHandler:            workflowHandler,
-		EventHandler:               eventHandler,
-		AccessNetworkHandler:       accessNetworkHandler,
-		OLTHandler:                 oltHandler,
-		OLTModelHandler:            oltModelHandler,
-		PONPortHandler:             ponPortHandler,
-		AccessInterfaceHandler:     accessInterfaceHandler,
-		AccessAttachmentHandler:    accessAttachmentHandler,
-		AuthenticationHandler:      authenticationHandler,
-		ConnectionProfileHandler:   connectionProfileHandler,
-		Tokens:                     tokenIssuer,
-		LoginHandler:               loginHandler,
-		UserHandler:                userHandler,
-		Authz:                      authzMiddleware,
-		AllowedOrigin:              cfg.HTTP.AllowedOrigin,
+		ProvisioningKontronDeauthorizationHandler: provisioningKontronDeauthorizationHandler,
+		ServiceProfileHandler:                     serviceProfileHandler,
+		DiagnosticsHandler:                        diagnosticsHandler,
+		KontronHandler:                            kontronHandler,
+		AccessTopologyHandler:                     accessTopologyHandler,
+		ServiceHandler:                            serviceHandler,
+		ServiceEquipmentHandler:                   serviceEquipmentHandler,
+		WorkflowHandler:                           workflowHandler,
+		EventHandler:                              eventHandler,
+		AccessNetworkHandler:                      accessNetworkHandler,
+		OLTHandler:                                oltHandler,
+		OLTModelHandler:                           oltModelHandler,
+		PONPortHandler:                            ponPortHandler,
+		AccessInterfaceHandler:                    accessInterfaceHandler,
+		AccessAttachmentHandler:                   accessAttachmentHandler,
+		AuthenticationHandler:                     authenticationHandler,
+		ConnectionProfileHandler:                  connectionProfileHandler,
+		Tokens:                                    tokenIssuer,
+		LoginHandler:                              loginHandler,
+		UserHandler:                               userHandler,
+		Authz:                                     authzMiddleware,
+		AllowedOrigin:                             cfg.HTTP.AllowedOrigin,
 	})
 
 	srv := httpserver.New(httpserver.Config{

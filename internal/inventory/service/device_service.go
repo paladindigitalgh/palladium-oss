@@ -26,6 +26,11 @@ func (s *DeviceService) Get(ctx context.Context, id uuid.UUID) (inventory.Device
 	return s.devices.Get(ctx, id)
 }
 
+// GetBySerialNumber retrieves a Device by its exact SerialNumber.
+func (s *DeviceService) GetBySerialNumber(ctx context.Context, serialNumber string) (inventory.Device, error) {
+	return s.devices.GetBySerialNumber(ctx, serialNumber)
+}
+
 // List returns every Device.
 func (s *DeviceService) List(ctx context.Context) ([]inventory.Device, error) {
 	return s.devices.List(ctx)

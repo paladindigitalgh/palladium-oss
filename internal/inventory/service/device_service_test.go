@@ -36,6 +36,15 @@ func (f *fakeDeviceRepository) Get(_ context.Context, id uuid.UUID) (inventory.D
 	return d, nil
 }
 
+func (f *fakeDeviceRepository) GetBySerialNumber(_ context.Context, serialNumber string) (inventory.Device, error) {
+	for _, d := range f.byID {
+		if d.SerialNumber == serialNumber {
+			return d, nil
+		}
+	}
+	return inventory.Device{}, apperror.NotFound("device not found")
+}
+
 func (f *fakeDeviceRepository) List(_ context.Context) ([]inventory.Device, error) {
 	devices := make([]inventory.Device, 0, len(f.byID))
 	for _, d := range f.byID {
@@ -157,6 +166,32 @@ func TestDeviceServiceGetPropagatesNotFound(t *testing.T) {
 	svc := service.NewDeviceService(repo)
 
 	_, err := svc.Get(context.Background(), uuid.New())
+
+	if !apperror.Is(err, apperror.KindNotFound) {
+		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindNotFound)
+	}
+}
+
+func TestDeviceServiceGetBySerialNumberDelegatesToRepository(t *testing.T) {
+	device := validDevice()
+	device.ID = uuid.New()
+	repo := newFakeDeviceRepository(device)
+	svc := service.NewDeviceService(repo)
+
+	got, err := svc.GetBySerialNumber(context.Background(), device.SerialNumber)
+	if err != nil {
+		t.Fatalf("GetBySerialNumber() = %v", err)
+	}
+	if got.ID != device.ID {
+		t.Errorf("GetBySerialNumber() ID = %v, want %v", got.ID, device.ID)
+	}
+}
+
+func TestDeviceServiceGetBySerialNumberPropagatesNotFound(t *testing.T) {
+	repo := newFakeDeviceRepository()
+	svc := service.NewDeviceService(repo)
+
+	_, err := svc.GetBySerialNumber(context.Background(), "does-not-exist")
 
 	if !apperror.Is(err, apperror.KindNotFound) {
 		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindNotFound)

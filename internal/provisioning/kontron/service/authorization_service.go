@@ -113,7 +113,8 @@ func (s *AuthorizationService) AuthorizeONU(ctx context.Context, oltID uuid.UUID
 func classify(message string, err error) error {
 	if errors.Is(err, provisioningkontron.ErrInvalidInterface) ||
 		errors.Is(err, provisioningkontron.ErrInvalidSerialNumber) ||
-		errors.Is(err, provisioningkontron.ErrInvalidManagementServiceProfile) {
+		errors.Is(err, provisioningkontron.ErrInvalidManagementServiceProfile) ||
+		errors.Is(err, provisioningkontron.ErrInvalidProfileName) {
 		// apperror.Wrap, not apperror.Invalid(err.Error()): the latter
 		// would build a fresh *apperror.Error with no wrapped cause,
 		// breaking errors.Is(result, provisioningkontron.ErrInvalid...)

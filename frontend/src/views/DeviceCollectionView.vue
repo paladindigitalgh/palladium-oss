@@ -10,6 +10,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import CollectionToolbar from '@/components/data-display/CollectionToolbar.vue'
 import DataTable, { type DataTableColumn } from '@/components/data-display/DataTable.vue'
 import DeviceFormDialog from '@/components/dialogs/DeviceFormDialog.vue'
+import DiscoverONUDialog from '@/components/dialogs/DiscoverONUDialog.vue'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import type { Device, DeviceStatus } from '@/types/device'
 import { useDeviceCollection, type DeviceSortKey } from '@/composables/useDeviceCollection'
@@ -68,10 +69,26 @@ function handleSort(key: string) {
 }
 
 const showNewDeviceDialog = ref(false)
+const prefillSerialNumber = ref<string | undefined>(undefined)
+
+function openNewDeviceDialog() {
+  prefillSerialNumber.value = undefined
+  showNewDeviceDialog.value = true
+}
 
 function handleDeviceCreated(device: Device) {
   showNewDeviceDialog.value = false
   router.push(`/devices/${device.id}`)
+}
+
+// --- Discover ONU ---
+
+const showDiscoverDialog = ref(false)
+
+function handleONUAuthorized({ serialNumber }: { serialNumber: string }) {
+  showDiscoverDialog.value = false
+  prefillSerialNumber.value = serialNumber
+  showNewDeviceDialog.value = true
 }
 </script>
 
@@ -81,13 +98,20 @@ function handleDeviceCreated(device: Device) {
       <template #actions>
         <WorkspaceActions>
           <template #primary>
-            <BaseButton variant="primary" size="sm" @click="showNewDeviceDialog = true">New Device</BaseButton>
+            <BaseButton variant="secondary" size="sm" @click="showDiscoverDialog = true">Discover ONU</BaseButton>
+            <BaseButton variant="primary" size="sm" @click="openNewDeviceDialog">New Device</BaseButton>
           </template>
         </WorkspaceActions>
       </template>
     </WorkspaceHeader>
 
-    <DeviceFormDialog :open="showNewDeviceDialog" @close="showNewDeviceDialog = false" @created="handleDeviceCreated" />
+    <DeviceFormDialog
+      :open="showNewDeviceDialog"
+      :initial-serial-number="prefillSerialNumber"
+      @close="showNewDeviceDialog = false"
+      @created="handleDeviceCreated"
+    />
+    <DiscoverONUDialog :open="showDiscoverDialog" @close="showDiscoverDialog = false" @authorized="handleONUAuthorized" />
 
     <CollectionToolbar v-model:search="search" search-placeholder="Search by name, serial, manufacturer, or model">
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />

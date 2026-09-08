@@ -155,6 +155,33 @@ func TestDeviceRepositoryGetNotFound(t *testing.T) {
 	assertNotFound(t, err)
 }
 
+func TestDeviceRepositoryGetBySerialNumber(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
+
+	created, err := repo.Create(ctx, validDevice("Device A"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	got, err := repo.GetBySerialNumber(ctx, created.SerialNumber)
+	if err != nil {
+		t.Fatalf("GetBySerialNumber() = %v", err)
+	}
+	if got.ID != created.ID {
+		t.Errorf("GetBySerialNumber() ID = %v, want %v", got.ID, created.ID)
+	}
+}
+
+func TestDeviceRepositoryGetBySerialNumberNotFound(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
+
+	_, err := repo.GetBySerialNumber(ctx, "does-not-exist")
+
+	assertNotFound(t, err)
+}
+
 func TestDeviceRepositoryList(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())

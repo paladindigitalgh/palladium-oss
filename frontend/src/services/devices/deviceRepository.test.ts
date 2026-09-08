@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
-import { listDevices, listDevicesByRackId, getDeviceById, createDevice, updateDevice, deleteDevice } from './deviceRepository'
+import {
+  listDevices,
+  listDevicesByRackId,
+  getDeviceById,
+  getDeviceBySerialNumber,
+  createDevice,
+  updateDevice,
+  deleteDevice,
+} from './deviceRepository'
 
 /** Mirrors customerRepository.test.ts's shape exactly -- see that file. */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
@@ -123,6 +131,31 @@ describe('getDeviceById', () => {
     apiFetch.mockRejectedValue(new ApiError('boom', 'internal', 500))
 
     await expect(getDeviceById('d1')).rejects.toThrow('boom')
+  })
+})
+
+describe('getDeviceBySerialNumber', () => {
+  it('returns the device when found', async () => {
+    apiFetch.mockResolvedValue(deviceDto({ id: 'd1', serial_number: 'SN123' }))
+
+    const result = await getDeviceBySerialNumber('SN123')
+
+    expect(apiFetch).toHaveBeenCalledWith('/devices/by-serial-number/SN123')
+    expect(result?.serialNumber).toBe('SN123')
+  })
+
+  it('returns null instead of throwing when no device has this serial number', async () => {
+    apiFetch.mockRejectedValue(new ApiError('not found', 'not_found', 404))
+
+    const result = await getDeviceBySerialNumber('missing')
+
+    expect(result).toBeNull()
+  })
+
+  it('rethrows any error that is not a not_found', async () => {
+    apiFetch.mockRejectedValue(new ApiError('boom', 'internal', 500))
+
+    await expect(getDeviceBySerialNumber('SN123')).rejects.toThrow('boom')
   })
 })
 

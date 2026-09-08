@@ -56,6 +56,30 @@ func (r *DeviceRepository) Get(ctx context.Context, deviceID uuid.UUID) (invento
 	return device, nil
 }
 
+// GetBySerialNumber retrieves a Device by its exact SerialNumber, or an
+// apperror.KindNotFound error if none exists. See
+// inventory.DeviceRepository.GetBySerialNumber's own doc comment on why
+// no ORDER BY/LIMIT tie-breaking is needed here despite the column
+// having no unique constraint.
+func (r *DeviceRepository) GetBySerialNumber(ctx context.Context, serialNumber string) (inventory.Device, error) {
+	const query = `
+		SELECT id, rack_id, name, description, manufacturer, model, serial_number,
+		       asset_tag, status, created_at, updated_at
+		FROM devices
+		WHERE serial_number = $1
+		LIMIT 1
+	`
+
+	device, err := scanDevice(r.db.QueryRow(ctx, query, serialNumber))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return inventory.Device{}, apperror.NotFound(fmt.Sprintf("device with serial number %q not found", serialNumber))
+		}
+		return inventory.Device{}, translateError("get device by serial number", err)
+	}
+	return device, nil
+}
+
 // List returns every Device, ordered by name for stable, human-useful
 // output (see the index added on that column in the migration).
 func (r *DeviceRepository) List(ctx context.Context) ([]inventory.Device, error) {

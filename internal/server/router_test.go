@@ -592,6 +592,9 @@ type stubDeviceService struct{}
 func (stubDeviceService) Get(context.Context, uuid.UUID) (inventory.Device, error) {
 	return inventory.Device{}, apperror.NotFound("device not found")
 }
+func (stubDeviceService) GetBySerialNumber(context.Context, string) (inventory.Device, error) {
+	return inventory.Device{}, apperror.NotFound("device not found")
+}
 func (stubDeviceService) List(context.Context) ([]inventory.Device, error) { return nil, nil }
 func (stubDeviceService) Create(_ context.Context, d inventory.Device) (inventory.Device, error) {
 	return d, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/httpx"
@@ -15,6 +16,7 @@ import (
 // (site_handler.go) for why this is unexported and structural.
 type deviceService interface {
 	Get(ctx context.Context, id uuid.UUID) (inventory.Device, error)
+	GetBySerialNumber(ctx context.Context, serialNumber string) (inventory.Device, error)
 	List(ctx context.Context) ([]inventory.Device, error)
 	Create(ctx context.Context, device inventory.Device) (inventory.Device, error)
 	Update(ctx context.Context, device inventory.Device) (inventory.Device, error)
@@ -26,6 +28,7 @@ type deviceService interface {
 //	POST   /api/v1/devices
 //	GET    /api/v1/devices
 //	GET    /api/v1/devices/{id}
+//	GET    /api/v1/devices/by-serial-number/{serialNumber}
 //	PUT    /api/v1/devices/{id}
 //	DELETE /api/v1/devices/{id}
 //
@@ -77,6 +80,23 @@ func (h *DeviceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	device, err := h.devices.Get(r.Context(), id)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, newDeviceResponse(device))
+}
+
+// GetBySerialNumber handles GET
+// /api/v1/devices/by-serial-number/{serialNumber}. A 404 here is the
+// normal "no Device with this serial number yet" case a caller (e.g. the
+// Discover ONU picker, checking before creating one) is expected to
+// handle, not an exceptional error.
+func (h *DeviceHandler) GetBySerialNumber(w http.ResponseWriter, r *http.Request) {
+	serialNumber := chi.URLParam(r, "serialNumber")
+
+	device, err := h.devices.GetBySerialNumber(r.Context(), serialNumber)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
