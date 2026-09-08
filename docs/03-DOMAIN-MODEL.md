@@ -537,6 +537,13 @@ Pending → Running → Succeeded \| Failed \| Cancelled. Unlike the three
 above, this one **is** code-enforced — see the transition map in
 `internal/workflow/status.go`.
 
+## User
+
+Active ⇄ Inactive — a flat, two-value, reversible status, not a
+progression: it answers "may this identity currently authenticate,"
+nothing more. Users are never deleted, so Inactive is this entity's only
+way to record "cannot log in, record kept." See `internal/auth/status.go`.
+
 ## Event
 
 Created → Immutable Archive
@@ -563,6 +570,8 @@ The following rules must always remain true.
 -   Workflow Instances are permanent historical records.
 -   Events are immutable.
 -   Vendor Plugins never contain business rules.
+-   Users are never deleted; deactivation (status) is the only way to
+    revoke a User's ability to log in.
 
 Violating these invariants risks corrupting the operational model.
 
@@ -737,6 +746,43 @@ vendor's profile name identifies exactly one Product.
 
 ------------------------------------------------------------------------
 
+# 25. User & Role
+
+A User is an authentication identity — someone who can log in to
+Palladium itself, distinct from every Customer and Contact this system
+tracks on behalf of the ISP. A Role is the single, fixed authorization
+level a User holds.
+
+## Responsibilities
+
+A User records:
+
+-   Email (the unique identity a caller logs in with)
+-   Password hash
+-   Role (Administrator, Operator, Viewer)
+-   Current status (Active / Inactive)
+
+Role and status answer two different questions, the same "two fields,
+two questions" pattern this document already draws elsewhere (see
+section 21's Product on Catalog vs. Provider): Role decides what an
+active User is allowed to do; status decides whether they may
+authenticate at all. Deactivating a User does not change their Role, and
+promoting a User does not reactivate them.
+
+Role is deliberately a single flat enum, not a hierarchy or a set of
+composable permissions — RBAC v1 (`internal/authz`) answers
+"can this Role do X" with one explicit, statically-typed predicate per
+capability, never a generic permission table. A User holds exactly one
+Role; there is no multi-role assignment.
+
+A User is never deleted — see the section 17 invariant this adds below.
+Nothing here couples a User to a Customer, a Provider, or any inventory
+record: authentication identity and the operational entities Palladium
+manages are separate concerns, the same separation CLAUDE.md's Core
+Philosophy already draws between Customers and Resources.
+
+------------------------------------------------------------------------
+
 # Closing Statement
 
 The Domain Model defines the language of Palladium.
@@ -756,6 +802,7 @@ understandable, extensible, and maintainable as it grows.
   1.0 Draft   2026-07-29   Initial draft
   1.1 Draft   2026-09-04   Corrected section 7 and the section 17 invariant: Service Equipment removal is soft by default, but a real hard delete now exists for disposable test/demo data (blocked by an active Access Attachment)
   1.2 Draft   2026-09-05   Added sections 20-24 (Product Catalog, Product, Service Profile, Provider, Provisioning Profile), documenting four real, already-implemented domains this document had never covered; corrected two stale "section 5" citations elsewhere that meant to point at Product
+  1.3 Draft   2026-09-07   Added section 25 (User & Role) and a User row in section 16 (Entity Lifecycles), documenting the already-implemented `internal/auth` domain; added the corresponding section 17 invariant (Users are never deleted)
 
 ------------------------------------------------------------------------
 
