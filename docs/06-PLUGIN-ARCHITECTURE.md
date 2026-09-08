@@ -36,12 +36,27 @@ today (see `internal/plugin/`) is a deliberately minimal slice of it:
     startup, before the HTTP server starts serving requests -- nothing
     is discovered or loaded at runtime, and there is no hot-swap or
     marketplace concept.
--   Only one plugin exists today: `internal/plugin/mock`, a simulated
-    vendor. No real Kontron, Nokia, Calix, Adtran, or MikroTik
-    integration has been built through the `Plugin` interface itself.
+-   Two plugins are registered today: `internal/plugin/mock`, a
+    simulated vendor, and `internal/provisioning/kontron/plugin`, a real
+    (non-simulated) Kontron/Iskratel C16 integration -- Palladium's
+    first real vendor Plugin. It declares
+    `ProvisionService`/`ResumeService`/`SuspendService`/`DisconnectService`
+    among `Capabilities()` and is registered after `mock` in
+    `cmd/server/main.go`, so per `Registry.Register`'s
+    last-write-wins-per-capability rule it now handles those four
+    capabilities for real over SSH; `mock` still handles
+    `ReprovisionService`/`SynchronizeService` (neither has real Kontron
+    support yet) and remains the only plugin for every other vendor. No
+    Nokia, Calix, Adtran, or MikroTik integration exists yet in any form.
 
-A real Kontron integration does exist, in two packages, built against a
-live Kontron/Iskratel C16, but neither goes through `internal/plugin`:
+Real Kontron config-change work goes well beyond what the Plugin wraps,
+though. `internal/provisioning/kontron/plugin.Plugin` is a thin adapter
+around `internal/provisioning/kontron/service.ServiceProfileService`
+(`Apply`/`Remove`, applying or removing a Product's Kontron
+service-profile on an ONU) -- everything else real and Kontron-specific
+still bypasses `internal/plugin` entirely, as standalone REST actions
+guarded by their own RBAC capabilities rather than Capability Model
+dispatch:
 
 -   `internal/diagnostics/kontron` is the read-only half: an
     interactive-shell SSH client (`internal/platform/ssh`, added for
@@ -51,29 +66,33 @@ live Kontron/Iskratel C16, but neither goes through `internal/plugin`:
     by `internal/diagnostics/kontron/service.KontronService`), exposed
     over its own HTTP routes (`internal/diagnostics/kontron/httpapi`)
     rather than through the Capability Model in section 7 below.
--   `internal/provisioning/kontron` is the write half, added once
-    config-change capability was no longer deferred: the same
-    interactive-shell approach, running a real config-change command
-    sequence (authorizing a physically-detected ONU: `configure` /
-    `interface` / `onu serial-number` / `service-profile` / `exit` /
-    `exit` / `save config`) over its own HTTP route, guarded by its own
-    RBAC capability (`authz.CanRunProvisioning`) distinct from the
-    read-only side's. It depends on the diagnostics package (to find a
-    free ONU index before writing), one-way only -- the diagnostics
-    package must never depend back on it, since that is what keeps
-    "read-only" a guarantee rather than a convention.
+-   `internal/provisioning/kontron/service.AuthorizationService`
+    ("Discover ONU" -- authorizing a physically-detected ONU:
+    `configure` / `interface` / `onu serial-number` / `service-profile`
+    / `exit` / `exit` / `save config`) and
+    `DeauthorizationService` ("Deauthorize ONU" -- the mirror image,
+    removing an ONU's base authorization and retiring its Device) are
+    each triggered from a DeviceID a caller already has in hand, not a
+    Service lifecycle transition, so neither goes through the Plugin
+    interface either -- both guarded by `authz.CanRunProvisioning`.
+-   `ServiceProfileService.Remove` is also called directly (not through
+    the Plugin/workflow path) by `internal/customer/removal.RemovalService`
+    ("Remove Customer"), to tear down real OLT state as part of that
+    cascade -- a caller that already has the Service/Equipment in hand
+    from a non-workflow context.
 
-Both were built this way because the immediate need was narrow (ONU
-status for the Customer Workspace, docs/09-WORKSPACE-SPECIFICATIONS.md
-section 8, then bringing a newly-detected ONU into service) and a
-generic, multi-vendor Capability dispatch was not yet needed with only
-one vendor in production. Together they should be treated as the
-candidate first real `Plugin` implementation once a second vendor
-actually requires the Capability Model to be load-bearing, not as
-evidence it already is.
-
-Treat the rest of this document as where the plugin system is headed,
-not a description of `internal/plugin/` as it stands.
+These were built this way because each need was narrow and specific
+(ONU status for the Customer Workspace, bringing a newly-detected ONU
+into service, tearing down one ONU's authorization from a Device Detail
+page, cascading a Customer removal) rather than a generic Service
+lifecycle transition needing multi-vendor Capability dispatch. Treat the
+rest of this document as where the plugin system is headed for the
+*Service lifecycle* capabilities the real Kontron Plugin now covers --
+Provision/Resume/Suspend/Disconnect -- not as a description of every
+Kontron-specific action in this codebase, several of which are
+deliberately standalone REST by design and are expected to stay that
+way (see internal/provisioning/kontron/service.DeauthorizationService
+and AuthorizationService's own doc comments).
 
 ------------------------------------------------------------------------
 
@@ -523,6 +542,7 @@ manufacturers or protocols.
   1.0 Draft   2026-07-29   Initial draft
   1.1 Draft   2026-09-04   Updated the Implementation Status note: a real Kontron SSH diagnostics integration now exists (`internal/diagnostics/kontron`), but outside the `Plugin` interface -- documented as a candidate first real Plugin rather than evidence the Capability Model is load-bearing
   1.2 Draft   2026-09-08   Documented the network-wide ONU blacklist scan added to `internal/diagnostics/kontron`, and the new write-capable `internal/provisioning/kontron` (ONU authorization) -- Palladium's first real vendor config-change command, still outside `internal/plugin`, guarded by its own RBAC capability
+  1.3 Draft   2026-09-08   Corrected the Implementation Status note: `internal/provisioning/kontron/plugin` now exists and is registered -- Palladium's first real (non-simulated) `Plugin`, handling ProvisionService/ResumeService/SuspendService/DisconnectService for real over SSH. Documented that ONU authorization/deauthorization ("Discover ONU"/"Deauthorize ONU") and Remove Customer's OLT teardown call the same underlying Kontron service layer directly and are still, by design, standalone REST rather than Capability Model dispatch
 
 ------------------------------------------------------------------------
 

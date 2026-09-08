@@ -130,7 +130,9 @@ Version 1 has exactly one Landing Workspace: **Dashboard**.
 -   Use WorkspaceLayout
 
 Version 1's primary-navigation Entity Workspaces are: **Customers,
-Services, Devices, Network, Inventory, Explorer, Administration**.
+Devices, Network, Explorer, Administration** (Inventory moved under
+Administration, and Services has no primary-navigation entry at all --
+see docs/04-NAVIGATION.md section 4).
 
 Every other workspace specified in
 docs/09-WORKSPACE-SPECIFICATIONS.md -- for example Customer, Service,

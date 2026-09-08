@@ -163,12 +163,15 @@ Examples include:
 
 -   Dashboard
 -   Customers
--   Services
 -   Devices
 -   Network
--   Inventory
 -   Explorer
--   Administration
+-   Administration (Inventory lives here as a sub-item, alongside
+    Providers/Users/Hardware -- see docs/04-NAVIGATION.md section 4)
+
+Services has no primary-navigation entry: a Service is always reached
+through its owning Customer or Device, never browsed on its own (see
+docs/04-NAVIGATION.md section 4).
 
 Note: Monitoring is deliberately not a Palladium nav area -- Palladium
 is not a monitoring platform (CLAUDE.md, "What Palladium Is Not").
