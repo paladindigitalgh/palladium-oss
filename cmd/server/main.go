@@ -43,6 +43,7 @@ import (
 	contactservice "github.com/paladindigitalgh/palladium-oss/internal/contact/service"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
+	customerremoval "github.com/paladindigitalgh/palladium-oss/internal/customer/removal"
 	customerservice "github.com/paladindigitalgh/palladium-oss/internal/customer/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
@@ -487,6 +488,22 @@ func run() error {
 		oltRepo, oltModelRepo, accessAttachmentRepo, accessAttachmentSvc, clock.New())
 	provisioningKontronDeauthorizationHandler := provisioningkontronhttpapi.NewDeauthorizationHandler(provisioningKontronDeauthorizationSvc)
 
+	// Customer removal ("Remove Customer",
+	// internal/customer/removal.RemovalService) cascades a Customer's own
+	// removal down through its Locations, Services, and equipment — see
+	// that package's own doc comment for why this is a status-transition
+	// cascade (Archived/Inactive/Disconnected/RemovedAt), never a hard
+	// delete. It reuses customerRepo, locationRepo, serviceRepo,
+	// deviceRepo, serviceEquipmentRepo/serviceEquipmentSvc,
+	// accessAttachmentRepo/accessAttachmentSvc, and the same
+	// provisioningKontronServiceProfileSvc already built above for the
+	// Plugin — nothing new beneath it.
+	customerRemovalSvc := customerremoval.NewRemovalService(
+		customerRepo, locationRepo, serviceRepo, deviceRepo,
+		serviceEquipmentRepo, serviceEquipmentSvc, accessAttachmentRepo, accessAttachmentSvc,
+		provisioningKontronServiceProfileSvc, clock.New())
+	customerRemovalHandler := customerhttpapi.NewRemovalHandler(customerRemovalSvc)
+
 	// tokenIssuer is shared by auth.Middleware (validates incoming tokens)
 	// and LoginHandler (issues new ones): both need to agree on the same
 	// secret and expiration, and a single instance is the simplest way to
@@ -521,6 +538,7 @@ func run() error {
 		RackHandler:                rackHandler,
 		DeviceHandler:              deviceHandler,
 		CustomerHandler:            customerHandler,
+		CustomerRemovalHandler:     customerRemovalHandler,
 		LocationHandler:            locationHandler,
 		ContactHandler:             contactHandler,
 		CatalogHandler:             catalogHandler,

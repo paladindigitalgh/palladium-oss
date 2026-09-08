@@ -17,7 +17,8 @@ import ContactFormDialog from '@/components/dialogs/ContactFormDialog.vue'
 import CustomerFormDialog from '@/components/dialogs/CustomerFormDialog.vue'
 import LocationFormDialog from '@/components/dialogs/LocationFormDialog.vue'
 import ServiceFormDialog from '@/components/dialogs/ServiceFormDialog.vue'
-import { getCustomerById, deleteCustomer } from '@/services/customers/customerRepository'
+import RemoveCustomerDialog from '@/components/dialogs/RemoveCustomerDialog.vue'
+import { getCustomerById } from '@/services/customers/customerRepository'
 import { listContactsByCustomerId, deleteContact } from '@/services/contacts/contactRepository'
 import { listLocationsByCustomerId, deleteLocation } from '@/services/locations/locationRepository'
 import { listServicesByLocationIds, deleteService } from '@/services/services/serviceRepository'
@@ -183,27 +184,13 @@ function handleCustomerUpdated(updated: Customer) {
   showEditCustomerDialog.value = false
 }
 
-// --- Delete Customer ---
+// --- Remove Customer ---
 
-const showDeleteCustomerDialog = ref(false)
-const deleteCustomerPending = ref(false)
-const deleteCustomerError = ref<string | null>(null)
+const showRemoveCustomerDialog = ref(false)
 
-async function confirmDeleteCustomer() {
-  if (!customer.value) return
-  deleteCustomerPending.value = true
-  deleteCustomerError.value = null
-  try {
-    await deleteCustomer(customer.value.id)
-    router.push('/customers')
-  } catch (err) {
-    deleteCustomerError.value =
-      err instanceof ApiError && err.kind === 'conflict'
-        ? 'This customer still has locations attached — remove those first.'
-        : 'The customer could not be deleted.'
-  } finally {
-    deleteCustomerPending.value = false
-  }
+function handleCustomerRemoved() {
+  showRemoveCustomerDialog.value = false
+  router.push('/customers')
 }
 
 // --- Add/Edit/Remove Contact ---
@@ -405,8 +392,8 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         <WorkspaceActions>
           <template #secondary>
             <BaseButton variant="secondary" size="sm" @click="showEditCustomerDialog = true">Edit Customer</BaseButton>
-            <BaseButton variant="destructive" size="sm" @click="showDeleteCustomerDialog = true">
-              Delete Customer
+            <BaseButton variant="destructive" size="sm" @click="showRemoveCustomerDialog = true">
+              Remove Customer
             </BaseButton>
           </template>
         </WorkspaceActions>
@@ -420,16 +407,12 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
       @updated="handleCustomerUpdated"
     />
 
-    <ConfirmationDialog
-      :open="showDeleteCustomerDialog"
-      title="Delete Customer"
-      :description="`Permanently delete ${customer.name}? This cannot be undone.`"
-      confirm-label="Delete Customer"
-      destructive
-      :pending="deleteCustomerPending"
-      :error="deleteCustomerError"
-      @confirm="confirmDeleteCustomer"
-      @cancel="showDeleteCustomerDialog = false"
+    <RemoveCustomerDialog
+      :open="showRemoveCustomerDialog"
+      :customer-id="customer.id"
+      :customer-name="customer.name"
+      @close="showRemoveCustomerDialog = false"
+      @removed="handleCustomerRemoved"
     />
 
     <SectionCard title="Summary" icon="customers">

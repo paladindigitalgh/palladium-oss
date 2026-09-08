@@ -58,6 +58,7 @@ type Dependencies struct {
 	RackHandler                               *httpapi.RackHandler
 	DeviceHandler                             *httpapi.DeviceHandler
 	CustomerHandler                           *customerhttpapi.CustomerHandler
+	CustomerRemovalHandler                    *customerhttpapi.RemovalHandler
 	LocationHandler                           *locationhttpapi.LocationHandler
 	ContactHandler                            *contacthttpapi.ContactHandler
 	CatalogHandler                            *cataloghttpapi.CatalogHandler
@@ -264,6 +265,15 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.CustomerHandler.Create)
 				r.Put("/{id}", deps.CustomerHandler.Update)
 				r.Delete("/{id}", deps.CustomerHandler.Delete)
+
+				// /customers/{id}/removal(-preview) is "Remove Customer"
+				// (internal/customer/removal's own doc comment): a
+				// separate, explicit cascade action, not a change to what
+				// DELETE /customers/{id} above already means. Gated by
+				// the same RequireCustomerWrite as every other mutation
+				// here.
+				r.Get("/{id}/removal-preview", deps.CustomerRemovalHandler.Preview)
+				r.Post("/{id}/removal", deps.CustomerRemovalHandler.Execute)
 			})
 		})
 
