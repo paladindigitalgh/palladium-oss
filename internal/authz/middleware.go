@@ -323,3 +323,14 @@ func (m *Middleware) RequireConnectionProfilesWrite() func(http.Handler) http.Ha
 func (m *Middleware) RequireEventRead() func(http.Handler) http.Handler {
 	return m.Require(CanReadEvents)
 }
+
+// RequireProvisioning returns middleware allowing any Role that
+// CanRunProvisioning (Administrator, Operator). Applied to the
+// /provisioning routes. Like RequireDiagnostics, this is the one
+// middleware guarding a live device-mutating action rather than a
+// Read/Write pair — see CanRunProvisioning's own doc comment for why it
+// is a separate capability from CanRunDiagnostics despite both reaching
+// out to live network equipment.
+func (m *Middleware) RequireProvisioning() func(http.Handler) http.Handler {
+	return m.Require(CanRunProvisioning)
+}

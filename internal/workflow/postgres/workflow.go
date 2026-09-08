@@ -137,6 +137,39 @@ func (r *Repository) Update(ctx context.Context, i workflow.Instance) (workflow.
 	return updated, nil
 }
 
+// NextPending returns the oldest Pending WorkflowInstance (ordered by
+// created_at), or ok == false if none exists.
+//
+// This is a plain SELECT, not `SELECT ... FOR UPDATE SKIP LOCKED`:
+// exactly one caller ever polls it today —
+// internal/workflow/worker.Worker, run as a single goroutine started
+// once in cmd/server/main.go. A second concurrent caller (e.g. a second,
+// horizontally-scaled server replica — Phase 10's HA/Kubernetes
+// deployment in TASKS.md is not built yet) could claim the same Pending
+// instance twice, since nothing here locks the row against a competing
+// reader between this SELECT and the worker's subsequent Start call.
+// Add row locking (or an explicit claim/lease column) here before this
+// codebase ever runs more than one worker at a time.
+func (r *Repository) NextPending(ctx context.Context) (workflow.Instance, bool, error) {
+	const query = `
+		SELECT id, definition_name, service_id, requested_by_user_id, status, retry_count,
+		       error_message, started_at, completed_at, created_at, updated_at
+		FROM workflow_instances
+		WHERE status = $1
+		ORDER BY created_at ASC
+		LIMIT 1
+	`
+
+	i, err := scanInstance(r.db.QueryRow(ctx, query, string(workflow.StatusPending)))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return workflow.Instance{}, false, nil
+		}
+		return workflow.Instance{}, false, translateError("find next pending workflow instance", err)
+	}
+	return i, true, nil
+}
+
 // Delete removes the WorkflowInstance identified by id.
 func (r *Repository) Delete(ctx context.Context, instanceID uuid.UUID) error {
 	const query = `DELETE FROM workflow_instances WHERE id = $1`

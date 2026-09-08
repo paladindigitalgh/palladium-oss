@@ -17,10 +17,14 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron"
+	"github.com/paladindigitalgh/palladium-oss/internal/olt"
+	"github.com/paladindigitalgh/palladium-oss/internal/oltmodel"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/ssh"
 )
@@ -34,15 +38,46 @@ type dialer interface {
 	Dial(ctx context.Context, oltID uuid.UUID) (ssh.Shell, error)
 }
 
+// oltLister is the seam AggregatedBlacklist uses to find every OLT
+// worth checking, narrowed to the one method it calls — the same
+// consumer-defined-interface pattern dialer above already establishes
+// in this file.
+type oltLister interface {
+	List(ctx context.Context) ([]olt.OLT, error)
+}
+
+// oltModelGetter is the seam AggregatedBlacklist uses to learn an OLT's
+// Vendor (an OLT does not carry Vendor itself — see internal/oltmodel's
+// own doc comment on why that lives on OLTModel), narrowed the same way
+// oltLister is.
+type oltModelGetter interface {
+	Get(ctx context.Context, id uuid.UUID) (oltmodel.OLTModel, error)
+}
+
 // KontronService runs Kontron/Iskratel C16 commands against a specific
 // OLT, end to end.
+//
+// It composes three things, not just dial: olts and oltModels exist
+// solely for AggregatedBlacklist, which — unlike every other method
+// here — is not scoped to one already-known OLT. It has to discover
+// which OLTs even exist and which of those are Kontron equipment before
+// it can dial any of them. This mirrors two precedents already
+// established elsewhere in this codebase for the same reason (a real
+// cross-domain effect with no narrower place to live): internal/olt/
+// service.OLTService composes olt+oltmodel+ponport for its own
+// auto-port-creation cascade, and internal/workflow/engine.DefaultEngine
+// composes service+serviceequipment+a plugin registry for its own
+// execution. Every other KontronService method below still depends on
+// dial alone.
 type KontronService struct {
-	dial dialer
+	dial      dialer
+	olts      oltLister
+	oltModels oltModelGetter
 }
 
 // NewKontronService builds a KontronService.
-func NewKontronService(dial dialer) *KontronService {
-	return &KontronService{dial: dial}
+func NewKontronService(dial dialer, olts oltLister, oltModels oltModelGetter) *KontronService {
+	return &KontronService{dial: dial, olts: olts, oltModels: oltModels}
 }
 
 // run opens a connection to oltID, executes fn against it, and always
@@ -168,4 +203,132 @@ func (s *KontronService) MACAddressTableEntries(ctx context.Context, oltID uuid.
 	return s.run(ctx, oltID, func(ctx context.Context, c *kontron.Client) (string, error) {
 		return c.MACAddressTableEntries(ctx, iface)
 	})
+}
+
+// BlacklistedONU is one AggregatedBlacklist row: a kontron.BlacklistEntry
+// tagged with which OLT it came from, since a caller aggregating across
+// every Kontron OLT on the network has no other way to tell them apart.
+type BlacklistedONU struct {
+	OLTID          uuid.UUID
+	OLTName        string
+	Interface      string
+	SerialNumber   string
+	RegistrationID string
+	Cause          string
+}
+
+// UnreachableOLT names a Kontron OLT AggregatedBlacklist could not get a
+// usable answer from — either the OLT itself (dial/command failure) or
+// its response (a kontron.ParseBlacklistEntries failure) — and why.
+type UnreachableOLT struct {
+	OLTID   uuid.UUID
+	OLTName string
+	Reason  string
+}
+
+// AggregatedBlacklist is AggregatedBlacklist's result: every blacklisted
+// ONU found across every reachable Kontron OLT, plus which OLTs (if any)
+// could not be checked.
+type AggregatedBlacklist struct {
+	ONUs        []BlacklistedONU
+	Unreachable []UnreachableOLT
+}
+
+// AggregatedBlacklist runs kontron.Client.BlacklistedONUs against every
+// Kontron-vendor OLT on the network, concurrently, and merges the
+// results into one list.
+//
+// This is triggered on demand by a caller (an operator about to bring a
+// new ONU into service, confirming its serial number and that it is
+// actually online before typing it in by hand) — nothing here persists,
+// schedules, or caches this result anywhere; every call re-queries every
+// OLT from scratch, by design.
+//
+// Non-Kontron OLTs are filtered out before dialing anything: this
+// service only knows how to speak to a Kontron C16 (see this package's
+// own doc comment), so sending BlacklistedONUs' command to an OLT of an
+// unknown or different vendor is not attempted at all, rather than
+// dialed and hoped to fail cleanly. A failure to load a given OLT's
+// OLTModel (the lookup itself erroring, not merely reporting a
+// non-Kontron vendor) is treated as a real data-integrity problem — the
+// foreign key from olts.olt_model_id already guarantees a valid OLTModel
+// row exists — and fails this call entirely rather than being folded
+// into Unreachable, the same distinction
+// internal/olt/service.OLTService.Create's own doc comment draws between
+// "a dependency it needs is broken" and "this one instance could not be
+// reached."
+//
+// Every reachable Kontron OLT is dialed concurrently, not one at a time:
+// this call's whole reason to exist is answering "what is out there
+// right now" fast enough to use interactively, and this codebase's
+// expected OLT fleet size does not call for a bounded worker pool to get
+// there.
+func (s *KontronService) AggregatedBlacklist(ctx context.Context) (AggregatedBlacklist, error) {
+	allOLTs, err := s.olts.List(ctx)
+	if err != nil {
+		return AggregatedBlacklist{}, err
+	}
+
+	var kontronOLTs []olt.OLT
+	for _, o := range allOLTs {
+		model, err := s.oltModels.Get(ctx, o.OLTModelID)
+		if err != nil {
+			return AggregatedBlacklist{}, fmt.Errorf("kontron: load olt model for olt %s: %w", o.ID, err)
+		}
+		if model.Vendor == oltmodel.VendorKontron {
+			kontronOLTs = append(kontronOLTs, o)
+		}
+	}
+
+	type outcome struct {
+		onus        []BlacklistedONU
+		unreachable *UnreachableOLT
+	}
+	outcomes := make([]outcome, len(kontronOLTs))
+
+	var wg sync.WaitGroup
+	for i, o := range kontronOLTs {
+		wg.Add(1)
+		go func(i int, o olt.OLT) {
+			defer wg.Done()
+
+			raw, err := s.run(ctx, o.ID, func(ctx context.Context, c *kontron.Client) (string, error) {
+				return c.BlacklistedONUs(ctx)
+			})
+			if err != nil {
+				outcomes[i] = outcome{unreachable: &UnreachableOLT{OLTID: o.ID, OLTName: o.Name, Reason: err.Error()}}
+				return
+			}
+
+			entries, err := kontron.ParseBlacklistEntries(raw)
+			if err != nil {
+				outcomes[i] = outcome{unreachable: &UnreachableOLT{OLTID: o.ID, OLTName: o.Name, Reason: "unexpected response format: " + err.Error()}}
+				return
+			}
+
+			onus := make([]BlacklistedONU, len(entries))
+			for j, e := range entries {
+				onus[j] = BlacklistedONU{
+					OLTID:          o.ID,
+					OLTName:        o.Name,
+					Interface:      e.Interface,
+					SerialNumber:   e.SerialNumber,
+					RegistrationID: e.RegistrationID,
+					Cause:          e.Cause,
+				}
+			}
+			outcomes[i] = outcome{onus: onus}
+		}(i, o)
+	}
+	wg.Wait()
+
+	var result AggregatedBlacklist
+	for _, o := range outcomes {
+		if o.unreachable != nil {
+			result.Unreachable = append(result.Unreachable, *o.unreachable)
+			continue
+		}
+		result.ONUs = append(result.ONUs, o.onus...)
+	}
+	return result, nil
 }

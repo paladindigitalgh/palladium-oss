@@ -10,7 +10,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/workflow"
 	"github.com/paladindigitalgh/palladium-oss/internal/workflow/httpapi"
 )
@@ -38,10 +37,6 @@ func (s stubWorkflowService) Retry(_ context.Context, id uuid.UUID) (workflow.In
 	return workflow.Instance{ID: id, Status: workflow.StatusPending}, s.err
 }
 
-type stubEngine struct{ err error }
-
-func (e stubEngine) Execute(context.Context, uuid.UUID) error { return e.err }
-
 func withIDParam(req *http.Request, id string) *http.Request {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", id)
@@ -49,7 +44,7 @@ func withIDParam(req *http.Request, id string) *http.Request {
 }
 
 func TestCreateRejectsMalformedBody(t *testing.T) {
-	h := httpapi.NewWorkflowHandler(stubWorkflowService{}, stubEngine{})
+	h := httpapi.NewWorkflowHandler(stubWorkflowService{})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances", strings.NewReader(`{not json`))
 	rec := httptest.NewRecorder()
@@ -61,7 +56,7 @@ func TestCreateRejectsMalformedBody(t *testing.T) {
 }
 
 func TestCreateReturnsCreated(t *testing.T) {
-	h := httpapi.NewWorkflowHandler(stubWorkflowService{}, stubEngine{})
+	h := httpapi.NewWorkflowHandler(stubWorkflowService{})
 
 	body := `{"service_id":"11111111-1111-1111-1111-111111111111","definition_name":"suspend-service"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances", strings.NewReader(body))
@@ -73,40 +68,8 @@ func TestCreateReturnsCreated(t *testing.T) {
 	}
 }
 
-func TestExecuteReturnsUpdatedInstanceOnSuccess(t *testing.T) {
-	id := uuid.New()
-	h := httpapi.NewWorkflowHandler(
-		stubWorkflowService{instance: workflow.Instance{ID: id, Status: workflow.StatusSucceeded}},
-		stubEngine{},
-	)
-
-	req := withIDParam(httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/"+id.String()+"/execute", nil), id.String())
-	rec := httptest.NewRecorder()
-	h.Execute(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-}
-
-func TestExecutePropagatesEngineError(t *testing.T) {
-	id := uuid.New()
-	h := httpapi.NewWorkflowHandler(
-		stubWorkflowService{},
-		stubEngine{err: apperror.Conflict("cannot transition workflow instance from Succeeded to Running")},
-	)
-
-	req := withIDParam(httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/"+id.String()+"/execute", nil), id.String())
-	rec := httptest.NewRecorder()
-	h.Execute(rec, req)
-
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusConflict, rec.Body.String())
-	}
-}
-
 func TestGetRejectsInvalidID(t *testing.T) {
-	h := httpapi.NewWorkflowHandler(stubWorkflowService{}, stubEngine{})
+	h := httpapi.NewWorkflowHandler(stubWorkflowService{})
 
 	req := withIDParam(httptest.NewRequest(http.MethodGet, "/api/v1/workflow-instances/not-a-uuid", nil), "not-a-uuid")
 	rec := httptest.NewRecorder()

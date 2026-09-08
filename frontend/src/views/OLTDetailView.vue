@@ -16,6 +16,7 @@ import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
 import OLTFormDialog from '@/components/dialogs/OLTFormDialog.vue'
 import PONPortFormDialog from '@/components/dialogs/PONPortFormDialog.vue'
 import { getOLTById, deleteOLT } from '@/services/olts/oltRepository'
+import { getOLTModelById } from '@/services/oltModels/oltModelRepository'
 import { getAccessNetworkById } from '@/services/accessNetworks/accessNetworkRepository'
 import { listPONPortsByOLTId, deletePONPort } from '@/services/ponPorts/ponPortRepository'
 import { listEvents } from '@/services/events/eventRepository'
@@ -23,6 +24,7 @@ import { runONUSummary, runONUStatusSummary } from '@/services/diagnostics/diagn
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { OLT } from '@/types/olt'
+import type { OLTModel } from '@/types/oltModel'
 import type { AccessNetwork } from '@/types/accessNetwork'
 import type { PONPort } from '@/types/ponPort'
 import type { TimelineEvent } from '@/types/timelineEvent'
@@ -47,6 +49,7 @@ const route = useRoute()
 const router = useRouter()
 
 const olt = ref<OLT | null>(null)
+const oltModel = ref<OLTModel | null>(null)
 const accessNetwork = ref<AccessNetwork | null>(null)
 const ponPorts = ref<PONPort[]>([])
 const timeline = ref<TimelineEvent[]>([])
@@ -57,6 +60,7 @@ async function load(id: string) {
   loading.value = true
   notFound.value = false
   olt.value = null
+  oltModel.value = null
   accessNetwork.value = null
   ponPorts.value = []
   timeline.value = []
@@ -70,12 +74,14 @@ async function load(id: string) {
   }
   olt.value = result
 
-  const [relatedAccessNetwork, oltPONPorts, events] = await Promise.all([
+  const [relatedAccessNetwork, relatedOLTModel, oltPONPorts, events] = await Promise.all([
     getAccessNetworkById(result.accessNetworkId),
+    getOLTModelById(result.oltModelId),
     listPONPortsByOLTId(id),
     listEvents('olt', id),
   ])
   accessNetwork.value = relatedAccessNetwork
+  oltModel.value = relatedOLTModel
   ponPorts.value = oltPONPorts
   timeline.value = events
 
@@ -91,14 +97,17 @@ watch(
 const summaryFacts = computed<Fact[]>(() => {
   const o = olt.value
   if (!o) return []
+  const model = oltModel.value
   const facts: Fact[] = [
-    { icon: 'network', label: 'Vendor', value: o.vendor },
-    { icon: 'network', label: 'Model', value: o.model || '—' },
+    { icon: 'network', label: 'Vendor', value: model?.vendor ?? '—' },
+    { icon: 'network', label: 'Model', value: model?.name ?? '—' },
   ]
   if (o.managementIpAddress) facts.push({ icon: 'network', label: 'Management IP', value: o.managementIpAddress })
   facts.push({ icon: 'clock', label: 'Created', value: formatDate(o.createdAt) })
   return facts
 })
+
+const headerSubtitle = computed(() => (oltModel.value ? `${oltModel.value.vendor} OLT` : 'OLT'))
 
 const headerMetadata = computed<string[]>(() => {
   const o = olt.value
@@ -156,9 +165,10 @@ async function confirmDeletePONPort() {
 
 const showEditDialog = ref(false)
 
-function handleOLTUpdated(updated: OLT) {
+async function handleOLTUpdated(updated: OLT) {
   olt.value = updated
   showEditDialog.value = false
+  oltModel.value = await getOLTModelById(updated.oltModelId)
 }
 
 // --- Delete OLT ---
@@ -231,7 +241,7 @@ async function checkONUStatus() {
   </div>
 
   <DetailWorkspace v-else-if="olt">
-    <WorkspaceHeader :title="olt.name" :subtitle="`${olt.vendor} OLT`" :metadata="headerMetadata">
+    <WorkspaceHeader :title="olt.name" :subtitle="headerSubtitle" :metadata="headerMetadata">
       <template #actions>
         <WorkspaceActions>
           <template #secondary>

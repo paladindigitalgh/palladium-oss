@@ -33,10 +33,22 @@ today (see `internal/workflow/`) is a deliberately minimal slice of it:
     **one** `plugin.Capability` -- there is no multi-step pipeline, no
     rollback strategy, no resource locking, and no definition
     versioning.
--   Execution is **synchronous**: creating a WorkflowInstance and then
-    immediately calling `.../execute` runs the whole thing in that one
-    request. There is no job queue, no polling, and no real-time
-    progress streaming.
+-   Execution is **asynchronous**: creating a WorkflowInstance leaves it
+    Pending, and `internal/workflow/worker.Worker` -- a single background
+    goroutine started in `cmd/server/main.go`, polling on a fixed
+    interval (`WORKFLOW_WORKER_POLL_INTERVAL`, default 2s) -- picks it up
+    and drives it to completion. There used to be a
+    `POST .../{id}/execute` route that ran a WorkflowInstance
+    synchronously inline in the HTTP request; it is gone (see
+    `internal/workflow/httpapi`'s package doc comment for why removing
+    it, rather than leaving it alongside the worker, was the point). A
+    client now polls `GET .../{id}` for a terminal status, the same way
+    `frontend/src/services/workflow/workflowRepository.ts`'s
+    `runWorkflow` does. There is still no real-time progress streaming,
+    and the poll loop is a single goroutine with no row locking -- see
+    `internal/workflow/postgres.Repository.NextPending`'s doc comment for
+    the concurrency limitation that imposes on ever running more than one
+    worker at a time.
 -   Retry resets a Failed instance back to Pending once, operator
     triggered -- there is no automatic backoff.
 -   Six Definitions exist today: `provision-service`,

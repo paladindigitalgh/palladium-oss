@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpx"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 )
@@ -26,6 +27,7 @@ type kontronService interface {
 	ONUEthernetPorts(ctx context.Context, oltID uuid.UUID, iface string) (string, error)
 	DHCPSnoopingEntries(ctx context.Context, oltID uuid.UUID, iface string) (string, error)
 	MACAddressTableEntries(ctx context.Context, oltID uuid.UUID, iface string) (string, error)
+	AggregatedBlacklist(ctx context.Context) (service.AggregatedBlacklist, error)
 }
 
 // KontronHandler serves the Kontron diagnostics REST endpoints, every
@@ -39,13 +41,20 @@ type kontronService interface {
 //	POST /api/v1/diagnostics/olts/{oltId}/onu-ethernet-ports
 //	POST /api/v1/diagnostics/olts/{oltId}/dhcp-snooping-entries
 //	POST /api/v1/diagnostics/olts/{oltId}/mac-address-table-entries
+//	POST /api/v1/diagnostics/onu-blacklist
 //
 // Every method is a thin decode/delegate/translate, with no business
-// logic: that is KontronService's job. All eight are POST, matching
-// internal/diagnostics/httpapi.DiagnosticsHandler.BasicONUCheck's own
-// precedent — each one does real, non-idempotent work against external
-// hardware (opening an SSH connection, running a command), not a cached
-// or side-effect-free resource fetch a GET would imply.
+// logic: that is KontronService's job. Every one of these is POST,
+// matching internal/diagnostics/httpapi.DiagnosticsHandler.BasicONUCheck's
+// own precedent — each one does real, non-idempotent work against
+// external hardware (opening an SSH connection, running a command), not
+// a cached or side-effect-free resource fetch a GET would imply.
+// onu-blacklist is the one exception to every other route's shape here:
+// it is not scoped to a single {oltId} — it fans out to every Kontron
+// OLT on the network at once (see service.KontronService.AggregatedBlacklist)
+// — and it is the one endpoint here that returns structured JSON instead
+// of a command's raw output, since its whole purpose is feeding a picker
+// UI a real serial number, not giving an operator terminal text to read.
 type KontronHandler struct {
 	kontron kontronService
 }
@@ -98,6 +107,20 @@ func (h *KontronHandler) DHCPSnoopingEntries(w http.ResponseWriter, r *http.Requ
 // /api/v1/diagnostics/olts/{oltId}/mac-address-table-entries.
 func (h *KontronHandler) MACAddressTableEntries(w http.ResponseWriter, r *http.Request) {
 	h.runForInterface(w, r, h.kontron.MACAddressTableEntries)
+}
+
+// OnuBlacklist handles POST /api/v1/diagnostics/onu-blacklist: unlike
+// every method above, it takes no {oltId} and no request body — it
+// fans out to every Kontron OLT on the network itself (see
+// service.KontronService.AggregatedBlacklist) and returns one merged,
+// structured result.
+func (h *KontronHandler) OnuBlacklist(w http.ResponseWriter, r *http.Request) {
+	agg, err := h.kontron.AggregatedBlacklist(r.Context())
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, newONUBlacklistResponse(agg))
 }
 
 // runNoArgs is the shared decode/delegate/respond sequence for the two

@@ -60,7 +60,7 @@ import (
 // the immediate caller is assumed to be.
 var ErrInvalidInterface = errors.New("kontron: interface value contains a newline")
 
-// pager is this platform's own pager prompt, confirmed firsthand against
+// Pager is this platform's own pager prompt, confirmed firsthand against
 // real production C16 output: a single command's output longer than the
 // device's configured printout-limit (25 lines, by default) is broken up
 // mid-command by this exact text, dismissed by any keypress. A single
@@ -73,7 +73,14 @@ var ErrInvalidInterface = errors.New("kontron: interface value contains a newlin
 // internal/platform/ssh's own "Interactive shell mode" doc comment) this
 // package cannot assume has been raised on every OLT it will ever run
 // against.
-var pager = ssh.PagerPrompt{
+//
+// Exported (unlike everything else unexported in this file) so
+// internal/provisioning/kontron — this codebase's first real
+// vendor-specific *write* command surface, sibling to this read-only
+// one — can reuse this exact, confirmed pager behavior for its own
+// shell.RunCommand calls rather than risking a second, drifting copy of
+// it.
+var Pager = ssh.PagerPrompt{
 	Trigger:  "Press any key to continue, ESC to stop scrolling or TAB to scroll to the end.",
 	Response: " ",
 }
@@ -96,7 +103,7 @@ func NewClient(shell ssh.Shell) *Client {
 // run executes command and wraps any failure with the command itself,
 // so an error surfaced further up the stack says what was actually run.
 func (c *Client) run(ctx context.Context, command string) (string, error) {
-	out, err := c.shell.RunCommand(ctx, command, pager)
+	out, err := c.shell.RunCommand(ctx, command, Pager)
 	if err != nil {
 		return "", fmt.Errorf("kontron: %s: %w", command, err)
 	}
@@ -213,4 +220,19 @@ const macAddressTableTemplate = "show mac-addr-table interface %s"
 // device's raw output, verbatim.
 func (c *Client) MACAddressTableEntries(ctx context.Context, iface string) (string, error) {
 	return c.runForInterface(ctx, macAddressTableTemplate, iface)
+}
+
+// onuBlackListCommand is the exact command BlacklistedONUs runs.
+const onuBlackListCommand = "show onu black-list"
+
+// BlacklistedONUs runs "show onu black-list": one row per ONU this OLT
+// has physically detected, on any PON port, that is not yet authorized
+// for service — interface, serial number, password/registration ID, and
+// the reason it is unauthorized — across the whole chassis, not one PON
+// port. It returns the device's raw output, verbatim, like every other
+// method in this file. See blacklist.go for the one deliberate exception
+// to this file's "no parsing" rule, built specifically for this
+// command's output.
+func (c *Client) BlacklistedONUs(ctx context.Context) (string, error) {
+	return c.run(ctx, onuBlackListCommand)
 }

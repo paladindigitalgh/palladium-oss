@@ -37,6 +37,8 @@ import (
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/olt"
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/oltmodel"
+	oltmodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/ponport"
@@ -1404,10 +1406,6 @@ func TestRouterAdministratorCanWriteServiceEquipment(t *testing.T) {
 // stubSiteService and every other stub above uses.
 type stubWorkflowService struct{}
 
-// Get returns a real (if empty) instance for any id, unlike most other
-// stubs' NotFound default: WorkflowHandler.Execute calls Get again after
-// a successful Engine.Execute to return the up-to-date instance, so this
-// stub must satisfy that second call, not just the initial lookup.
 func (stubWorkflowService) Get(_ context.Context, id uuid.UUID) (workflow.Instance, error) {
 	return workflow.Instance{ID: id, Status: workflow.StatusSucceeded}, nil
 }
@@ -1428,25 +1426,22 @@ func (stubWorkflowService) Retry(_ context.Context, id uuid.UUID) (workflow.Inst
 	return workflow.Instance{ID: id, Status: workflow.StatusPending}, nil
 }
 
-// stubWorkflowEngine satisfies workflowhttpapi.WorkflowHandler's engine
-// dependency, always succeeding without touching a Service, equipment,
-// or a real Plugin.
-type stubWorkflowEngine struct{}
-
-func (stubWorkflowEngine) Execute(context.Context, uuid.UUID) error { return nil }
-
 // newRouterWithWorkflow mirrors newRouterWithServiceEquipment exactly,
 // one resource over: it proves /api/v1/workflow-instances (including its
 // action sub-routes) is wired up behind auth.Middleware and
 // authz.Middleware in the real production router, using its own
-// dedicated RequireWorkflowRead/RequireWorkflowWrite.
+// dedicated RequireWorkflowRead/RequireWorkflowWrite. There is no engine
+// stub here (unlike before this domain's job queue existed): the router
+// no longer wires an Engine into WorkflowHandler at all — see
+// internal/workflow/httpapi's package doc comment for why the execute
+// route, and the handler's Engine dependency, were removed.
 func newRouterWithWorkflow(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return api.NewRouter(api.Dependencies{
 		Logger:          logger,
 		Version:         "test",
 		Commit:          "test",
-		WorkflowHandler: workflowhttpapi.NewWorkflowHandler(stubWorkflowService{}, stubWorkflowEngine{}),
+		WorkflowHandler: workflowhttpapi.NewWorkflowHandler(stubWorkflowService{}),
 		Tokens:          tokens,
 		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
 	})
@@ -1501,15 +1496,15 @@ func TestRouterViewerCannotWriteWorkflow(t *testing.T) {
 }
 
 // TestRouterViewerCannotDriveWorkflowStateTransitions proves the action
-// sub-routes (execute/cancel/retry) are covered by the same write
-// capability as create/delete, not left unguarded.
+// sub-routes (cancel/retry) are covered by the same write capability as
+// create/delete, not left unguarded.
 func TestRouterViewerCannotDriveWorkflowStateTransitions(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
 	router := newRouterWithWorkflow(tokens, auth.RoleViewer)
 	token := mustIssueToken(t, tokens)
 
 	instanceID := uuid.New()
-	for _, action := range []string{"execute", "cancel", "retry"} {
+	for _, action := range []string{"cancel", "retry"} {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/"+instanceID.String()+"/"+action, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		rec := httptest.NewRecorder()
@@ -1564,7 +1559,7 @@ func TestRouterAdministratorCanDriveWorkflowStateTransitions(t *testing.T) {
 	token := mustIssueToken(t, tokens)
 
 	instanceID := uuid.New()
-	for _, action := range []string{"execute", "cancel", "retry"} {
+	for _, action := range []string{"cancel", "retry"} {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/workflow-instances/"+instanceID.String()+"/"+action, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		rec := httptest.NewRecorder()
@@ -1610,6 +1605,20 @@ func (stubOLTService) Update(_ context.Context, o olt.OLT) (olt.OLT, error) {
 }
 func (stubOLTService) Delete(context.Context, uuid.UUID) error { return nil }
 
+type stubOLTModelService struct{}
+
+func (stubOLTModelService) Get(context.Context, uuid.UUID) (oltmodel.OLTModel, error) {
+	return oltmodel.OLTModel{}, apperror.NotFound("olt model not found")
+}
+func (stubOLTModelService) List(context.Context) ([]oltmodel.OLTModel, error) { return nil, nil }
+func (stubOLTModelService) Create(_ context.Context, m oltmodel.OLTModel) (oltmodel.OLTModel, error) {
+	return m, nil
+}
+func (stubOLTModelService) Update(_ context.Context, m oltmodel.OLTModel) (oltmodel.OLTModel, error) {
+	return m, nil
+}
+func (stubOLTModelService) Delete(context.Context, uuid.UUID) error { return nil }
+
 type stubPONPortService struct{}
 
 func (stubPONPortService) Get(context.Context, uuid.UUID) (ponport.PONPort, error) {
@@ -1625,12 +1634,12 @@ func (stubPONPortService) Update(_ context.Context, p ponport.PONPort) (ponport.
 func (stubPONPortService) Delete(context.Context, uuid.UUID) error { return nil }
 
 // newRouterWithAccessNetwork mirrors newRouterWithCatalog exactly, one
-// domain over: it proves /api/v1/access-networks, /api/v1/olts, and
-// /api/v1/pon-ports are all wired up behind auth.Middleware and
-// authz.Middleware in the real production router, sharing
-// RequireAccessNetworkRead/RequireAccessNetworkWrite (see
+// domain over: it proves /api/v1/access-networks, /api/v1/olts,
+// /api/v1/olt-models, and /api/v1/pon-ports are all wired up behind
+// auth.Middleware and authz.Middleware in the real production router,
+// sharing RequireAccessNetworkRead/RequireAccessNetworkWrite (see
 // authz.CanReadAccessNetwork's doc comment for why one capability pair
-// guards all three resources). See each domain's own
+// guards all four resources). See each domain's own
 // httpapi/authenticated_test.go for far more thorough versions of the
 // same checks, scoped to that package.
 func newRouterWithAccessNetwork(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
@@ -1641,6 +1650,7 @@ func newRouterWithAccessNetwork(tokens *auth.TokenIssuer, role auth.Role) http.H
 		Commit:               "test",
 		AccessNetworkHandler: accessnetworkhttpapi.NewAccessNetworkHandler(stubAccessNetworkService{}),
 		OLTHandler:           olthttpapi.NewOLTHandler(stubOLTService{}),
+		OLTModelHandler:      oltmodelhttpapi.NewOLTModelHandler(stubOLTModelService{}),
 		PONPortHandler:       ponporthttpapi.NewPONPortHandler(stubPONPortService{}),
 		Tokens:               tokens,
 		Authz:                authz.NewMiddleware(stubUserRepository{role: role}),
@@ -1648,7 +1658,8 @@ func newRouterWithAccessNetwork(tokens *auth.TokenIssuer, role auth.Role) http.H
 }
 
 const validAccessNetworkBody = `{"name":"Test Access Network","status":"Active"}`
-const validOLTBody = `{"access_network_id":"11111111-1111-1111-1111-111111111111","name":"Test OLT","vendor":"Kontron"}`
+const validOLTBody = `{"access_network_id":"11111111-1111-1111-1111-111111111111","name":"Test OLT","olt_model_id":"22222222-2222-2222-2222-222222222222"}`
+const validOLTModelBody = `{"vendor":"Kontron","name":"C16","pon_port_count":16}`
 const validPONPortBody = `{"olt_id":"11111111-1111-1111-1111-111111111111","port_number":1}`
 
 func TestRouterRejectsUnauthenticatedAccessNetworkRequests(t *testing.T) {
@@ -1675,6 +1686,18 @@ func TestRouterRejectsUnauthenticatedOLTRequests(t *testing.T) {
 	}
 }
 
+func TestRouterRejectsUnauthenticatedOLTModelRequests(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
+	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/olt-models/", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
 func TestRouterRejectsUnauthenticatedPONPortRequests(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
 	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
@@ -1689,13 +1712,13 @@ func TestRouterRejectsUnauthenticatedPONPortRequests(t *testing.T) {
 
 // TestRouterViewerCanReadAccessNetworkOLTsAndPONPorts is "apply the
 // standard RBAC matrix", proven through the real, fully wired router,
-// for all three resources at once.
+// for all four resources at once.
 func TestRouterViewerCanReadAccessNetworkOLTsAndPONPorts(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
 	router := newRouterWithAccessNetwork(tokens, auth.RoleViewer)
 	token := mustIssueToken(t, tokens)
 
-	for _, path := range []string{"/api/v1/access-networks/", "/api/v1/olts/", "/api/v1/pon-ports/"} {
+	for _, path := range []string{"/api/v1/access-networks/", "/api/v1/olts/", "/api/v1/olt-models/", "/api/v1/pon-ports/"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		rec := httptest.NewRecorder()
@@ -1721,6 +1744,7 @@ func TestRouterViewerCannotWriteAccessNetworkOLTsOrPONPorts(t *testing.T) {
 	}{
 		{"/api/v1/access-networks/", validAccessNetworkBody},
 		{"/api/v1/olts/", validOLTBody},
+		{"/api/v1/olt-models/", validOLTModelBody},
 		{"/api/v1/pon-ports/", validPONPortBody},
 	}
 	for _, c := range cases {
@@ -1749,6 +1773,7 @@ func TestRouterOperatorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
 	}{
 		{"/api/v1/access-networks/", validAccessNetworkBody},
 		{"/api/v1/olts/", validOLTBody},
+		{"/api/v1/olt-models/", validOLTModelBody},
 		{"/api/v1/pon-ports/", validPONPortBody},
 	}
 	for _, c := range cases {
@@ -1777,6 +1802,7 @@ func TestRouterAdministratorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
 	}{
 		{"/api/v1/access-networks/", validAccessNetworkBody},
 		{"/api/v1/olts/", validOLTBody},
+		{"/api/v1/olt-models/", validOLTModelBody},
 		{"/api/v1/pon-ports/", validPONPortBody},
 	}
 	for _, c := range cases {

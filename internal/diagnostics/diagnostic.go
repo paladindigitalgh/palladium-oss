@@ -4,12 +4,11 @@
 // register themselves into by name. Per this milestone's explicit scope,
 // it connects to no network device: no SSH, no CLI execution, no command
 // parsing, no vendor logic. Those belong to concrete diagnostics a future
-// milestone writes against this framework — see
-// internal/provisioning/connectors for the same "define the interface
-// now, implement vendor-specific behavior later" shape applied to
-// provisioning (CLAUDE.md's Plugin Philosophy: "Everything vendor-
-// specific belongs in plugins. The core system must never contain
-// vendor-specific logic.").
+// milestone writes against this framework — see internal/plugin for the
+// same "define the interface now, implement vendor-specific behavior
+// later" shape applied to provisioning (CLAUDE.md's Plugin Philosophy:
+// "Everything vendor-specific belongs in plugins. The core system must
+// never contain vendor-specific logic.").
 //
 // This package has no dependency beyond the standard library and
 // github.com/google/uuid (already pervasive throughout this codebase) —
@@ -78,11 +77,10 @@ type Result struct {
 // Diagnostic is the abstraction every future vendor-specific diagnostic
 // will implement — an SSH-backed ONU signal check, a Kontron-specific
 // port status query, and so on (see this package's doc comment for why
-// none of those exist yet). It mirrors
-// internal/provisioning/connectors.Connector's shape deliberately: one
-// Name method for registration and lookup, one operation method that
-// takes a context and a request-shaped argument and returns a result (or
-// an error).
+// none of those exist yet). It mirrors internal/plugin.Plugin's shape
+// deliberately: one Name method for registration and lookup, one
+// operation method that takes a context and a request-shaped argument
+// and returns a result (or an error).
 //
 // Run returning (*Result, error) rather than (Result, error) mirrors
 // this codebase's established convention for "this operation might

@@ -17,11 +17,12 @@
 //     docs/ARCHITECTURE.md's Network domain).
 //   - Connector mappings or vendor identifiers: per CLAUDE.md's Plugin
 //     Philosophy, anything vendor-specific belongs in a plugin (see
-//     internal/provisioning/connectors), never in a core domain type
-//     like this one.
+//     internal/plugin, and concretely internal/provisioning/kontron),
+//     never in a core domain type like this one.
 //   - Provisioning logic: nothing here configures a device or a network.
-//     A future Provisioning domain will act because a Service references
-//     a ServiceProfile, not the other way around.
+//     A Provisioning package (internal/provisioning/kontron, today) acts
+//     because a Service references a ServiceProfile, not the other way
+//     around.
 //
 // Everything above is a real feature some future milestone will add. None
 // of it is implied by what exists today.

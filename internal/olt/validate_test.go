@@ -33,7 +33,7 @@ func validOLT() olt.OLT {
 	return olt.OLT{
 		AccessNetworkID: uuid.New(),
 		Name:            "OLT-01",
-		Vendor:          olt.VendorKontron,
+		OLTModelID:      uuid.New(),
 	}
 }
 
@@ -59,37 +59,19 @@ func TestOLTValidateRequiresName(t *testing.T) {
 	assertInvalid(t, o.Validate())
 }
 
-func TestOLTValidateRequiresKnownVendor(t *testing.T) {
-	unrecognized := validOLT()
-	unrecognized.Vendor = olt.Vendor("MikroTik")
-	assertInvalid(t, unrecognized.Validate())
+func TestOLTValidateRequiresOLTModelID(t *testing.T) {
+	o := validOLT()
+	o.OLTModelID = uuid.Nil
 
-	unset := validOLT()
-	unset.Vendor = ""
-	assertInvalid(t, unset.Validate())
-
-	for _, v := range []olt.Vendor{
-		olt.VendorKontron,
-		olt.VendorNokia,
-		olt.VendorCalix,
-		olt.VendorAdtran,
-		olt.VendorOther,
-	} {
-		o := validOLT()
-		o.Vendor = v
-		if err := o.Validate(); err != nil {
-			t.Errorf("Validate() (vendor %q) = %v, want nil", v, err)
-		}
-	}
+	assertInvalid(t, o.Validate())
 }
 
-func TestOLTValidateModelManagementIPAddressAndDescriptionAreOptional(t *testing.T) {
-	o := validOLT() // none of these set
+func TestOLTValidateManagementIPAddressAndDescriptionAreOptional(t *testing.T) {
+	o := validOLT() // neither set
 	if err := o.Validate(); err != nil {
 		t.Errorf("Validate() (no optional fields) = %v, want nil", err)
 	}
 
-	o.Model = "ALX-9000"
 	o.ManagementIPAddress = "10.0.0.1"
 	o.Description = "Primary OLT for the north region"
 	if err := o.Validate(); err != nil {

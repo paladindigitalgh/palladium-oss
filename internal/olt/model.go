@@ -1,16 +1,31 @@
 // Package olt models Palladium's OLT domain (v1): a physical Optical
-// Line Terminal, identified by vendor and management address, belonging
-// to one AccessNetwork (see internal/accessnetwork). This package holds
-// only the domain model, field validation, and the repository interface
-// — no SQL, no migrations, no HTTP CRUD — mirroring internal/product's
-// own package exactly.
+// Line Terminal, identified by its chassis type and management address,
+// belonging to one AccessNetwork (see internal/accessnetwork). This
+// package holds only the domain model, field validation, and the
+// repository interface — no SQL, no migrations, no HTTP CRUD —
+// mirroring internal/product's own package exactly.
 //
-// This package does not import internal/accessnetwork. AccessNetworkID
-// is a bare uuid.UUID, not a reference to accessnetwork.AccessNetwork:
-// the foreign key to access_networks(id) is a database concept, enforced
-// by internal/olt/postgres and its migration, not a Go package
-// dependency — the same reasoning internal/product/model.go documents
-// for why Product does not import internal/catalog.
+// This package does not import internal/accessnetwork or
+// internal/oltmodel. AccessNetworkID and OLTModelID are bare uuid.UUID
+// values, not references to accessnetwork.AccessNetwork or
+// oltmodel.OLTModel: the foreign keys to access_networks(id) and
+// olt_models(id) are database concepts, enforced by internal/olt/postgres
+// and its migrations, not a Go package dependency — the same reasoning
+// internal/product/model.go documents for why Product does not import
+// internal/catalog.
+//
+// # Vendor moved to OLTModel
+//
+// OLT used to carry its own Vendor (a closed enum) and free-text Model
+// fields directly. Both moved to internal/oltmodel.OLTModel, referenced
+// here as OLTModelID: a model name like "C16" already implies its
+// vendor, and storing Vendor in two places (here and on OLTModel) risked
+// the two disagreeing. OLTModelID is required, not nullable — unlike
+// ConnectionProfileID below — because internal/olt/service.OLTService's
+// auto-port-creation on Create depends on it always resolving to a real
+// OLTModel with a known PONPortCount; there is no legitimate "OLT
+// recorded before its chassis type is known" state the way there is for
+// connection credentials.
 //
 // This package also does not reference internal/inventory.Device, per
 // this milestone's explicit instruction. A real OLT is, physically, a
@@ -72,8 +87,7 @@ type OLT struct {
 	ID                  uuid.UUID
 	AccessNetworkID     uuid.UUID
 	Name                string
-	Vendor              Vendor
-	Model               string
+	OLTModelID          uuid.UUID
 	ManagementIPAddress string
 	ConnectionProfileID *uuid.UUID
 	Description         string

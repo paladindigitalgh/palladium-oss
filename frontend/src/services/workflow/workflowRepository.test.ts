@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { listAllWorkflowInstances, listWorkflowInstancesByServiceId, runWorkflow } from './workflowRepository'
+import { listAllWorkflowInstances, listWorkflowInstancesByServiceId, runWorkflow, getWorkflowInstance } from './workflowRepository'
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 
@@ -76,19 +76,51 @@ describe('listAllWorkflowInstances', () => {
   })
 })
 
+describe('getWorkflowInstance', () => {
+  it('fetches a single instance by id', async () => {
+    apiFetch.mockResolvedValue(instanceDto({ id: 'w1', status: 'Running' }))
+
+    const result = await getWorkflowInstance('w1')
+
+    expect(apiFetch).toHaveBeenCalledWith('/workflow-instances/w1')
+    expect(result.status).toBe('Running')
+  })
+})
+
 describe('runWorkflow', () => {
-  it('creates a WorkflowInstance then immediately executes it, returning the executed result', async () => {
-    const created = instanceDto({ id: 'w1', status: 'Pending' })
-    const executed = instanceDto({ id: 'w1', status: 'Succeeded' })
-    apiFetch.mockResolvedValueOnce(created).mockResolvedValueOnce(executed)
+  it('creates a WorkflowInstance and returns it immediately if already terminal', async () => {
+    const created = instanceDto({ id: 'w1', status: 'Succeeded' })
+    apiFetch.mockResolvedValueOnce(created)
 
     const result = await runWorkflow('s1', 'provision-service')
 
+    expect(apiFetch).toHaveBeenCalledTimes(1)
     expect(apiFetch).toHaveBeenNthCalledWith(1, '/workflow-instances/', {
       method: 'POST',
       body: { service_id: 's1', definition_name: 'provision-service' },
     })
-    expect(apiFetch).toHaveBeenNthCalledWith(2, '/workflow-instances/w1/execute', { method: 'POST' })
     expect(result.status).toBe('Succeeded')
+  })
+
+  it('polls the instance until it reaches a terminal status', async () => {
+    const created = instanceDto({ id: 'w1', status: 'Pending' })
+    const running = instanceDto({ id: 'w1', status: 'Running' })
+    const succeeded = instanceDto({ id: 'w1', status: 'Succeeded' })
+    apiFetch.mockResolvedValueOnce(created).mockResolvedValueOnce(running).mockResolvedValueOnce(succeeded)
+
+    const result = await runWorkflow('s1', 'provision-service', 0, 5)
+
+    expect(apiFetch).toHaveBeenCalledTimes(3)
+    expect(apiFetch).toHaveBeenNthCalledWith(2, '/workflow-instances/w1')
+    expect(apiFetch).toHaveBeenNthCalledWith(3, '/workflow-instances/w1')
+    expect(result.status).toBe('Succeeded')
+  })
+
+  it('throws if the instance never reaches a terminal status within maxAttempts', async () => {
+    apiFetch.mockResolvedValue(instanceDto({ id: 'w1', status: 'Running' }))
+
+    await expect(runWorkflow('s1', 'provision-service', 0, 3)).rejects.toThrow(/taking longer than expected/)
+    // 1 create + 3 polling attempts, all still Running.
+    expect(apiFetch).toHaveBeenCalledTimes(4)
   })
 })

@@ -13,7 +13,7 @@ import (
 )
 
 func validOLT() olt.OLT {
-	return olt.OLT{ManagementIPAddress: "192.0.2.10", Vendor: olt.VendorKontron}
+	return olt.OLT{ManagementIPAddress: "192.0.2.10"}
 }
 
 func validProfile() connectionprofile.ConnectionProfile {

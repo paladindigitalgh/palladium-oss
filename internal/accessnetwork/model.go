@@ -19,9 +19,9 @@
 //     Palladium Is Not" — Zabbix, LibreNMS, Prometheus), never in this
 //     package.
 //   - No provisioning, no vendor APIs: nothing here talks to a real OLT.
-//     A future Provisioning Engine connector (see
-//     internal/provisioning/connectors) will act on an OLT, not the
-//     other way around.
+//     A vendor-specific plugin (see internal/plugin; concretely, today,
+//     internal/provisioning/kontron) acts on an OLT, not the other way
+//     around.
 //
 // Everything above is a real feature some future milestone will add. None
 // of it is implied by what exists today.

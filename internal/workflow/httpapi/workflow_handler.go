@@ -15,9 +15,9 @@ import (
 
 // workflowService is the seam WorkflowHandler depends on instead of a
 // concrete *service.Service, so handler tests can exercise HTTP behavior
-// against a fake. Start/Succeed/Fail are deliberately absent: Execute is
-// now the one real path through the state machine (see Execute's doc
-// comment below), so there is no HTTP route left that needs them
+// against a fake. Start/Succeed/Fail are deliberately absent: those are
+// the engine's job (see internal/workflow/engine and
+// internal/workflow/worker), not something an HTTP client drives
 // directly.
 type workflowService interface {
 	Get(ctx context.Context, id uuid.UUID) (workflow.Instance, error)
@@ -29,35 +29,40 @@ type workflowService interface {
 	Retry(ctx context.Context, id uuid.UUID) (workflow.Instance, error)
 }
 
-// workflowEngine is the seam Execute depends on instead of a concrete
-// *engine.DefaultEngine.
-type workflowEngine interface {
-	Execute(ctx context.Context, instanceID uuid.UUID) error
-}
-
 // WorkflowHandler serves the Workflow domain's REST endpoints:
 //
 //	POST   /api/v1/workflow-instances
 //	GET    /api/v1/workflow-instances             (optionally ?service_id=...)
 //	GET    /api/v1/workflow-instances/{id}
 //	DELETE /api/v1/workflow-instances/{id}
-//	POST   /api/v1/workflow-instances/{id}/execute
 //	POST   /api/v1/workflow-instances/{id}/cancel
 //	POST   /api/v1/workflow-instances/{id}/retry
 //
-// There is no manual start/succeed/fail route, unlike the former
-// provisioning-jobs API: Execute drives the instance through Start,
-// every plugin call, and Succeed/Fail itself, so a client only ever
-// asks for the outcome it wants ("run this") rather than manually
-// puppeteering the state machine one transition at a time.
+// There used to also be a POST .../{id}/execute route that ran a
+// WorkflowInstance to completion synchronously, inline in the HTTP
+// request. It is gone: execution is now asynchronous
+// (docs/05-WORKFLOW-ENGINE.md's job queue, TASKS.md Phase 7) — creating
+// an Instance is enough, since internal/workflow/worker.Worker polls for
+// Pending instances and calls engine.Engine.Execute on them itself.
+// Keeping the manual route alongside the worker would have reintroduced
+// exactly the race internal/workflow/postgres.Repository.NextPending's
+// doc comment already flags for a second worker replica, just one layer
+// up: a client calling /execute at the same moment the worker polls the
+// same Pending instance could both call Start on it, since
+// Repository.Update performs no compare-and-swap on status. Removing the
+// manual path makes the worker the one and only caller of Execute, which
+// avoids that race by construction instead of adding locking to prevent
+// it. A client that wants to know when a WorkflowInstance finishes now
+// polls GET .../{id} for a terminal status, the same way
+// frontend/src/services/workflow/workflowRepository.ts's runWorkflow
+// does.
 type WorkflowHandler struct {
 	instances workflowService
-	engine    workflowEngine
 }
 
 // NewWorkflowHandler builds a WorkflowHandler.
-func NewWorkflowHandler(instances workflowService, engine workflowEngine) *WorkflowHandler {
-	return &WorkflowHandler{instances: instances, engine: engine}
+func NewWorkflowHandler(instances workflowService) *WorkflowHandler {
+	return &WorkflowHandler{instances: instances}
 }
 
 // Create handles POST /api/v1/workflow-instances.
@@ -142,34 +147,6 @@ func (h *WorkflowHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// Execute handles POST /api/v1/workflow-instances/{id}/execute: it runs
-// the instance to completion synchronously (see engine.Engine.Execute)
-// and returns the resulting instance. A failure during execution is
-// still reported as an HTTP error (the instance itself is left in its
-// Failed state, inspectable via a subsequent GET) rather than a 200 with
-// a failure payload — the same "errors are errors" convention every
-// other write endpoint in this codebase follows.
-func (h *WorkflowHandler) Execute(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r)
-	if err != nil {
-		httpx.WriteError(w, err)
-		return
-	}
-
-	if err := h.engine.Execute(r.Context(), id); err != nil {
-		httpx.WriteError(w, err)
-		return
-	}
-
-	updated, err := h.instances.Get(r.Context(), id)
-	if err != nil {
-		httpx.WriteError(w, err)
-		return
-	}
-
-	httpx.WriteJSON(w, http.StatusOK, newInstanceResponse(updated))
 }
 
 // Cancel handles POST /api/v1/workflow-instances/{id}/cancel.

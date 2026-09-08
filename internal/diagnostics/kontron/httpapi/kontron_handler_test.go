@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 )
 
@@ -28,6 +29,9 @@ type fakeKontronService struct {
 	calledMethod string
 	gotOLTID     uuid.UUID
 	gotIface     string
+	agg          service.AggregatedBlacklist
+	aggErr       error
+	aggCalled    bool
 }
 
 func (f *fakeKontronService) result() (string, error) {
@@ -69,6 +73,13 @@ func (f *fakeKontronService) MACAddressTableEntries(_ context.Context, oltID uui
 	f.calledMethod, f.gotOLTID, f.gotIface = "MACAddressTableEntries", oltID, iface
 	return f.result()
 }
+func (f *fakeKontronService) AggregatedBlacklist(context.Context) (service.AggregatedBlacklist, error) {
+	f.aggCalled = true
+	if f.aggErr != nil {
+		return service.AggregatedBlacklist{}, f.aggErr
+	}
+	return f.agg, nil
+}
 
 // newTestRouter mounts a KontronHandler backed by svc on a real
 // chi.Router, mirroring how internal/server/router.go mounts it in
@@ -87,6 +98,7 @@ func newTestRouter(svc *fakeKontronService) http.Handler {
 		r.Post("/dhcp-snooping-entries", handler.DHCPSnoopingEntries)
 		r.Post("/mac-address-table-entries", handler.MACAddressTableEntries)
 	})
+	r.Post("/diagnostics/onu-blacklist", handler.OnuBlacklist)
 	return r
 }
 
@@ -260,5 +272,73 @@ func TestPropagatesServiceErrorKinds(t *testing.T) {
 				t.Fatalf("status = %d, want %d; body: %s", rec.Code, tc.wantStatus, rec.Body.String())
 			}
 		})
+	}
+}
+
+// TestOnuBlacklistEndpoint proves the route is wired, takes no body or
+// path parameter (unlike every other endpoint above), and returns
+// AggregatedBlacklist's structured JSON shape rather than
+// commandOutputResponse's raw-text one.
+func TestOnuBlacklistEndpoint(t *testing.T) {
+	oltID := uuid.New()
+	svc := &fakeKontronService{agg: service.AggregatedBlacklist{
+		ONUs: []service.BlacklistedONU{
+			{OLTID: oltID, OLTName: "jamestown-allen-olt-02", Interface: "xgs/6", SerialNumber: "ISKT2308DD88", RegistrationID: `""`, Cause: "Serial Number not known"},
+		},
+		Unreachable: []service.UnreachableOLT{
+			{OLTID: uuid.New(), OLTName: "unreachable-olt", Reason: "could not reach OLT: dial tcp: connection refused"},
+		},
+	}}
+	router := newTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/diagnostics/onu-blacklist", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !svc.aggCalled {
+		t.Fatal("AggregatedBlacklist was not called")
+	}
+
+	var body struct {
+		ONUs []struct {
+			OLTID        string `json:"olt_id"`
+			OLTName      string `json:"olt_name"`
+			Interface    string `json:"interface"`
+			SerialNumber string `json:"serial_number"`
+			Cause        string `json:"cause"`
+		} `json:"onus"`
+		UnreachableOLTs []struct {
+			OLTName string `json:"olt_name"`
+			Reason  string `json:"reason"`
+		} `json:"unreachable_olts"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if len(body.ONUs) != 1 {
+		t.Fatalf("len(onus) = %d, want 1", len(body.ONUs))
+	}
+	if body.ONUs[0].SerialNumber != "ISKT2308DD88" || body.ONUs[0].OLTID != oltID.String() {
+		t.Errorf("onus[0] = %+v", body.ONUs[0])
+	}
+	if len(body.UnreachableOLTs) != 1 || body.UnreachableOLTs[0].OLTName != "unreachable-olt" {
+		t.Errorf("unreachable_olts = %+v", body.UnreachableOLTs)
+	}
+}
+
+func TestOnuBlacklistEndpointPropagatesServiceError(t *testing.T) {
+	svc := &fakeKontronService{aggErr: apperror.Internal("load olts", nil)}
+	router := newTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/diagnostics/onu-blacklist", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusInternalServerError, rec.Body.String())
 	}
 }

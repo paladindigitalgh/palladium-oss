@@ -65,6 +65,9 @@ import (
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
 	oltpostgres "github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
 	oltservice "github.com/paladindigitalgh/palladium-oss/internal/olt/service"
+	oltmodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/httpapi"
+	oltmodelpostgres "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/postgres"
+	oltmodelservice "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/encryption"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
@@ -81,6 +84,8 @@ import (
 	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 	providerservice "github.com/paladindigitalgh/palladium-oss/internal/provider/service"
 	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
+	provisioningkontronhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/httpapi"
+	provisioningkontronservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/service"
 	provisioningpostgres "github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
 	provisioningservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/service"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
@@ -98,6 +103,7 @@ import (
 	workflowhttpapi "github.com/paladindigitalgh/palladium-oss/internal/workflow/httpapi"
 	workflowpostgres "github.com/paladindigitalgh/palladium-oss/internal/workflow/postgres"
 	workflowservice "github.com/paladindigitalgh/palladium-oss/internal/workflow/service"
+	workflowworker "github.com/paladindigitalgh/palladium-oss/internal/workflow/worker"
 )
 
 func main() {
@@ -300,7 +306,15 @@ func run() error {
 	workflowRepo := workflowpostgres.NewRepository(pool, clock.New(), id.New())
 	workflowSvc := workflowservice.New(workflowRepo, eventRepo, clock.New())
 	workflowEngine := workflowengine.NewDefaultEngine(workflowSvc, serviceRepo, serviceEquipmentRepo, pluginRegistry, clock.New())
-	workflowHandler := workflowhttpapi.NewWorkflowHandler(workflowSvc, workflowEngine)
+	workflowHandler := workflowhttpapi.NewWorkflowHandler(workflowSvc)
+
+	// The worker is the Workflow Engine's job queue (TASKS.md Phase 7):
+	// the one process that ever calls workflowEngine.Execute now (see
+	// internal/workflow/httpapi's package doc comment for why the HTTP
+	// layer no longer does). It polls workflowRepo directly, not
+	// workflowSvc, since NextPending is a plain query with no
+	// transition/event-recording semantics for workflowSvc to add.
+	workflowWorker := workflowworker.New(workflowRepo, workflowEngine, cfg.Workflow.PollInterval, logger)
 
 	// Access Network, OLT, and PON Port follow the same repository ->
 	// service -> handler chain as every domain above, three packages
@@ -312,13 +326,23 @@ func run() error {
 	accessNetworkSvc := accessnetworkservice.NewAccessNetworkService(accessNetworkRepo)
 	accessNetworkHandler := accessnetworkhttpapi.NewAccessNetworkHandler(accessNetworkSvc)
 
-	oltRepo := oltpostgres.NewOLTRepository(pool, clock.New(), id.New())
-	oltSvc := oltservice.NewOLTService(oltRepo)
-	oltHandler := olthttpapi.NewOLTHandler(oltSvc)
+	// OLTModel and PONPort are both constructed before OLT, not after
+	// (unlike AccessNetwork/OLT/PONPort's usual FK-mirroring order just
+	// above): OLTService.Create depends on oltModelRepo and ponPortRepo
+	// directly to auto-create PON ports on OLT creation (see
+	// internal/olt/service.OLTService's own doc comment), so both must
+	// already exist by the time NewOLTService is called.
+	oltModelRepo := oltmodelpostgres.NewOLTModelRepository(pool, clock.New(), id.New())
+	oltModelSvc := oltmodelservice.NewOLTModelService(oltModelRepo)
+	oltModelHandler := oltmodelhttpapi.NewOLTModelHandler(oltModelSvc)
 
 	ponPortRepo := ponportpostgres.NewPONPortRepository(pool, clock.New(), id.New())
 	ponPortSvc := ponportservice.NewPONPortService(ponPortRepo)
 	ponPortHandler := ponporthttpapi.NewPONPortHandler(ponPortSvc)
+
+	oltRepo := oltpostgres.NewOLTRepository(pool, clock.New(), id.New())
+	oltSvc := oltservice.NewOLTService(oltRepo, oltModelRepo, ponPortRepo)
+	oltHandler := olthttpapi.NewOLTHandler(oltSvc)
 
 	// Access Interface and Access Attachment follow the same repository
 	// -> service -> handler chain as every domain above, two packages
@@ -392,9 +416,23 @@ func run() error {
 	// above — see internal/diagnostics/kontron's package doc comment on
 	// why it is a separate, purpose-built framework rather than an
 	// extension of internal/diagnostics's Request{ONUID}-shaped one.
+	// oltRepo and oltModelRepo are reused again here (already built above
+	// for oltSvc): AggregatedBlacklist needs the same "which OLTs exist,
+	// which of those are Kontron" answer OLTService.Create's own
+	// auto-port-creation cascade already needs from them.
 	kontronDialer := connect.NewDialer(oltRepo, connectionProfileRepo, authenticationRepo, cfg.SSH.KnownHostsFile)
-	kontronSvc := kontronservice.NewKontronService(kontronDialer)
+	kontronSvc := kontronservice.NewKontronService(kontronDialer, oltRepo, oltModelRepo)
 	kontronHandler := kontronhttpapi.NewKontronHandler(kontronSvc)
+
+	// Kontron ONU authorization (internal/provisioning/kontron) is this
+	// codebase's first real vendor-specific *write* command surface —
+	// see that package's own doc comment on why it is a sibling of, not
+	// nested inside, the read-only internal/diagnostics/kontron above.
+	// It reuses kontronDialer rather than building a second Dialer: both
+	// resolve the exact same "OLT ID -> live shell" question, just for
+	// different commands run over the resulting shell.
+	provisioningKontronSvc := provisioningkontronservice.NewAuthorizationService(kontronDialer, cfg.Kontron.ManagementServiceProfile)
+	provisioningKontronHandler := provisioningkontronhttpapi.NewAuthorizationHandler(provisioningKontronSvc)
 
 	// Access Topology (internal/accesstopology) resolves where a
 	// Customer's equipment sits on the access network — the OLT and
@@ -450,6 +488,7 @@ func run() error {
 		ProductHandler:             productHandler,
 		ProviderHandler:            providerHandler,
 		ProvisioningProfileHandler: provisioningProfileHandler,
+		ProvisioningKontronHandler: provisioningKontronHandler,
 		ServiceProfileHandler:      serviceProfileHandler,
 		DiagnosticsHandler:         diagnosticsHandler,
 		KontronHandler:             kontronHandler,
@@ -460,6 +499,7 @@ func run() error {
 		EventHandler:               eventHandler,
 		AccessNetworkHandler:       accessNetworkHandler,
 		OLTHandler:                 oltHandler,
+		OLTModelHandler:            oltModelHandler,
 		PONPortHandler:             ponPortHandler,
 		AccessInterfaceHandler:     accessInterfaceHandler,
 		AccessAttachmentHandler:    accessAttachmentHandler,
@@ -480,9 +520,22 @@ func run() error {
 		ShutdownTimeout: cfg.HTTP.ShutdownTimeout,
 	}, router, logger)
 
+	// The workflow worker runs alongside the HTTP server, sharing the same
+	// signal-driven ctx: Worker.Run returns as soon as ctx is cancelled,
+	// the same graceful-shutdown trigger httpserver.Server.Run reacts to.
+	// workerDone is waited on below so "palladium server stopped cleanly"
+	// is only logged once the worker has actually finished its current
+	// poll iteration, not merely asked to stop.
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		workflowWorker.Run(ctx)
+	}()
+
 	if err := srv.Run(ctx); err != nil {
 		return err
 	}
+	<-workerDone
 
 	logger.Info("palladium server stopped cleanly")
 	return nil

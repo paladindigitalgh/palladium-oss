@@ -1,20 +1,22 @@
 package olt
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/validate"
 )
 
 // Validate reports whether o has every required field set: a present
-// AccessNetworkID, a present Name, and a Vendor that is one of its
-// defined values (see vendor.go). Model, ManagementIPAddress, and
-// Description are all optional and are never checked for presence — this
-// milestone's Validation section for OLT names only AccessNetworkID,
-// Name, and Vendor as required, consistent with catalog.ProductCatalog's
-// own optional Description.
+// AccessNetworkID, a present Name, and a present OLTModelID.
+// ManagementIPAddress and Description are both optional and are never
+// checked for presence — this milestone's Validation section for OLT
+// names only AccessNetworkID, Name, and OLTModelID as required,
+// consistent with catalog.ProductCatalog's own optional Description.
+//
+// OLTModelID's requiredness (rather than validating it is a real
+// OLTModel — a database-level concern the FK, not this method, enforces)
+// mirrors AccessNetworkID's own check below: this method only confirms
+// the field was supplied, not that it resolves to anything.
 //
 // ManagementIPAddress is deliberately not checked for being a
 // well-formed IP address. This milestone's scope is recording that an
@@ -32,8 +34,8 @@ func (o OLT) Validate() error {
 	if !validate.Required(o.Name) {
 		errs.Add("name", "is required")
 	}
-	if !o.Vendor.Valid() {
-		errs.Add("vendor", fmt.Sprintf("must be one of: %s", vendorNames()))
+	if o.OLTModelID == uuid.Nil {
+		errs.Add("olt_model_id", "is required")
 	}
 
 	return errs.Err()

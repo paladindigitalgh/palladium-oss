@@ -31,10 +31,12 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
+	oltmodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/httpapi"
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
 	producthttpapi "github.com/paladindigitalgh/palladium-oss/internal/product/httpapi"
 	providerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provider/httpapi"
 	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
+	provisioningkontronhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
@@ -62,12 +64,14 @@ type Dependencies struct {
 	ProductHandler             *producthttpapi.ProductHandler
 	ProviderHandler            *providerhttpapi.ProviderHandler
 	ProvisioningProfileHandler *provisioninghttpapi.ProvisioningProfileHandler
+	ProvisioningKontronHandler *provisioningkontronhttpapi.AuthorizationHandler
 	ServiceHandler             *servicehttpapi.ServiceHandler
 	ServiceEquipmentHandler    *serviceequipmenthttpapi.ServiceEquipmentHandler
 	WorkflowHandler            *workflowhttpapi.WorkflowHandler
 	EventHandler               *eventhttpapi.EventHandler
 	AccessNetworkHandler       *accessnetworkhttpapi.AccessNetworkHandler
 	OLTHandler                 *olthttpapi.OLTHandler
+	OLTModelHandler            *oltmodelhttpapi.OLTModelHandler
 	PONPortHandler             *ponporthttpapi.PONPortHandler
 	AccessInterfaceHandler     *accessinterfacehttpapi.AccessInterfaceHandler
 	AccessAttachmentHandler    *accessattachmenthttpapi.AccessAttachmentHandler
@@ -419,8 +423,12 @@ func NewRouter(deps Dependencies) http.Handler {
 		// /workflow-instances gets its own dedicated capability pair
 		// (RequireWorkflowRead/RequireWorkflowWrite), not a reuse of
 		// /services'. The write group also covers the action sub-routes
-		// (execute/cancel/retry): driving execution or a transition is a
-		// write, the same as create/delete.
+		// (cancel/retry): driving a transition is a write, the same as
+		// create/delete. There is no /execute route: execution is now
+		// asynchronous, driven by internal/workflow/worker.Worker polling
+		// for Pending instances — see internal/workflow/httpapi's package
+		// doc comment for why that route was removed rather than left
+		// alongside the worker.
 		r.Route("/workflow-instances", func(r chi.Router) {
 			r.Use(auth.Middleware(deps.Tokens))
 
@@ -434,7 +442,6 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Use(deps.Authz.RequireWorkflowWrite())
 				r.Post("/", deps.WorkflowHandler.Create)
 				r.Delete("/{id}", deps.WorkflowHandler.Delete)
-				r.Post("/{id}/execute", deps.WorkflowHandler.Execute)
 				r.Post("/{id}/cancel", deps.WorkflowHandler.Cancel)
 				r.Post("/{id}/retry", deps.WorkflowHandler.Retry)
 			})
@@ -480,6 +487,29 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.OLTHandler.Create)
 				r.Put("/{id}", deps.OLTHandler.Update)
 				r.Delete("/{id}", deps.OLTHandler.Delete)
+			})
+		})
+
+		// /olt-models shares /olts' own capability pair
+		// (RequireAccessNetworkRead/RequireAccessNetworkWrite): an
+		// OLTModel is the Administration-managed catalog an OLT's
+		// OLTModelID references (see authz.CanReadAccessNetwork's doc
+		// comment), not a separate resource with its own authorization
+		// question.
+		r.Route("/olt-models", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessNetworkRead())
+				r.Get("/", deps.OLTModelHandler.List)
+				r.Get("/{id}", deps.OLTModelHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireAccessNetworkWrite())
+				r.Post("/", deps.OLTModelHandler.Create)
+				r.Put("/{id}", deps.OLTModelHandler.Update)
+				r.Delete("/{id}", deps.OLTModelHandler.Delete)
 			})
 		})
 
@@ -621,13 +651,20 @@ func NewRouter(deps Dependencies) http.Handler {
 		// scoped to one OLT rather than one ONU (see
 		// internal/diagnostics/kontron's own doc comment on why it is a
 		// separate, purpose-built framework from BasicONUCheck's rather
-		// than an extension of it).
+		// than an extension of it). /diagnostics/onu-blacklist sits
+		// beside /olts/{oltId}, not under it: it fans out to every
+		// Kontron OLT itself (see
+		// service.KontronService.AggregatedBlacklist), so there is no
+		// single oltId to scope it to — it still reuses RequireDiagnostics
+		// unchanged, since running it is the same kind of action either
+		// way.
 		r.Route("/diagnostics", func(r chi.Router) {
 			r.Use(auth.Middleware(deps.Tokens))
 
 			r.Group(func(r chi.Router) {
 				r.Use(deps.Authz.RequireDiagnostics())
 				r.Post("/basic-onu-check", deps.DiagnosticsHandler.BasicONUCheck)
+				r.Post("/onu-blacklist", deps.KontronHandler.OnuBlacklist)
 
 				r.Route("/olts/{oltId}", func(r chi.Router) {
 					r.Post("/onu-summary", deps.KontronHandler.ONUSummary)
@@ -652,6 +689,25 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Route("/customers/{customerId}", func(r chi.Router) {
 					r.Get("/equipment-locations", deps.AccessTopologyHandler.ListCustomerEquipmentLocations)
 				})
+			})
+		})
+
+		// /provisioning is a sibling of /diagnostics, not a route nested
+		// under it, guarded by its own RequireProvisioning capability
+		// rather than reusing RequireDiagnostics — deliberately: every
+		// /diagnostics route only ever reads a device's state, while
+		// authorize-onu changes it (see
+		// authz.CanRunProvisioning's own doc comment for the full
+		// reasoning). Folding this in under /diagnostics would make that
+		// distinction invisible at the route level, even though it is
+		// the whole reason internal/provisioning/kontron is a separate
+		// package from internal/diagnostics/kontron in the first place.
+		r.Route("/provisioning", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+			r.Use(deps.Authz.RequireProvisioning())
+
+			r.Route("/olts/{oltId}", func(r chi.Router) {
+				r.Post("/authorize-onu", deps.ProvisioningKontronHandler.AuthorizeONU)
 			})
 		})
 

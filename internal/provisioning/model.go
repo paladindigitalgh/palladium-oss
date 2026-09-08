@@ -13,21 +13,26 @@
 // reference data, the same kind of thing internal/connectionprofile
 // already is. Reusing this package path is deliberate too: see
 // internal/serviceprofile's own package doc comment, which already names
-// "internal/provisioning/connectors" as where vendor-specific
-// connector logic (not vendor-specific reference data, which is what
-// this file holds) belongs, once that work starts.
+// internal/provisioning/kontron as where vendor-specific command
+// execution (not vendor-specific reference data, which is what this file
+// holds) belongs — see that package's own doc comment for why it is a
+// sibling of this one, not a competing implementation of the same
+// responsibility.
 //
 // Per this milestone's explicit scope:
 //
-//   - No command execution: applying a ProvisioningProfile to a live ONU
-//     (the two or so CLI lines an operator described running by hand
-//     today) is future work, layered on top of this lookup, not folded
-//     into it. See internal/diagnostics/kontron for the precedent this
-//     future work will follow: raw vendor commands, no parsing, isolated
-//     from core.
-//   - Vendor is a plain string, not an enum, mirroring olt.OLT's own
-//     Vendor field exactly -- a second vendor tomorrow is a new row, not
-//     a schema change.
+//   - No command execution: applying a ProvisioningProfile's rate/VLAN
+//     configuration to a live ONU is still future work, layered on top
+//     of this lookup, not folded into it — internal/provisioning/kontron
+//     exists now, but only for ONU authorization (a fixed, always-applied
+//     management profile), not yet for a Product-specific
+//     ProvisioningProfile. See that package for the precedent this future
+//     work will follow: raw vendor commands, no parsing, isolated from
+//     core.
+//   - Vendor is a plain string here, not oltmodel.Vendor's closed enum
+//     (see internal/oltmodel/vendor.go) -- a second vendor tomorrow is a
+//     new row, not a schema change, and this package has no reason to
+//     reject a vendor OLTModel has not yet been taught about.
 //   - One profile per (Product, Vendor): a given commercial offering
 //     maps to exactly one named profile on a given vendor's equipment.
 package provisioning

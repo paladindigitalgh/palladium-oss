@@ -331,24 +331,28 @@ func CanWriteWorkflow(role auth.Role) bool {
 
 // CanReadAccessNetwork reports whether role may read Access Network
 // data — AccessNetwork, OLT, and PONPort records alike (see
-// internal/accessnetwork, internal/olt, internal/ponport). All three
-// built-in roles can — identical to CanReadWorkflow's rule today.
+// internal/accessnetwork, internal/olt, internal/ponport), plus the OLT
+// Model catalog (internal/oltmodel) an OLT's OLTModelID references. All
+// three built-in roles can — identical to CanReadWorkflow's rule today.
 //
 // A single capability pair (CanReadAccessNetwork/CanWriteAccessNetwork)
-// guards all three resources, the same reasoning
+// guards all four resources, the same reasoning
 // authz.CanReadCatalog's doc comment gives for Catalog and Product: an
 // OLT only exists nested inside an AccessNetwork (see olt.OLT's required
-// AccessNetworkID), and a PONPort only exists nested inside an OLT (see
-// ponport.PONPort's required OLTID) — so "who can see the access
-// network," "who can see an OLT in it," and "who can see a port on that
-// OLT" are the same question asked at three levels of one domain, not
-// three domains that happen to share a rule today. This is a separate
-// function from CanReadServices/CanReadServiceEquipment/CanReadWorkflow,
-// not a call to any of them, for the same reason those are each separate
-// from one another — a future access requirement specific to the
-// physical access network (e.g. field technicians needing OLT
-// visibility without Service visibility) must never require touching
-// another domain's code.
+// AccessNetworkID), a PONPort only exists nested inside an OLT (see
+// ponport.PONPort's required OLTID), and an OLTModel is only ever looked
+// up by, or referenced from, an OLT (see olt.OLT's required
+// OLTModelID) — so "who can see the access network," "who can see an
+// OLT in it," "who can see a port on that OLT," and "who can see the
+// catalog entry naming that OLT's chassis type" are the same question
+// asked at four levels of one domain, not four domains that happen to
+// share a rule today. This is a separate function from
+// CanReadServices/CanReadServiceEquipment/CanReadWorkflow, not a call to
+// any of them, for the same reason those are each separate from one
+// another — a future access requirement specific to the physical access
+// network (e.g. field technicians needing OLT visibility without
+// Service visibility) must never require touching another domain's
+// code.
 func CanReadAccessNetwork(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
@@ -359,10 +363,10 @@ func CanReadAccessNetwork(role auth.Role) bool {
 }
 
 // CanWriteAccessNetwork reports whether role may create, update, or
-// delete Access Network data — AccessNetwork, OLT, and PONPort records
-// alike. Administrator and Operator can; Viewer cannot. See
+// delete Access Network data — AccessNetwork, OLT, PONPort, and OLTModel
+// records alike. Administrator and Operator can; Viewer cannot. See
 // CanReadAccessNetwork's doc comment for why one capability pair guards
-// all three resources, and for why this is not implemented in terms of
+// all four resources, and for why this is not implemented in terms of
 // any other domain's capability despite the identical rule today.
 func CanWriteAccessNetwork(role auth.Role) bool {
 	switch role {
@@ -608,6 +612,35 @@ func CanReadConnectionProfiles(role auth.Role) bool {
 // implemented in terms of CanWriteAuthentication despite the identical
 // rule today.
 func CanWriteConnectionProfiles(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanRunProvisioning reports whether role may run a live, hardware-
+// mutating provisioning action against a real device — e.g. authorizing
+// a new ONU on an OLT (see internal/provisioning/kontron). Administrator
+// and Operator can; Viewer cannot, the same split as CanWriteInventory.
+//
+// This is deliberately a separate capability from CanRunDiagnostics, not
+// a reuse of it, even though both guard actions that "reach out and
+// interact with live network equipment" (see CanRunDiagnostics' own doc
+// comment): CanRunDiagnostics guards commands that only ever read a
+// device's state, while this guards commands that change a device's
+// actual configuration. Folding the two together would mean a future
+// requirement to, say, let a broader set of roles run read-only
+// diagnostics without also handing them the ability to authorize ONUs
+// (or the reverse) could not be expressed without touching the other's
+// code. It is also deliberately not CanWriteInventory: that capability
+// governs Palladium's own stored inventory records (internal/inventory),
+// never a live device's configuration — the two happen to share today's
+// Administrator-and-Operator answer for the same reason every other
+// capability pair in this file does when they overlap by coincidence,
+// not by relation.
+func CanRunProvisioning(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator:
 		return true

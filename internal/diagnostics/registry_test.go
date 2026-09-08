@@ -10,8 +10,8 @@ import (
 // stubDiagnostic has no real behavior — it exists solely to prove
 // Diagnostic is satisfiable with a sane, consistent method shape and to
 // give Registry tests something concrete to register and look back up.
-// Mirrors internal/provisioning/connectors/registry_test.go's
-// stubConnector for the same reason. marker lets a test distinguish two
+// Mirrors internal/plugin/registry_test.go's stubPlugin for the same
+// reason. marker lets a test distinguish two
 // stubDiagnostic values that share the same name (Registry is keyed by
 // name, so a second registration under the same name must be
 // distinguishable some other way to prove it replaced, not merged with,

@@ -1,16 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, DOMWrapper, enableAutoUnmount } from '@vue/test-utils'
+import { mount, DOMWrapper, enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { ApiError } from '@/services/api/httpClient'
 import OLTFormDialog from './OLTFormDialog.vue'
 import type { OLT } from '@/types/olt'
+import type { OLTModel } from '@/types/oltModel'
 
 /**
  * Dual-mode, mirrors LocationFormDialog.test.ts's shape: takes a required
  * accessNetworkId prop, ignored in edit mode in favor of the OLT's own.
  */
-const { createOLT, updateOLT } = vi.hoisted(() => ({ createOLT: vi.fn(), updateOLT: vi.fn() }))
+const { createOLT, updateOLT, listOLTModels } = vi.hoisted(() => ({
+  createOLT: vi.fn(),
+  updateOLT: vi.fn(),
+  listOLTModels: vi.fn(),
+}))
 
 vi.mock('@/services/olts/oltRepository', () => ({ createOLT, updateOLT }))
+vi.mock('@/services/oltModels/oltModelRepository', () => ({ listOLTModels }))
 
 function body() {
   return new DOMWrapper(document.body)
@@ -23,10 +29,22 @@ function existingOLT(overrides: Partial<OLT> = {}): OLT {
     id: 'olt1',
     accessNetworkId: 'an1',
     name: 'OLT-Core-1',
-    vendor: 'Nokia',
-    model: '7360 ISAM',
+    oltModelId: 'model-nokia',
     managementIpAddress: '10.0.0.1',
     connectionProfileId: null,
+    description: '',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function existingOLTModel(overrides: Partial<OLTModel> = {}): OLTModel {
+  return {
+    id: 'model-nokia',
+    vendor: 'Nokia',
+    name: '7360 ISAM',
+    ponPortCount: 16,
     description: '',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
@@ -53,22 +71,28 @@ function selectByLabel(labelText: string) {
 beforeEach(() => {
   createOLT.mockReset()
   updateOLT.mockReset()
+  listOLTModels.mockReset()
+  listOLTModels.mockResolvedValue([
+    existingOLTModel({ id: 'model-nokia', vendor: 'Nokia', name: '7360 ISAM' }),
+    existingOLTModel({ id: 'model-calix', vendor: 'Calix', name: 'E7-2' }),
+  ])
 })
 
 describe('create mode (no olt prop)', () => {
-  it('defaults vendor to Nokia', () => {
+  it('defaults the OLT Model to the first one fetched', async () => {
     mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an1' } })
+    await flushPromises()
 
-    expect((selectByLabel('Vendor').element as HTMLSelectElement).value).toBe('Nokia')
+    expect((selectByLabel('OLT Model').element as HTMLSelectElement).value).toBe('model-nokia')
   })
 
   it('passes the accessNetworkId prop through into createOLT alongside the form fields, and emits created', async () => {
     createOLT.mockResolvedValue(existingOLT({ name: 'OLT-Core-1' }))
     const wrapper = mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an1' } })
+    await flushPromises()
 
     await inputByLabel('Name').setValue('OLT-Core-1')
-    await selectByLabel('Vendor').setValue('Calix')
-    await inputByLabel('Model').setValue('E7-2')
+    await selectByLabel('OLT Model').setValue('model-calix')
     await inputByLabel('Management IP Address').setValue('10.0.0.5')
     await body().find('form').trigger('submit.prevent')
     await wrapper.vm.$nextTick()
@@ -76,8 +100,7 @@ describe('create mode (no olt prop)', () => {
     expect(createOLT).toHaveBeenCalledWith({
       accessNetworkId: 'an1',
       name: 'OLT-Core-1',
-      vendor: 'Calix',
-      model: 'E7-2',
+      oltModelId: 'model-calix',
       managementIpAddress: '10.0.0.5',
       description: '',
     })
@@ -88,6 +111,7 @@ describe('create mode (no olt prop)', () => {
   it('surfaces the API error message instead of throwing, and does not emit created', async () => {
     createOLT.mockRejectedValue(new ApiError('name is required', 'invalid', 422))
     const wrapper = mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an1' } })
+    await flushPromises()
 
     await body().find('form').trigger('submit.prevent')
     await wrapper.vm.$nextTick()
@@ -98,14 +122,15 @@ describe('create mode (no olt prop)', () => {
 })
 
 describe('edit mode (olt prop present)', () => {
-  it('prefills every field from the OLT and shows an "Edit OLT" title', () => {
+  it('prefills every field from the OLT and shows an "Edit OLT" title', async () => {
     mount(OLTFormDialog, {
-      props: { open: true, accessNetworkId: 'an1', olt: existingOLT({ name: 'OLT-Core-1', vendor: 'Calix' }) },
+      props: { open: true, accessNetworkId: 'an1', olt: existingOLT({ name: 'OLT-Core-1', oltModelId: 'model-calix' }) },
     })
+    await flushPromises()
 
     expect(body().find('.base-modal__title').text()).toBe('Edit OLT')
     expect((inputByLabel('Name').element as HTMLInputElement).value).toBe('OLT-Core-1')
-    expect((selectByLabel('Vendor').element as HTMLSelectElement).value).toBe('Calix')
+    expect((selectByLabel('OLT Model').element as HTMLSelectElement).value).toBe('model-calix')
   })
 
   it('submits the edited fields to updateOLT, using the OLT\'s own accessNetworkId/connectionProfileId rather than the prop, and emits updated', async () => {
@@ -116,6 +141,7 @@ describe('edit mode (olt prop present)', () => {
     const olt = existingOLT({ accessNetworkId: 'an-actual', connectionProfileId: 'cp1' })
     updateOLT.mockResolvedValue({ ...olt, name: 'OLT-Core-1 Renamed' })
     const wrapper = mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an-prop-should-be-ignored', olt } })
+    await flushPromises()
 
     await inputByLabel('Name').setValue('OLT-Core-1 Renamed')
     await body().find('form').trigger('submit.prevent')
@@ -123,8 +149,7 @@ describe('edit mode (olt prop present)', () => {
 
     expect(updateOLT).toHaveBeenCalledWith('olt1', {
       name: 'OLT-Core-1 Renamed',
-      vendor: olt.vendor,
-      model: olt.model,
+      oltModelId: olt.oltModelId,
       managementIpAddress: olt.managementIpAddress,
       description: olt.description,
       accessNetworkId: 'an-actual',
@@ -139,10 +164,12 @@ it('closing and reopening for a different OLT repopulates the form instead of ke
   const wrapper = mount(OLTFormDialog, {
     props: { open: true, accessNetworkId: 'an1', olt: existingOLT({ name: 'First' }) },
   })
+  await flushPromises()
   expect((inputByLabel('Name').element as HTMLInputElement).value).toBe('First')
 
   await wrapper.setProps({ open: false })
   await wrapper.setProps({ open: true, olt: existingOLT({ name: 'Second' }) })
+  await flushPromises()
 
   expect((inputByLabel('Name').element as HTMLInputElement).value).toBe('Second')
 })

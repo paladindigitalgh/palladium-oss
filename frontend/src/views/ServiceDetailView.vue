@@ -224,7 +224,7 @@ async function runAction(definition: WorkflowDefinitionName) {
     await runWorkflow(service.value.id, definition)
     await load(service.value.id)
   } catch (err) {
-    actionError.value = err instanceof ApiError ? err.message : 'The workflow could not be executed.'
+    actionError.value = err instanceof ApiError || err instanceof Error ? err.message : 'The workflow could not be executed.'
   } finally {
     actionPending.value = false
   }

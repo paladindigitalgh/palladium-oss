@@ -17,9 +17,11 @@
 //
 // It is also deliberately Kontron-agnostic, unlike
 // internal/diagnostics/kontron: nothing here knows or cares which
-// vendor's OLT it is connecting to (olt.OLT.Vendor is never inspected) —
-// a future Nokia or Calix integration would resolve a connection through
-// this exact same package.
+// vendor's OLT it is connecting to — olt.OLT does not even carry a
+// Vendor field itself any more (see internal/olt/model.go's package doc
+// comment; that moved to internal/oltmodel.OLTModel), and nothing here
+// would inspect it if it did — a future Nokia or Calix integration would
+// resolve a connection through this exact same package.
 package connect
 
 import (

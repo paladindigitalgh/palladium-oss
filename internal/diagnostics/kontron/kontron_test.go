@@ -57,8 +57,8 @@ func TestONUSummaryRunsExpectedCommandAndReturnsOutputVerbatim(t *testing.T) {
 	if fs.gotCommand != "show onu interface all" {
 		t.Errorf("command sent = %q, want %q", fs.gotCommand, "show onu interface all")
 	}
-	if len(fs.gotPagers) != 1 || fs.gotPagers[0] != pager {
-		t.Errorf("pagers sent = %v, want [%v]", fs.gotPagers, pager)
+	if len(fs.gotPagers) != 1 || fs.gotPagers[0] != Pager {
+		t.Errorf("pagers sent = %v, want [%v]", fs.gotPagers, Pager)
 	}
 	if got != onuSummarySample {
 		t.Errorf("ONUSummary() = %q, want the sample returned verbatim", got)
@@ -230,8 +230,8 @@ func TestClientMethodsSendExpectedCommands(t *testing.T) {
 			if fs.gotCommand != tc.wantCommand {
 				t.Errorf("command sent = %q, want %q", fs.gotCommand, tc.wantCommand)
 			}
-			if len(fs.gotPagers) != 1 || fs.gotPagers[0] != pager {
-				t.Errorf("pagers sent = %v, want [%v]", fs.gotPagers, pager)
+			if len(fs.gotPagers) != 1 || fs.gotPagers[0] != Pager {
+				t.Errorf("pagers sent = %v, want [%v]", fs.gotPagers, Pager)
 			}
 			if got != "sample output" {
 				t.Errorf("%s() = %q, want the sample returned verbatim", tc.name, got)

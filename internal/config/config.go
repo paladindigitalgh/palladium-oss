@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -100,6 +101,33 @@ type DatabaseConfig struct {
 	ConnectTimeout  time.Duration
 }
 
+// WorkflowConfig holds settings for the Workflow Engine's background job
+// queue (see internal/workflow/worker.Worker).
+type WorkflowConfig struct {
+	// PollInterval is how long the worker sleeps between checks for a new
+	// Pending WorkflowInstance when it finds nothing to run. It is not a
+	// latency guarantee (a real vendor plugin call can take far longer
+	// than this to finish, and there is no upper bound on that today) --
+	// it only bounds how quickly a newly-created instance gets picked up
+	// in the first place.
+	PollInterval time.Duration
+}
+
+// KontronConfig holds settings for the Kontron/Iskratel C16 vendor
+// integration (see internal/provisioning/kontron).
+type KontronConfig struct {
+	// ManagementServiceProfile is the service profile
+	// internal/provisioning/kontron.Client.AuthorizeONU applies to every
+	// ONU it authorizes, so its management interface can reach the
+	// management network for firmware/maintenance. Unlike everything else
+	// in that command sequence, this names a service profile a specific
+	// operator configured on their own OLTs, not a fixed fact about the
+	// Kontron CLI -- so it is configurable, defaulting to "iphost" (the
+	// name used by the operator this feature was built for) rather than
+	// hardcoded.
+	ManagementServiceProfile string
+}
+
 // Config is the root application configuration.
 type Config struct {
 	Environment string
@@ -109,6 +137,8 @@ type Config struct {
 	JWT         JWTConfig
 	Encryption  EncryptionConfig
 	SSH         SSHConfig
+	Workflow    WorkflowConfig
+	Kontron     KontronConfig
 }
 
 // Load builds a Config from environment variables, applying defaults for
@@ -157,6 +187,12 @@ func Load() (Config, error) {
 		},
 		SSH: SSHConfig{
 			KnownHostsFile: getEnvString("SSH_KNOWN_HOSTS_FILE", ""),
+		},
+		Workflow: WorkflowConfig{
+			PollInterval: getEnvDuration("WORKFLOW_WORKER_POLL_INTERVAL", 2*time.Second),
+		},
+		Kontron: KontronConfig{
+			ManagementServiceProfile: getEnvString("KONTRON_MANAGEMENT_SERVICE_PROFILE", "iphost"),
 		},
 	}
 
@@ -218,6 +254,17 @@ func (c Config) Validate() error {
 	}
 	if c.Environment == "production" && c.Encryption.MasterKey == defaultMasterKey {
 		return fmt.Errorf("config: PALLADIUM_MASTER_KEY must be overridden in production")
+	}
+
+	if c.Workflow.PollInterval <= 0 {
+		return fmt.Errorf("config: WORKFLOW_WORKER_POLL_INTERVAL must be positive")
+	}
+
+	if c.Kontron.ManagementServiceProfile == "" {
+		return fmt.Errorf("config: KONTRON_MANAGEMENT_SERVICE_PROFILE must not be empty")
+	}
+	if strings.ContainsAny(c.Kontron.ManagementServiceProfile, "\n\r") {
+		return fmt.Errorf("config: KONTRON_MANAGEMENT_SERVICE_PROFILE must not contain a newline")
 	}
 
 	return nil

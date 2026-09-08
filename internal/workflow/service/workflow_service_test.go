@@ -44,6 +44,9 @@ func (r *fakeRepo) Delete(_ context.Context, id uuid.UUID) error {
 	delete(r.instances, id)
 	return nil
 }
+func (r *fakeRepo) NextPending(context.Context) (workflow.Instance, bool, error) {
+	return workflow.Instance{}, false, nil
+}
 
 type fakeEvents struct {
 	created []event.Event

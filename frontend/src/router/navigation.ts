@@ -104,6 +104,13 @@ export const NAV_ITEMS: NavItem[] = [
         icon: 'user',
         description: 'Platform login accounts and their roles.',
       },
+      {
+        id: 'administration-hardware',
+        label: 'Hardware',
+        path: '/administration/hardware',
+        icon: 'settings',
+        description: 'Physical equipment catalogs, starting with OLT chassis types and their PON port counts.',
+      },
     ],
   },
 ]

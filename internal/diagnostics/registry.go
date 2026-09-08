@@ -6,8 +6,8 @@ import "sync"
 // internal/diagnostics/service.DiagnosticsService never hard-codes which
 // Diagnostic implementation backs a given name — the service only ever
 // asks a Registry "who handles this," mirroring exactly why
-// internal/provisioning/connectors.Registry exists for
-// internal/provisioning/engine (see that package's own doc comment).
+// internal/plugin.Registry exists for internal/workflow/engine (see that
+// package's own doc comment).
 //
 // Registry is an interface, with DefaultRegistry as its one
 // implementation here, for the same reason: it lets

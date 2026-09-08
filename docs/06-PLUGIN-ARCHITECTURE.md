@@ -2,7 +2,7 @@
 document: 06-PLUGIN-ARCHITECTURE
 status: Draft
 title: Plugin Architecture
-version: 1.1-draft
+version: 1.2-draft
 ---
 
 # Plugin Architecture
@@ -40,21 +40,37 @@ today (see `internal/plugin/`) is a deliberately minimal slice of it:
     vendor. No real Kontron, Nokia, Calix, Adtran, or MikroTik
     integration has been built through the `Plugin` interface itself.
 
-A real Kontron integration does exist (`internal/diagnostics/kontron`),
-built against a live Kontron/Iskratel C16, but it does **not** go
-through `internal/plugin`. It is a standalone, read-only diagnostics
-package: an interactive-shell SSH client
-(`internal/platform/ssh`, added for Kontron's exec-channel-less CLI
-and its "-- More --" pager) wrapped by eight vendor-specific `show`
-commands, exposed over its own HTTP routes
-(`internal/diagnostics/kontron/httpapi`) rather than through the
-Capability Model in section 7 below. It was built this way because the
-immediate need was narrow (read-only ONU status for the Customer
-Workspace, docs/09-WORKSPACE-SPECIFICATIONS.md section 8) and
-config-change capability was explicitly deferred; it should be treated
-as a candidate first real `Plugin` implementation once that broader
-work happens, not as evidence the Capability Model below is already
-load-bearing.
+A real Kontron integration does exist, in two packages, built against a
+live Kontron/Iskratel C16, but neither goes through `internal/plugin`:
+
+-   `internal/diagnostics/kontron` is the read-only half: an
+    interactive-shell SSH client (`internal/platform/ssh`, added for
+    Kontron's exec-channel-less CLI and its "-- More --" pager) wrapped
+    by nine vendor-specific `show` commands (including a network-wide,
+    concurrent ONU-blacklist scan across every Kontron OLT, aggregated
+    by `internal/diagnostics/kontron/service.KontronService`), exposed
+    over its own HTTP routes (`internal/diagnostics/kontron/httpapi`)
+    rather than through the Capability Model in section 7 below.
+-   `internal/provisioning/kontron` is the write half, added once
+    config-change capability was no longer deferred: the same
+    interactive-shell approach, running a real config-change command
+    sequence (authorizing a physically-detected ONU: `configure` /
+    `interface` / `onu serial-number` / `service-profile` / `exit` /
+    `exit` / `save config`) over its own HTTP route, guarded by its own
+    RBAC capability (`authz.CanRunProvisioning`) distinct from the
+    read-only side's. It depends on the diagnostics package (to find a
+    free ONU index before writing), one-way only -- the diagnostics
+    package must never depend back on it, since that is what keeps
+    "read-only" a guarantee rather than a convention.
+
+Both were built this way because the immediate need was narrow (ONU
+status for the Customer Workspace, docs/09-WORKSPACE-SPECIFICATIONS.md
+section 8, then bringing a newly-detected ONU into service) and a
+generic, multi-vendor Capability dispatch was not yet needed with only
+one vendor in production. Together they should be treated as the
+candidate first real `Plugin` implementation once a second vendor
+actually requires the Capability Model to be load-bearing, not as
+evidence it already is.
 
 Treat the rest of this document as where the plugin system is headed,
 not a description of `internal/plugin/` as it stands.
@@ -506,6 +522,7 @@ manufacturers or protocols.
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
   1.1 Draft   2026-09-04   Updated the Implementation Status note: a real Kontron SSH diagnostics integration now exists (`internal/diagnostics/kontron`), but outside the `Plugin` interface -- documented as a candidate first real Plugin rather than evidence the Capability Model is load-bearing
+  1.2 Draft   2026-09-08   Documented the network-wide ONU blacklist scan added to `internal/diagnostics/kontron`, and the new write-capable `internal/provisioning/kontron` (ONU authorization) -- Palladium's first real vendor config-change command, still outside `internal/plugin`, guarded by its own RBAC capability
 
 ------------------------------------------------------------------------
 

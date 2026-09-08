@@ -15,20 +15,13 @@ import (
 // oltRequest is the JSON body for POST /api/v1/olts and PUT
 // /api/v1/olts/{id}.
 //
-// Vendor is a plain string here, not olt.Vendor, even though that type
-// would marshal to the same JSON today — the same "DTOs only" separation
-// internal/product/httpapi.productRequest documents. The conversion
-// happens once, explicitly, in toOLT below; OLTService.Create/Update
-// reject an unrecognized value via OLT.Validate (see
-// internal/olt/validate.go) exactly as they would for a request built
-// any other way — this handler does not duplicate that check (the
-// service is where validation lives).
-//
-// AccessNetworkID is left as its plain uuid.UUID rather than following
-// that same string-everywhere rule: it carries no domain enum type to
-// decouple from in the first place — the same reasoning
-// internal/product/httpapi.productRequest gives for its own CatalogID
-// field.
+// AccessNetworkID and OLTModelID are left as plain uuid.UUID: neither
+// carries a domain enum type to decouple from in the first place — the
+// same reasoning internal/product/httpapi.productRequest gives for its
+// own CatalogID field. OLTModelID replaced this request's former Vendor
+// and Model string fields when both moved to internal/oltmodel.OLTModel
+// (see internal/olt/model.go's package doc comment) — OLTModelID is
+// what a caller now supplies instead.
 //
 // It intentionally has no ID or timestamp fields. Identity is either
 // server-assigned (POST) or comes from the URL path (PUT); CreatedAt and
@@ -36,8 +29,7 @@ import (
 type oltRequest struct {
 	AccessNetworkID     uuid.UUID  `json:"access_network_id"`
 	Name                string     `json:"name"`
-	Vendor              string     `json:"vendor"`
-	Model               string     `json:"model"`
+	OLTModelID          uuid.UUID  `json:"olt_model_id"`
 	ManagementIPAddress string     `json:"management_ip_address"`
 	ConnectionProfileID *uuid.UUID `json:"connection_profile_id"`
 	Description         string     `json:"description"`
@@ -51,8 +43,7 @@ func (req oltRequest) toOLT(id uuid.UUID) olt.OLT {
 		ID:                  id,
 		AccessNetworkID:     req.AccessNetworkID,
 		Name:                req.Name,
-		Vendor:              olt.Vendor(req.Vendor),
-		Model:               req.Model,
+		OLTModelID:          req.OLTModelID,
 		ManagementIPAddress: req.ManagementIPAddress,
 		ConnectionProfileID: req.ConnectionProfileID,
 		Description:         req.Description,
@@ -67,8 +58,7 @@ type oltResponse struct {
 	ID                  uuid.UUID  `json:"id"`
 	AccessNetworkID     uuid.UUID  `json:"access_network_id"`
 	Name                string     `json:"name"`
-	Vendor              string     `json:"vendor"`
-	Model               string     `json:"model"`
+	OLTModelID          uuid.UUID  `json:"olt_model_id"`
 	ManagementIPAddress string     `json:"management_ip_address"`
 	ConnectionProfileID *uuid.UUID `json:"connection_profile_id"`
 	Description         string     `json:"description"`
@@ -81,8 +71,7 @@ func newOLTResponse(o olt.OLT) oltResponse {
 		ID:                  o.ID,
 		AccessNetworkID:     o.AccessNetworkID,
 		Name:                o.Name,
-		Vendor:              string(o.Vendor),
-		Model:               o.Model,
+		OLTModelID:          o.OLTModelID,
 		ManagementIPAddress: o.ManagementIPAddress,
 		ConnectionProfileID: o.ConnectionProfileID,
 		Description:         o.Description,

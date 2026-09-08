@@ -17,12 +17,14 @@ import PONPortFormDialog from '@/components/dialogs/PONPortFormDialog.vue'
 import AccessInterfaceFormDialog from '@/components/dialogs/AccessInterfaceFormDialog.vue'
 import { getPONPortById, deletePONPort } from '@/services/ponPorts/ponPortRepository'
 import { getOLTById } from '@/services/olts/oltRepository'
+import { getOLTModelById } from '@/services/oltModels/oltModelRepository'
 import { listAccessInterfacesByPONPortId, deleteAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { PONPort } from '@/types/ponPort'
 import type { OLT } from '@/types/olt'
+import type { OLTModel } from '@/types/oltModel'
 import type { AccessInterface } from '@/types/accessInterface'
 import type { TimelineEvent } from '@/types/timelineEvent'
 
@@ -40,6 +42,7 @@ const router = useRouter()
 
 const ponPort = ref<PONPort | null>(null)
 const olt = ref<OLT | null>(null)
+const oltModel = ref<OLTModel | null>(null)
 const accessInterfaces = ref<AccessInterface[]>([])
 const timeline = ref<TimelineEvent[]>([])
 const loading = ref(true)
@@ -50,6 +53,7 @@ async function load(id: string) {
   notFound.value = false
   ponPort.value = null
   olt.value = null
+  oltModel.value = null
   accessInterfaces.value = []
   timeline.value = []
 
@@ -69,6 +73,11 @@ async function load(id: string) {
   olt.value = relatedOLT
   accessInterfaces.value = ponPortAccessInterfaces
   timeline.value = events
+
+  // Fetched only once relatedOLT is known -- its oltModelId is the input
+  // this call needs -- the same reasoning OLTDetailView.vue's own
+  // getOLTModelById call documents, applied one relation further out.
+  oltModel.value = relatedOLT ? await getOLTModelById(relatedOLT.oltModelId) : null
 
   loading.value = false
 }
@@ -217,7 +226,14 @@ async function confirmDeletePONPort() {
     </SectionCard>
 
     <SectionCard title="OLT" icon="network">
-      <RelationshipCard v-if="olt" eyebrow="OLT" :title="olt.name" :meta="olt.vendor" :to="`/network/olts/${olt.id}`" action-label="View OLT" />
+      <RelationshipCard
+        v-if="olt"
+        eyebrow="OLT"
+        :title="olt.name"
+        :meta="oltModel?.vendor"
+        :to="`/network/olts/${olt.id}`"
+        action-label="View OLT"
+      />
       <p v-else class="no-relationship">No OLT on file for this PON port.</p>
     </SectionCard>
 

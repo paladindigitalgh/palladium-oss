@@ -12,25 +12,31 @@
 //     command a Kontron OLT expects or how to interpret its output —
 //     that belongs entirely to a future vendor plugin built on top of
 //     this one.
-//   - Diagnostics (see internal/diagnostics). A future Diagnostic
-//     implementation will use a Client to reach a device; this package
-//     has no notion of an ONU, a Result, or a Section.
-//   - Provisioning (see internal/provisioning). A future Connector
-//     implementation will likewise use a Client; this package has no
-//     notion of a Service, a ProvisioningJob, or an operation.
+//   - Diagnostics (see internal/diagnostics). internal/diagnostics/kontron
+//     is the real Diagnostic-shaped implementation that uses a Client (by
+//     way of Shell — see "Interactive shell mode" below) to reach a
+//     device; this package itself has no notion of an ONU, a Result, or a
+//     Section.
+//   - Provisioning (see internal/provisioning). internal/provisioning/kontron
+//     is the real config-change implementation that likewise uses a
+//     Client; this package has no notion of a Service, a
+//     WorkflowInstance, or an operation.
 //
 // Because of the above, this package has zero dependency on any
 // business domain in this codebase — only the standard library and
 // golang.org/x/crypto/ssh (already a dependency of internal/auth's
 // password hashing). It does not import internal/platform/apperror
-// either, for the same reason internal/provisioning/connectors doesn't
-// (see that package's doc comment on Connector's error type): this
-// package models an operational boundary — talking to an external
-// system over the network — not an HTTP-facing API boundary, so it has
-// no reason to carry apperror's Kind taxonomy. A future caller that does
-// sit closer to that boundary (a diagnostics execution path, a
-// provisioning connector) is responsible for deciding how a Client
-// error should ultimately be reported to a user.
+// either, for the same reason internal/plugin doesn't need to model one
+// itself (see internal/plugin.Plugin's own doc comment): this package
+// models an operational boundary — talking to an external system over
+// the network — not an HTTP-facing API boundary, so it has no reason to
+// carry apperror's Kind taxonomy. The caller that does sit closer to
+// that boundary is responsible for deciding how a Client error should
+// ultimately be reported to a user — see
+// internal/diagnostics/kontron/service and
+// internal/provisioning/kontron/service's own classify functions, the
+// real instances of the reclassification this paragraph once described
+// only hypothetically.
 //
 // # Lifecycle
 //
@@ -91,14 +97,13 @@
 //
 // # Intended future use
 //
-// This package exists to be imported by two future milestones named
-// explicitly in its own scope: a diagnostics implementation that needs
-// to actually reach an ONU or OLT (see internal/diagnostics's current
-// placeholder, BasicONUCheck, which this package will eventually back),
-// and a provisioning connector (see internal/provisioning/connectors)
-// that needs to configure a device over SSH. Neither exists yet; this
-// package is deliberately usable by both without knowing anything about
-// either.
+// This package was built to be imported by two milestones named
+// explicitly in its own original scope, and both are now real:
+// internal/diagnostics/kontron (reaching an ONU or OLT for read-only
+// commands) and internal/provisioning/kontron (configuring a device —
+// today, authorizing a new ONU). This package remains deliberately
+// usable by both without knowing anything about either; nothing above
+// was changed to accommodate them.
 //
 // # Interactive shell mode
 //

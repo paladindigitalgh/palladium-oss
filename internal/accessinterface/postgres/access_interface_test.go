@@ -17,6 +17,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/olt"
 	oltpostgres "github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/oltmodel"
+	oltmodelpostgres "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
@@ -79,11 +81,21 @@ func createTestPONPort(t *testing.T, ctx context.Context, q database.Querier) po
 		t.Fatalf("fixture: create access network: %v", err)
 	}
 
+	oltModelRepo := oltmodelpostgres.NewOLTModelRepository(q, clock.New(), id.New())
+	m, err := oltModelRepo.Create(ctx, oltmodel.OLTModel{
+		Vendor:       oltmodel.VendorKontron,
+		Name:         "Fixture Model " + uuid.NewString(),
+		PONPortCount: 16,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create olt model: %v", err)
+	}
+
 	oltRepo := oltpostgres.NewOLTRepository(q, clock.New(), id.New())
 	o, err := oltRepo.Create(ctx, olt.OLT{
 		AccessNetworkID: a.ID,
 		Name:            "Fixture OLT " + uuid.NewString(),
-		Vendor:          olt.VendorKontron,
+		OLTModelID:      m.ID,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create olt: %v", err)

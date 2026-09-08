@@ -1,0 +1,158 @@
+package kontron_test
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	diagnosticskontron "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron"
+	"github.com/paladindigitalgh/palladium-oss/internal/platform/ssh"
+	"github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron"
+)
+
+// fakeShell is a minimal ssh.Shell fake, letting these tests script
+// exactly what each RunCommand call returns without a real SSH
+// connection — the same technique
+// internal/diagnostics/kontron/kontron_test.go uses for its own Client
+// tests.
+type fakeShell struct {
+	// outputs maps a command to what RunCommand should return for it.
+	// Any command not present returns "" (success) by default.
+	outputs map[string]string
+	err     error
+	calls   []string
+}
+
+func (f *fakeShell) RunCommand(_ context.Context, command string, _ ...ssh.PagerPrompt) (string, error) {
+	f.calls = append(f.calls, command)
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.outputs[command], nil
+}
+
+func (f *fakeShell) Close() error { return nil }
+
+var _ ssh.Shell = (*fakeShell)(nil)
+
+func TestAuthorizeONUSucceedsAndRunsAllSevenStepsInOrder(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	if err := client.AuthorizeONU(context.Background(), "xgs/6/3", "ISKT2308DD88", "iphost"); err != nil {
+		t.Fatalf("AuthorizeONU() = %v", err)
+	}
+
+	want := []string{
+		"configure",
+		"interface xgs/6/3",
+		"onu serial-number ISKT2308DD88",
+		"service-profile iphost",
+		"exit",
+		"exit",
+		"save config",
+	}
+	if len(shell.calls) != len(want) {
+		t.Fatalf("calls = %v, want %v", shell.calls, want)
+	}
+	for i, c := range want {
+		if shell.calls[i] != c {
+			t.Errorf("calls[%d] = %q, want %q", i, shell.calls[i], c)
+		}
+	}
+}
+
+// TestAuthorizeONUAbortsOnFirstNonEmptyOutput proves the generic
+// failure-handling AuthorizeONU's own doc comment describes: any
+// non-empty output aborts immediately, with no special-casing of known
+// failure strings, and no further steps run.
+func TestAuthorizeONUAbortsOnFirstNonEmptyOutput(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{
+		"onu serial-number ISKT1234": "onu_serial_number wrong size!",
+	}}
+	client := kontron.NewClient(shell)
+
+	err := client.AuthorizeONU(context.Background(), "xgs/6/3", "ISKT1234", "iphost")
+	if err == nil {
+		t.Fatal("AuthorizeONU() error = nil, want an error")
+	}
+	if got := err.Error(); got == "" || !strings.Contains(got, "onu_serial_number wrong size!") {
+		t.Errorf("AuthorizeONU() error = %q, want it to contain the device's raw message", got)
+	}
+
+	// Nothing after the failing step must have run.
+	want := []string{"configure", "interface xgs/6/3", "onu serial-number ISKT1234"}
+	if len(shell.calls) != len(want) {
+		t.Fatalf("calls = %v, want exactly %v (save config must not run)", shell.calls, want)
+	}
+}
+
+func TestAuthorizeONURejectsInterfaceWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.AuthorizeONU(context.Background(), "xgs/6/3\nrm -rf /", "ISKT2308DD88", "iphost")
+	if !errors.Is(err, kontron.ErrInvalidInterface) {
+		t.Errorf("AuthorizeONU() error = %v, want ErrInvalidInterface", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
+func TestAuthorizeONURejectsSerialNumberWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.AuthorizeONU(context.Background(), "xgs/6/3", "ISKT2308DD88\nconfigure", "iphost")
+	if !errors.Is(err, kontron.ErrInvalidSerialNumber) {
+		t.Errorf("AuthorizeONU() error = %v, want ErrInvalidSerialNumber", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
+func TestAuthorizeONURejectsManagementServiceProfileWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.AuthorizeONU(context.Background(), "xgs/6/3", "ISKT2308DD88", "iphost\nconfigure")
+	if !errors.Is(err, kontron.ErrInvalidManagementServiceProfile) {
+		t.Errorf("AuthorizeONU() error = %v, want ErrInvalidManagementServiceProfile", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
+func TestNextFreeIndexFillsGaps(t *testing.T) {
+	entries := []diagnosticskontron.ONUSummaryEntry{
+		{Interface: "xgs/6/1"},
+		{Interface: "xgs/6/3"},
+	}
+	if got := kontron.NextFreeIndex(entries, "xgs/6"); got != 2 {
+		t.Errorf("NextFreeIndex() = %d, want 2", got)
+	}
+}
+
+func TestNextFreeIndexReturnsOneForAnUnusedPort(t *testing.T) {
+	entries := []diagnosticskontron.ONUSummaryEntry{
+		{Interface: "xgs/1/1"},
+	}
+	if got := kontron.NextFreeIndex(entries, "xgs/6"); got != 1 {
+		t.Errorf("NextFreeIndex() = %d, want 1", got)
+	}
+}
+
+func TestNextFreeIndexIgnoresOtherPorts(t *testing.T) {
+	entries := []diagnosticskontron.ONUSummaryEntry{
+		{Interface: "xgs/6/1"},
+		{Interface: "xgs/6/2"},
+		{Interface: "xgs/7/1"},
+	}
+	if got := kontron.NextFreeIndex(entries, "xgs/6"); got != 3 {
+		t.Errorf("NextFreeIndex() = %d, want 3", got)
+	}
+}

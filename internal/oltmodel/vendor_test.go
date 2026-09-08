@@ -1,18 +1,18 @@
-package olt_test
+package oltmodel_test
 
 import (
 	"testing"
 
-	"github.com/paladindigitalgh/palladium-oss/internal/olt"
+	"github.com/paladindigitalgh/palladium-oss/internal/oltmodel"
 )
 
 func TestVendorValidAcceptsDefinedValues(t *testing.T) {
-	defined := []olt.Vendor{
-		olt.VendorKontron,
-		olt.VendorNokia,
-		olt.VendorCalix,
-		olt.VendorAdtran,
-		olt.VendorOther,
+	defined := []oltmodel.Vendor{
+		oltmodel.VendorKontron,
+		oltmodel.VendorNokia,
+		oltmodel.VendorCalix,
+		oltmodel.VendorAdtran,
+		oltmodel.VendorOther,
 	}
 
 	for _, v := range defined {
@@ -23,11 +23,11 @@ func TestVendorValidAcceptsDefinedValues(t *testing.T) {
 }
 
 func TestVendorValidRejectsUnrecognizedValues(t *testing.T) {
-	cases := []olt.Vendor{
+	cases := []oltmodel.Vendor{
 		"",         // zero value: there is no default vendor
 		"kontron",  // wrong case
 		"NOKIA",    // wrong case
-		"MikroTik", // not a defined vendor for OLT
+		"MikroTik", // not a defined vendor for OLTModel
 	}
 
 	for _, v := range cases {
@@ -38,7 +38,7 @@ func TestVendorValidRejectsUnrecognizedValues(t *testing.T) {
 }
 
 func TestVendorStringReturnsUnderlyingValue(t *testing.T) {
-	if got := olt.VendorKontron.String(); got != "Kontron" {
+	if got := oltmodel.VendorKontron.String(); got != "Kontron" {
 		t.Errorf("String() = %q, want %q", got, "Kontron")
 	}
 }

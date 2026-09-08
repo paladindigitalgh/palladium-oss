@@ -41,6 +41,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.SSH.KnownHostsFile != "" {
 		t.Errorf("SSH.KnownHostsFile = %q, want empty by default (no placeholder value makes sense here)", cfg.SSH.KnownHostsFile)
 	}
+	if cfg.Workflow.PollInterval != 2*time.Second {
+		t.Errorf("Workflow.PollInterval = %v, want 2s", cfg.Workflow.PollInterval)
+	}
+	if cfg.Kontron.ManagementServiceProfile != "iphost" {
+		t.Errorf("Kontron.ManagementServiceProfile = %q, want %q", cfg.Kontron.ManagementServiceProfile, "iphost")
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
@@ -49,6 +55,8 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("LOG_FORMAT", "text")
 	t.Setenv("SSH_KNOWN_HOSTS_FILE", "/etc/palladium/known_hosts")
+	t.Setenv("WORKFLOW_WORKER_POLL_INTERVAL", "5s")
+	t.Setenv("KONTRON_MANAGEMENT_SERVICE_PROFILE", "mgmt")
 
 	cfg, err := Load()
 	if err != nil {
@@ -66,6 +74,12 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.SSH.KnownHostsFile != "/etc/palladium/known_hosts" {
 		t.Errorf("SSH.KnownHostsFile = %q, want %q", cfg.SSH.KnownHostsFile, "/etc/palladium/known_hosts")
+	}
+	if cfg.Workflow.PollInterval != 5*time.Second {
+		t.Errorf("Workflow.PollInterval = %v, want 5s", cfg.Workflow.PollInterval)
+	}
+	if cfg.Kontron.ManagementServiceProfile != "mgmt" {
+		t.Errorf("Kontron.ManagementServiceProfile = %q, want %q", cfg.Kontron.ManagementServiceProfile, "mgmt")
 	}
 }
 
@@ -145,6 +159,8 @@ func TestValidateAllowsDefaultJWTSecretOutsideProduction(t *testing.T) {
 		Database:    DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
 		JWT:         JWTConfig{Secret: defaultJWTSecret, Expiration: time.Hour},
 		Encryption:  EncryptionConfig{MasterKey: defaultMasterKey},
+		Workflow:    WorkflowConfig{PollInterval: time.Second},
+		Kontron:     KontronConfig{ManagementServiceProfile: "iphost"},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil for the dev-default JWT_SECRET outside production", err)
@@ -186,6 +202,8 @@ func TestValidateAllowsDefaultMasterKeyOutsideProduction(t *testing.T) {
 		Database:    DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
 		JWT:         JWTConfig{Secret: "s", Expiration: time.Hour},
 		Encryption:  EncryptionConfig{MasterKey: defaultMasterKey},
+		Workflow:    WorkflowConfig{PollInterval: time.Second},
+		Kontron:     KontronConfig{ManagementServiceProfile: "iphost"},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil for the dev-default PALLADIUM_MASTER_KEY outside production", err)
@@ -201,6 +219,36 @@ func TestValidateRejectsNonPositiveJWTExpiration(t *testing.T) {
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Error("Validate() = nil, want error for non-positive JWT_EXPIRATION")
+	}
+}
+
+func TestValidateRejectsEmptyKontronManagementServiceProfile(t *testing.T) {
+	cfg := Config{
+		HTTP:       HTTPConfig{Port: 8080},
+		Log:        LogConfig{Level: "info", Format: "json"},
+		Database:   DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:        JWTConfig{Secret: "s", Expiration: time.Hour},
+		Encryption: EncryptionConfig{MasterKey: "k"},
+		Workflow:   WorkflowConfig{PollInterval: time.Second},
+		Kontron:    KontronConfig{ManagementServiceProfile: ""},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for empty KONTRON_MANAGEMENT_SERVICE_PROFILE")
+	}
+}
+
+func TestValidateRejectsKontronManagementServiceProfileWithNewline(t *testing.T) {
+	cfg := Config{
+		HTTP:       HTTPConfig{Port: 8080},
+		Log:        LogConfig{Level: "info", Format: "json"},
+		Database:   DatabaseConfig{Port: 5432, Name: "palladium", MaxConns: 10, MinConns: 2},
+		JWT:        JWTConfig{Secret: "s", Expiration: time.Hour},
+		Encryption: EncryptionConfig{MasterKey: "k"},
+		Workflow:   WorkflowConfig{PollInterval: time.Second},
+		Kontron:    KontronConfig{ManagementServiceProfile: "iphost\nconfigure"},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for a KONTRON_MANAGEMENT_SERVICE_PROFILE containing a newline")
 	}
 }
 

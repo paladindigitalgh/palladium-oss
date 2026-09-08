@@ -16,11 +16,13 @@ import AccessNetworkFormDialog from '@/components/dialogs/AccessNetworkFormDialo
 import OLTFormDialog from '@/components/dialogs/OLTFormDialog.vue'
 import { getAccessNetworkById, deleteAccessNetwork } from '@/services/accessNetworks/accessNetworkRepository'
 import { listOLTsByAccessNetworkId, deleteOLT } from '@/services/olts/oltRepository'
+import { listOLTModels } from '@/services/oltModels/oltModelRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { AccessNetwork } from '@/types/accessNetwork'
 import type { OLT } from '@/types/olt'
+import type { OLTModel } from '@/types/oltModel'
 import type { TimelineEvent } from '@/types/timelineEvent'
 
 /**
@@ -36,9 +38,16 @@ const router = useRouter()
 
 const accessNetwork = ref<AccessNetwork | null>(null)
 const olts = ref<OLT[]>([])
+const oltModels = ref<OLTModel[]>([])
 const timeline = ref<TimelineEvent[]>([])
 const loading = ref(true)
 const notFound = ref(false)
+
+// A lookup, not a per-row fetch, since every OLT in this list needs its
+// OLTModel's Vendor/Name to render the "Vendor / Model" column -- the
+// same reasoning OLTDetailView.vue's own single-OLT fetch documents,
+// applied here across a whole list at once.
+const oltModelsById = computed(() => new Map(oltModels.value.map((model) => [model.id, model])))
 
 async function load(id: string) {
   loading.value = true
@@ -55,8 +64,13 @@ async function load(id: string) {
   }
   accessNetwork.value = result
 
-  const [accessNetworkOLTs, events] = await Promise.all([listOLTsByAccessNetworkId(id), listEvents('access_network', id)])
+  const [accessNetworkOLTs, models, events] = await Promise.all([
+    listOLTsByAccessNetworkId(id),
+    listOLTModels(),
+    listEvents('access_network', id),
+  ])
   olts.value = accessNetworkOLTs
+  oltModels.value = models
   timeline.value = events
 
   loading.value = false
@@ -246,7 +260,9 @@ async function confirmDeleteAccessNetwork() {
         @row-click="openOLT"
       >
         <template #cell-name="{ row }">{{ row.name }}</template>
-        <template #cell-vendor="{ row }">{{ row.vendor }} {{ row.model }}</template>
+        <template #cell-vendor="{ row }">
+          {{ oltModelsById.get(row.oltModelId)?.vendor }} {{ oltModelsById.get(row.oltModelId)?.name }}
+        </template>
         <template #cell-actions="{ row }">
           <BaseButton variant="ghost" size="sm" @click.stop="oltDeleteTarget = row">Remove</BaseButton>
         </template>

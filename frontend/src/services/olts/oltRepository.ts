@@ -15,8 +15,7 @@ interface OLTDto {
   id: string
   access_network_id: string
   name: string
-  vendor: OLT['vendor']
-  model: string
+  olt_model_id: string
   management_ip_address: string
   connection_profile_id: string | null
   description: string
@@ -29,8 +28,7 @@ function fromDto(dto: OLTDto): OLT {
     id: dto.id,
     accessNetworkId: dto.access_network_id,
     name: dto.name,
-    vendor: dto.vendor,
-    model: dto.model,
+    oltModelId: dto.olt_model_id,
     managementIpAddress: dto.management_ip_address,
     connectionProfileId: dto.connection_profile_id,
     description: dto.description,
@@ -63,8 +61,7 @@ export async function getOLTById(id: string): Promise<OLT | null> {
 export interface CreateOLTInput {
   accessNetworkId: string
   name: string
-  vendor: OLT['vendor']
-  model: string
+  oltModelId: string
   managementIpAddress: string
   description: string
 }
@@ -73,6 +70,9 @@ export interface CreateOLTInput {
  * Creates an OLT. connectionProfileId is always sent as null -- there is
  * no picker for it in this workspace yet (see OLTFormDialog.vue); an OLT
  * can be created without one and have it set later once that UI exists.
+ * oltModelId is required (see internal/olt.OLT.OLTModelID) -- creating
+ * this OLT auto-creates PON ports matching the chosen model's port
+ * count, on the backend.
  */
 export async function createOLT(input: CreateOLTInput): Promise<OLT> {
   const dto = await apiFetch<OLTDto>('/olts/', {
@@ -80,8 +80,7 @@ export async function createOLT(input: CreateOLTInput): Promise<OLT> {
     body: {
       access_network_id: input.accessNetworkId,
       name: input.name,
-      vendor: input.vendor,
-      model: input.model,
+      olt_model_id: input.oltModelId,
       management_ip_address: input.managementIpAddress,
       description: input.description,
       connection_profile_id: null,
@@ -92,8 +91,7 @@ export async function createOLT(input: CreateOLTInput): Promise<OLT> {
 
 export interface UpdateOLTInput {
   name: string
-  vendor: OLT['vendor']
-  model: string
+  oltModelId: string
   managementIpAddress: string
   description: string
   /**
@@ -115,8 +113,7 @@ export async function updateOLT(id: string, input: UpdateOLTInput): Promise<OLT>
     body: {
       access_network_id: input.accessNetworkId,
       name: input.name,
-      vendor: input.vendor,
-      model: input.model,
+      olt_model_id: input.oltModelId,
       management_ip_address: input.managementIpAddress,
       description: input.description,
       connection_profile_id: input.connectionProfileId,

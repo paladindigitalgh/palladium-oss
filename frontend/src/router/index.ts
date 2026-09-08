@@ -169,6 +169,15 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/AdministrationUsersView.vue'),
   },
   {
+    // The Hardware page -- reached from the sidebar's Administration
+    // dropdown, same pattern as /administration/providers above. Named
+    // generically (not "OLT Models") since it is meant to hold other
+    // physical-equipment catalogs later, not just OLT chassis types.
+    path: '/administration/hardware',
+    name: 'administration-hardware',
+    component: () => import('@/views/AdministrationHardwareView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),

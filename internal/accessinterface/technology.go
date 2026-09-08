@@ -4,7 +4,7 @@ import "strings"
 
 // Technology identifies which access technology an AccessInterface
 // speaks. It is a distinct type, not a raw string, following the exact
-// pattern of olt.Vendor.
+// pattern of oltmodel.Vendor.
 type Technology string
 
 // The four defined technologies. There is no zero-value/default

@@ -1,28 +1,28 @@
-package olt
+package oltmodel
 
 import "strings"
 
-// Vendor identifies which manufacturer built an OLT. It is a distinct
-// type, not a raw string, following the exact pattern of
-// product.ProductCategory.
+// Vendor identifies which manufacturer built an OLTModel's chassis type.
+// It is a distinct type, not a raw string, following the exact pattern
+// of product.ProductCategory.
 //
-// This is the one place in this codebase's core domain packages a
-// specific vendor name appears at all, and that is deliberate, not a
-// violation of CLAUDE.md's Plugin Philosophy ("The core system must
-// never contain Kontron-, Nokia-, Calix-, Adtran-, MikroTik-, or
-// vendor-specific logic."): naming a vendor as a label on a record is
-// not vendor-specific *logic* — this type has no behavior that differs
-// by vendor, no branch anywhere in this package or its repository or
-// service layer asks "if Vendor == Kontron do X." It is exactly as inert
-// as inventory.Device.Manufacturer, a plain descriptive field, just
-// closed to a known set of values instead of free text. The moment any
-// code makes a decision based on Vendor's value, that decision belongs
-// in a plugin (see internal/provisioning/connectors), not here.
+// This type moved here from internal/olt/vendor.go: vendor now describes
+// the catalog entry (a "Kontron C16" chassis type), not the individual
+// physical OLT record — see this package's own doc comment for why. Its
+// content and reasoning are otherwise unchanged: naming a vendor as a
+// label on a record is not vendor-specific *logic* — this type has no
+// behavior that differs by vendor, no branch anywhere in this package or
+// its repository or service layer asks "if Vendor == Kontron do X." It
+// is exactly as inert as inventory.Device.Manufacturer, a plain
+// descriptive field, just closed to a known set of values instead of
+// free text. The moment any code makes a decision based on Vendor's
+// value, that decision belongs in a plugin (see internal/plugin, and
+// concretely internal/provisioning/kontron), not here.
 type Vendor string
 
 // The five defined vendors. There is no zero-value/default vendor — an
 // empty Vendor is invalid — so Vendor is effectively required on every
-// OLT (see OLT.Validate in validate.go).
+// OLTModel (see OLTModel.Validate in validate.go).
 const (
 	VendorKontron Vendor = "Kontron"
 	VendorNokia   Vendor = "Nokia"

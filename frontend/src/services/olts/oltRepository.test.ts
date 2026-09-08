@@ -21,8 +21,7 @@ function oltDto(overrides: Partial<Record<string, unknown>> = {}) {
     id: 'olt1',
     access_network_id: 'an1',
     name: 'OLT-Core-1',
-    vendor: 'Nokia',
-    model: '7360 ISAM',
+    olt_model_id: 'model1',
     management_ip_address: '10.0.0.1',
     connection_profile_id: null,
     description: '',
@@ -93,8 +92,7 @@ describe('createOLT', () => {
     await createOLT({
       accessNetworkId: 'an1',
       name: 'OLT-Core-1',
-      vendor: 'Nokia',
-      model: '7360 ISAM',
+      oltModelId: 'model1',
       managementIpAddress: '10.0.0.1',
       description: 'Core site OLT',
     })
@@ -104,8 +102,7 @@ describe('createOLT', () => {
       body: {
         access_network_id: 'an1',
         name: 'OLT-Core-1',
-        vendor: 'Nokia',
-        model: '7360 ISAM',
+        olt_model_id: 'model1',
         management_ip_address: '10.0.0.1',
         description: 'Core site OLT',
         connection_profile_id: null,
@@ -120,8 +117,7 @@ describe('updateOLT', () => {
 
     await updateOLT('olt1', {
       name: 'OLT-Core-1 Renamed',
-      vendor: 'Calix',
-      model: 'E7-2',
+      oltModelId: 'model2',
       managementIpAddress: '10.0.0.2',
       description: 'Updated',
       accessNetworkId: 'an1',
@@ -133,8 +129,7 @@ describe('updateOLT', () => {
       body: {
         access_network_id: 'an1',
         name: 'OLT-Core-1 Renamed',
-        vendor: 'Calix',
-        model: 'E7-2',
+        olt_model_id: 'model2',
         management_ip_address: '10.0.0.2',
         description: 'Updated',
         connection_profile_id: 'cp1',
