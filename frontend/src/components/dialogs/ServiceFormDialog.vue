@@ -7,6 +7,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import { createService, updateService } from '@/services/services/serviceRepository'
 import { createServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { listProducts } from '@/services/products/productRepository'
+import { listProviders } from '@/services/providers/providerRepository'
 import { listServiceProfiles } from '@/services/serviceProfiles/serviceProfileRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { Service } from '@/types/service'
@@ -55,12 +56,14 @@ const deviceOptions = computed(() =>
 )
 
 const products = ref<Product[]>([])
+const providerNameById = ref<Map<string, string>>(new Map())
+const showProvider = ref(false)
 const serviceProfiles = ref<ServiceProfile[]>([])
 const loadingOptions = ref(false)
 
 const productId = ref('')
 const serviceProfileId = ref('')
-const status = ref<Service['status']>('Pending')
+const status = ref<Service['status']>('Active')
 const description = ref('')
 const submitting = ref(false)
 const error = ref<string | null>(null)
@@ -72,20 +75,46 @@ const statusOptions = [
   { value: 'Disconnected', label: 'Disconnected' },
 ]
 
-// Products/Service Profiles are fetched fresh each time the dialog opens
-// rather than once at app startup -- there is no Product/Service Profile
-// Workspace to keep a cached copy fresh against, and this dataset is
-// small enough that refetching is simpler than inventing a cache to
-// invalidate. Needed in both modes: create defaults to the first option,
-// edit needs the options list to show the service's current selection.
+/**
+ * "<Provider name> > <Product name>", or just the Product name once
+ * showProvider is false -- the exact same "only show Provider once it's
+ * not the only one" rule serviceLabels.ts's resolveServiceLabels already
+ * applies to how an existing Service is labeled elsewhere in this app
+ * (CustomerDetailView.vue's Services table, ServiceDetailView.vue's
+ * header), applied here to the picker that chooses one in the first
+ * place, so the two never disagree about what a Product is called.
+ */
+const productOptions = computed(() =>
+  products.value.map((product) => ({
+    value: product.id,
+    label:
+      showProvider.value && providerNameById.value.has(product.providerId)
+        ? `${providerNameById.value.get(product.providerId)} > ${product.name}`
+        : product.name,
+  })),
+)
+
+// Products/Providers/Service Profiles are fetched fresh each time the
+// dialog opens rather than once at app startup -- there is no
+// Product/Provider/Service Profile Workspace to keep a cached copy fresh
+// against, and this dataset is small enough that refetching is simpler
+// than inventing a cache to invalidate. Needed in both modes: create
+// defaults to the first option, edit needs the options list to show the
+// service's current selection.
 watch(
   () => props.open,
   async (isOpen) => {
     if (!isOpen) return
     error.value = null
     loadingOptions.value = true
-    const [productList, profileList] = await Promise.all([listProducts(), listServiceProfiles()])
+    const [productList, providerList, profileList] = await Promise.all([
+      listProducts(),
+      listProviders(),
+      listServiceProfiles(),
+    ])
     products.value = productList
+    providerNameById.value = new Map(providerList.map((provider) => [provider.id, provider.name]))
+    showProvider.value = providerList.length > 1
     serviceProfiles.value = profileList
 
     if (props.service) {
@@ -96,7 +125,7 @@ watch(
     } else {
       productId.value = productList[0]?.id ?? ''
       serviceProfileId.value = profileList[0]?.id ?? ''
-      status.value = 'Pending'
+      status.value = 'Active'
       description.value = ''
       deviceId.value = props.devices[0]?.id ?? ''
     }
@@ -186,17 +215,13 @@ async function handleSubmit() {
       </p>
       <template v-else>
         <BaseSelect v-if="!service && devices.length > 1" v-model="deviceId" label="Device" :options="deviceOptions" />
-        <BaseSelect
-          v-model="productId"
-          label="Product"
-          :options="products.map((p) => ({ value: p.id, label: p.name }))"
-        />
+        <BaseSelect v-model="productId" label="Product" :options="productOptions" />
         <BaseSelect
           v-model="serviceProfileId"
           label="Service Profile"
           :options="serviceProfiles.map((p) => ({ value: p.id, label: p.name }))"
         />
-        <BaseSelect v-model="status" label="Status" :options="statusOptions" />
+        <BaseSelect v-if="service" v-model="status" label="Status" :options="statusOptions" />
         <BaseInput v-model="description" label="Description" />
       </template>
 

@@ -20,11 +20,13 @@ import type { Device } from '@/types/device'
  */
 const { createService, updateService } = vi.hoisted(() => ({ createService: vi.fn(), updateService: vi.fn() }))
 const { listProducts } = vi.hoisted(() => ({ listProducts: vi.fn() }))
+const { listProviders } = vi.hoisted(() => ({ listProviders: vi.fn() }))
 const { listServiceProfiles } = vi.hoisted(() => ({ listServiceProfiles: vi.fn() }))
 const { createServiceEquipment } = vi.hoisted(() => ({ createServiceEquipment: vi.fn() }))
 
 vi.mock('@/services/services/serviceRepository', () => ({ createService, updateService }))
 vi.mock('@/services/products/productRepository', () => ({ listProducts }))
+vi.mock('@/services/providers/providerRepository', () => ({ listProviders }))
 vi.mock('@/services/serviceProfiles/serviceProfileRepository', () => ({ listServiceProfiles }))
 vi.mock('@/services/serviceEquipment/serviceEquipmentRepository', () => ({ createServiceEquipment }))
 
@@ -68,6 +70,13 @@ function productSelect() {
     .find('select')
 }
 
+function statusSelect() {
+  return body()
+    .findAll('.base-select')
+    .find((el) => el.find('.base-select__label').text() === 'Status')
+    ?.find('select')
+}
+
 function deviceSelect() {
   return body()
     .findAll('.base-select')
@@ -97,6 +106,10 @@ beforeEach(() => {
   createService.mockReset()
   updateService.mockReset()
   listProducts.mockReset()
+  listProviders.mockReset()
+  // Single Provider by default (the common case): no test below cares
+  // about Provider-prefixed labels unless it overrides this itself.
+  listProviders.mockResolvedValue([{ id: 'pr1', name: 'Acme Fiber', status: 'Active', description: '' }])
   listServiceProfiles.mockReset()
   createServiceEquipment.mockReset()
   createServiceEquipment.mockResolvedValue({ id: 'se1' })
@@ -116,6 +129,8 @@ describe('create mode (no service prop)', () => {
     expect(body().find('.base-modal__title').text()).toBe('Add Service')
     // Exactly one eligible device: auto-selected, no picker shown.
     expect(deviceSelect()).toBeUndefined()
+    // No Status field in create mode -- new Services always default to Active.
+    expect(statusSelect()).toBeUndefined()
 
     await body().find('form').trigger('submit.prevent')
     await wrapper.vm.$nextTick()
@@ -124,7 +139,7 @@ describe('create mode (no service prop)', () => {
       locationId: 'l1',
       productId: 'p1',
       serviceProfileId: 'sp1',
-      status: 'Pending',
+      status: 'Active',
       description: '',
     })
     expect(createServiceEquipment).toHaveBeenCalledWith({
@@ -135,6 +150,34 @@ describe('create mode (no service prop)', () => {
     })
     expect(updateService).not.toHaveBeenCalled()
     expect(wrapper.emitted('created')?.[0]).toEqual([existingService()])
+  })
+
+  it('labels each Product option with just its name when there is only one Provider', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Residential 100mb/s', status: 'Active' }])
+    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    const options = productSelect().findAll('option')
+    expect(options[0].text()).toBe('Residential 100mb/s')
+  })
+
+  it('labels each Product option "<Provider> > <Product>" once more than one Provider exists', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', providerId: 'pr1', name: 'Residential 100mb/s', status: 'Active' }])
+    listProviders.mockResolvedValue([
+      { id: 'pr1', name: 'Acme Internet Provider', status: 'Active', description: '' },
+      { id: 'pr2', name: 'Other ISP', status: 'Active', description: '' },
+    ])
+    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    const options = productSelect().findAll('option')
+    expect(options[0].text()).toBe('Acme Internet Provider > Residential 100mb/s')
   })
 
   it('shows a Device picker when the customer has more than one eligible device, and submits the chosen one', async () => {
@@ -232,6 +275,8 @@ describe('edit mode (service prop present)', () => {
 
     expect(body().find('.base-modal__title').text()).toBe('Edit Service')
     expect((productSelect().element as HTMLSelectElement).value).toBe('p2')
+    // Unlike create mode, the Status field is still editable here.
+    expect((statusSelect()!.element as HTMLSelectElement).value).toBe('Active')
   })
 
   it('submits the edited fields to updateService, ignoring the locationId prop in favor of the service\'s own, and passing through activated/suspended/disconnected unchanged', async () => {
