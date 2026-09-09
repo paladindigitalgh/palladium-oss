@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // HTTPConfig holds settings for the HTTP server.
@@ -143,7 +145,30 @@ type Config struct {
 
 // Load builds a Config from environment variables, applying defaults for
 // anything left unset, and validates the result.
+//
+// Before reading anything, it loads a .env file from the current
+// directory into the process environment via godotenv -- variables
+// already set in the real environment always win (godotenv.Load never
+// overwrites an existing one), so this is purely a local-development
+// convenience, not a second source of truth. It is the fix for a real
+// incident: every cmd/* binary here previously read only real process
+// env vars, so restarting the server as a raw binary (skipping `source
+// .env` first, e.g. after a rebuild) silently fell back to every
+// default -- most damagingly CORS_ALLOWED_ORIGIN reverting to
+// http://localhost:5173, which breaks every real cross-origin request
+// from the actual dev frontend while CORS preflight OPTIONS requests
+// keep succeeding regardless, making it look like a network outage
+// rather than a config problem. Calling godotenv.Load() here, once, for
+// every binary that calls config.Load(), makes that class of mistake
+// structurally impossible: there is no longer a "right way" to
+// remember, only one Load path, and it works the same however the
+// binary is invoked (go run, a rebuilt binary, a supervisor, ...). The
+// error is deliberately ignored: a missing .env is the expected, normal
+// case for every non-development deployment, which supplies real
+// environment variables instead and has no .env file at all.
 func Load() (Config, error) {
+	_ = godotenv.Load()
+
 	cfg := Config{
 		Environment: getEnvString("APP_ENV", "development"),
 		HTTP: HTTPConfig{
