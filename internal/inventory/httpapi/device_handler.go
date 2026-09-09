@@ -20,7 +20,6 @@ type deviceService interface {
 	List(ctx context.Context) ([]inventory.Device, error)
 	Create(ctx context.Context, device inventory.Device) (inventory.Device, error)
 	Update(ctx context.Context, device inventory.Device) (inventory.Device, error)
-	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 // DeviceHandler serves the Device REST endpoints:
@@ -30,7 +29,9 @@ type deviceService interface {
 //	GET    /api/v1/devices/{id}
 //	GET    /api/v1/devices/by-serial-number/{serialNumber}
 //	PUT    /api/v1/devices/{id}
-//	DELETE /api/v1/devices/{id}
+//
+// Deliberately no DELETE -- see inventory.DeviceRepository's own doc
+// comment for why Palladium never permanently erases a Device.
 //
 // It depends only on deviceService — never a repository directly — so it
 // has no knowledge of PostgreSQL, SQL, or any storage technology.
@@ -126,20 +127,4 @@ func (h *DeviceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, newDeviceResponse(updated))
-}
-
-// Delete handles DELETE /api/v1/devices/{id}.
-func (h *DeviceHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r)
-	if err != nil {
-		httpx.WriteError(w, err)
-		return
-	}
-
-	if err := h.devices.Delete(r.Context(), id); err != nil {
-		httpx.WriteError(w, err)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }

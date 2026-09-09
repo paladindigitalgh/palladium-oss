@@ -245,7 +245,6 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Use(deps.Authz.RequireInventoryWrite())
 				r.Post("/", deps.DeviceHandler.Create)
 				r.Put("/{id}", deps.DeviceHandler.Update)
-				r.Delete("/{id}", deps.DeviceHandler.Delete)
 			})
 		})
 

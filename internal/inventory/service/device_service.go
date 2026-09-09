@@ -54,8 +54,3 @@ func (s *DeviceService) Update(ctx context.Context, device inventory.Device) (in
 	}
 	return s.devices.Update(ctx, device)
 }
-
-// Delete removes the Device identified by id.
-func (s *DeviceService) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.devices.Delete(ctx, id)
-}

@@ -8,7 +8,6 @@ import {
   createDevice,
   authorizeAndCreateDevice,
   updateDevice,
-  deleteDevice,
 } from './deviceRepository'
 
 /** Mirrors customerRepository.test.ts's shape exactly -- see that file. */
@@ -367,15 +366,5 @@ describe('updateDevice', () => {
 
     const [, init] = apiFetch.mock.calls.find(([url]) => url === '/devices/d1')!
     expect((init.body as { rack_id: string | null }).rack_id).toBeNull()
-  })
-})
-
-describe('deleteDevice', () => {
-  it('issues a DELETE request for the given id', async () => {
-    apiFetch.mockResolvedValue(undefined)
-
-    await deleteDevice('d1')
-
-    expect(apiFetch).toHaveBeenCalledWith('/devices/d1', { method: 'DELETE' })
   })
 })

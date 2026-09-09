@@ -54,6 +54,15 @@ type RackRepository interface {
 }
 
 // DeviceRepository persists Devices.
+//
+// Deliberately no Delete: a Device's status (see DeviceStatus's own doc
+// comment) already carries a terminal Retired state for "no longer in
+// service," reached through
+// internal/provisioning/kontron/service.DeauthorizationService's
+// Deauthorize ONU action ("Remove Device" in the UI) rather than by
+// erasing the row -- Palladium always preserves a Device's history
+// (its past Service assignments, timeline) rather than offering a way
+// to permanently delete it.
 type DeviceRepository interface {
 	Get(ctx context.Context, id uuid.UUID) (Device, error)
 	// GetBySerialNumber returns the Device whose SerialNumber matches
@@ -67,5 +76,4 @@ type DeviceRepository interface {
 	List(ctx context.Context) ([]Device, error)
 	Create(ctx context.Context, device Device) (Device, error)
 	Update(ctx context.Context, device Device) (Device, error)
-	Delete(ctx context.Context, id uuid.UUID) error
 }

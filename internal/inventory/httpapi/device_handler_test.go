@@ -89,17 +89,6 @@ func (f *fakeDeviceService) Update(_ context.Context, device inventory.Device) (
 	return device, nil
 }
 
-func (f *fakeDeviceService) Delete(_ context.Context, id uuid.UUID) error {
-	if f.err != nil {
-		return f.err
-	}
-	if _, ok := f.devices[id]; !ok {
-		return apperror.NotFound("device not found")
-	}
-	delete(f.devices, id)
-	return nil
-}
-
 // newDeviceTestRouter mounts a DeviceHandler backed by svc on a real
 // chi.Router. See newTestRouter's doc comment (site_handler_test.go) for
 // why.
@@ -112,7 +101,6 @@ func newDeviceTestRouter(svc *fakeDeviceService) http.Handler {
 	r.Get("/devices/{id}", handler.Get)
 	r.Get("/devices/by-serial-number/{serialNumber}", handler.GetBySerialNumber)
 	r.Put("/devices/{id}", handler.Update)
-	r.Delete("/devices/{id}", handler.Delete)
 	return r
 }
 
@@ -290,34 +278,6 @@ func TestDeviceHandlerUpdateNotFound(t *testing.T) {
 	router := newDeviceTestRouter(newFakeDeviceService())
 
 	req := httptest.NewRequest(http.MethodPut, "/devices/"+uuid.New().String(), strings.NewReader(validDeviceBody))
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
-	}
-}
-
-func TestDeviceHandlerDelete(t *testing.T) {
-	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "Temporary"}, Status: inventory.DeviceStatusUnused}
-	router := newDeviceTestRouter(newFakeDeviceService(device))
-
-	req := httptest.NewRequest(http.MethodDelete, "/devices/"+device.ID.String(), nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
-	}
-	if rec.Body.Len() != 0 {
-		t.Errorf("body = %q, want empty for 204 No Content", rec.Body.String())
-	}
-}
-
-func TestDeviceHandlerDeleteNotFound(t *testing.T) {
-	router := newDeviceTestRouter(newFakeDeviceService())
-
-	req := httptest.NewRequest(http.MethodDelete, "/devices/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

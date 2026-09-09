@@ -282,15 +282,3 @@ export async function updateDevice(id: string, input: UpdateDeviceInput): Promis
   const { modelsById, manufacturersById } = await fetchDeviceCatalogs()
   return fromDto(dto, modelsById, manufacturersById)
 }
-
-/**
- * Deletes the Device identified by id. Device is a leaf in the Inventory
- * hierarchy itself, but is still referenced from outside it by
- * service_equipment.device_id ON DELETE RESTRICT -- see
- * internal/inventory/postgres/device.go's Delete -- so this can throw an
- * ApiError with kind "conflict" once the Device has ever been part of a
- * Service, active or not.
- */
-export async function deleteDevice(id: string): Promise<void> {
-  await apiFetch<void>(`/devices/${id}`, { method: 'DELETE' })
-}

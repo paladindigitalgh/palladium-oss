@@ -170,26 +170,6 @@ func (r *DeviceRepository) Update(ctx context.Context, device inventory.Device) 
 	return updated, nil
 }
 
-// Delete removes the Device identified by id, or returns an
-// apperror.KindNotFound error if it does not exist. Device is a leaf in
-// the inventory hierarchy itself, but it is still referenced from
-// outside it: service_equipment.device_id ON DELETE RESTRICT rejects
-// this delete with an apperror.KindConflict error (see translateError)
-// whenever this Device has ever been part of a Service, active or not
-// (see internal/serviceequipment).
-func (r *DeviceRepository) Delete(ctx context.Context, deviceID uuid.UUID) error {
-	const query = `DELETE FROM devices WHERE id = $1`
-
-	tag, err := r.db.Exec(ctx, query, deviceID)
-	if err != nil {
-		return translateError("delete device", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return deviceNotFound(deviceID)
-	}
-	return nil
-}
-
 func deviceNotFound(id uuid.UUID) error {
 	return apperror.NotFound(fmt.Sprintf("device %s not found", id))
 }

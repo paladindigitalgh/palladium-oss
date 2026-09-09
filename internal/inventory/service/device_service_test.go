@@ -71,14 +71,6 @@ func (f *fakeDeviceRepository) Update(_ context.Context, device inventory.Device
 	return device, nil
 }
 
-func (f *fakeDeviceRepository) Delete(_ context.Context, id uuid.UUID) error {
-	if _, ok := f.byID[id]; !ok {
-		return apperror.NotFound("device not found")
-	}
-	delete(f.byID, id)
-	return nil
-}
-
 var _ inventory.DeviceRepository = (*fakeDeviceRepository)(nil)
 
 func validDevice() inventory.Device {
@@ -211,32 +203,5 @@ func TestDeviceServiceListDelegatesToRepository(t *testing.T) {
 	}
 	if len(devices) != 2 {
 		t.Fatalf("len(List()) = %d, want 2", len(devices))
-	}
-}
-
-func TestDeviceServiceDeleteSucceeds(t *testing.T) {
-	existing := validDevice()
-	existing.ID = uuid.New()
-	repo := newFakeDeviceRepository(existing)
-	svc := service.NewDeviceService(repo)
-
-	if err := svc.Delete(context.Background(), existing.ID); err != nil {
-		t.Fatalf("Delete() = %v", err)
-	}
-
-	_, err := svc.Get(context.Background(), existing.ID)
-	if !apperror.Is(err, apperror.KindNotFound) {
-		t.Errorf("Get() after Delete() Kind = %q, want %q", apperror.KindOf(err), apperror.KindNotFound)
-	}
-}
-
-func TestDeviceServiceDeletePropagatesNotFound(t *testing.T) {
-	repo := newFakeDeviceRepository()
-	svc := service.NewDeviceService(repo)
-
-	err := svc.Delete(context.Background(), uuid.New())
-
-	if !apperror.Is(err, apperror.KindNotFound) {
-		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindNotFound)
 	}
 }

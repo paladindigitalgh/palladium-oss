@@ -283,32 +283,6 @@ func TestDeviceRepositoryUpdateNotFound(t *testing.T) {
 	assertNotFound(t, err)
 }
 
-func TestDeviceRepositoryDelete(t *testing.T) {
-	q, ctx := newTestQuerier(t)
-	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
-
-	created, err := repo.Create(ctx, validDevice(t, ctx, q, "Temporary"))
-	if err != nil {
-		t.Fatalf("Create() = %v", err)
-	}
-
-	if err := repo.Delete(ctx, created.ID); err != nil {
-		t.Fatalf("Delete() = %v", err)
-	}
-
-	_, err = repo.Get(ctx, created.ID)
-	assertNotFound(t, err)
-}
-
-func TestDeviceRepositoryDeleteNotFound(t *testing.T) {
-	q, ctx := newTestQuerier(t)
-	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
-
-	err := repo.Delete(ctx, uuid.New())
-
-	assertNotFound(t, err)
-}
-
 func TestDeviceRepositoryCreateConflictOnDuplicateID(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	fixedID := uuid.New()

@@ -14,7 +14,7 @@ import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
 import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
 import DeviceFormDialog from '@/components/dialogs/DeviceFormDialog.vue'
-import { getDeviceById, deleteDevice } from '@/services/devices/deviceRepository'
+import { getDeviceById } from '@/services/devices/deviceRepository'
 import { listServiceEquipmentByDeviceId } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { deauthorizeONU } from '@/services/provisioning/provisioningRepository'
 import { getServiceById } from '@/services/services/serviceRepository'
@@ -122,36 +122,15 @@ function handleDeviceUpdated(updated: Device) {
   showEditDialog.value = false
 }
 
-// --- Delete Device ---
-
-const showDeleteDialog = ref(false)
-const deletePending = ref(false)
-const deleteError = ref<string | null>(null)
-
-async function confirmDeleteDevice() {
-  if (!device.value) return
-  deletePending.value = true
-  deleteError.value = null
-  try {
-    await deleteDevice(device.value.id)
-    router.push('/devices')
-  } catch (err) {
-    if (err instanceof ApiError && err.kind === 'conflict') {
-      deleteError.value = 'This device has been part of a Service and cannot be permanently erased. Use Deauthorize ONU instead to retire it while preserving its history.'
-    } else {
-      deleteError.value = err instanceof ApiError ? err.message : 'The device could not be deleted.'
-    }
-  } finally {
-    deletePending.value = false
-  }
-}
-
-// --- Deauthorize ONU ---
-// Distinct from Delete Device below: this removes the ONU's
-// authorization from its real OLT and retires the Device record, but
-// never erases it -- Delete Device is the only one of the two that is a
-// permanent, irreversible removal from inventory (and is blocked
-// whenever the Device has any real Service history, by design).
+// --- Remove Device ---
+// "Remove Device" in the UI, internal/provisioning/kontron/service.
+// DeauthorizationService's Deauthorize ONU underneath: it removes the
+// ONU's authorization from its real OLT, unassigns it from its current
+// Service, and marks the Device Retired -- it never erases the row.
+// Palladium has no permanent-delete action for a Device at all (see
+// inventory.DeviceRepository's own doc comment for why): history (past
+// Service assignments, timeline) is always preserved, so Remove Device
+// is the one and only way to take a Device out of service.
 
 /**
  * Offered for any device not already Retired: a Device can be
@@ -165,30 +144,30 @@ async function confirmDeleteDevice() {
  * client-side gate that avoids offering the action when it plainly
  * cannot apply.
  */
-const canDeauthorizeONU = computed(() => !!device.value && device.value.status !== 'Retired')
+const canRemoveDevice = computed(() => !!device.value && device.value.status !== 'Retired')
 
-const showDeauthorizeDialog = ref(false)
-const deauthorizePending = ref(false)
-const deauthorizeError = ref<string | null>(null)
+const showRemoveDialog = ref(false)
+const removePending = ref(false)
+const removeError = ref<string | null>(null)
 
-async function confirmDeauthorizeONU() {
+async function confirmRemoveDevice() {
   if (!device.value) return
-  deauthorizePending.value = true
-  deauthorizeError.value = null
+  removePending.value = true
+  removeError.value = null
   try {
     await deauthorizeONU(device.value.id)
-    showDeauthorizeDialog.value = false
+    showRemoveDialog.value = false
     await load(device.value.id)
   } catch (err) {
     if (err instanceof ApiError && err.kind === 'invalid') {
-      deauthorizeError.value = 'This device is not an ONU/ONT on a Kontron OLT.'
+      removeError.value = 'This device is not an ONU/ONT on a Kontron OLT.'
     } else if (err instanceof ApiError && err.kind === 'not_found') {
-      deauthorizeError.value = 'This device has never been authorized through Palladium, so there is nothing to deauthorize.'
+      removeError.value = 'This device has never been authorized through Palladium, so there is nothing to remove.'
     } else {
-      deauthorizeError.value = err instanceof ApiError ? err.message : 'The ONU could not be deauthorized.'
+      removeError.value = err instanceof ApiError ? err.message : 'The device could not be removed.'
     }
   } finally {
-    deauthorizePending.value = false
+    removePending.value = false
   }
 }
 </script>
@@ -218,10 +197,9 @@ async function confirmDeauthorizeONU() {
         <WorkspaceActions>
           <template #secondary>
             <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit Device</BaseButton>
-            <BaseButton v-if="canDeauthorizeONU" variant="destructive" size="sm" @click="showDeauthorizeDialog = true">
-              Deauthorize ONU
+            <BaseButton v-if="canRemoveDevice" variant="destructive" size="sm" @click="showRemoveDialog = true">
+              Remove Device
             </BaseButton>
-            <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete Device</BaseButton>
           </template>
         </WorkspaceActions>
       </template>
@@ -230,27 +208,15 @@ async function confirmDeauthorizeONU() {
     <DeviceFormDialog :open="showEditDialog" :device="device" @close="showEditDialog = false" @updated="handleDeviceUpdated" />
 
     <ConfirmationDialog
-      :open="showDeleteDialog"
-      title="Delete Device"
-      :description="`Permanently erase ${device.name} from inventory? This cannot be undone, and is blocked if it has ever been part of a Service — deauthorize it instead so its history is preserved.`"
-      confirm-label="Delete Device"
+      :open="showRemoveDialog"
+      title="Remove Device"
+      :description="`Remove ${device.name} (Serial ${device.serialNumber}) from its OLT and unassign it from its current service, then mark the Device Retired. The inventory record stays -- Palladium never deletes a Device's history. This cannot be undone.`"
+      confirm-label="Remove Device"
       destructive
-      :pending="deletePending"
-      :error="deleteError"
-      @confirm="confirmDeleteDevice"
-      @cancel="showDeleteDialog = false"
-    />
-
-    <ConfirmationDialog
-      :open="showDeauthorizeDialog"
-      title="Deauthorize ONU"
-      :description="`Remove ${device.name} (Serial ${device.serialNumber}) from its OLT and unassign it from its current service, then mark the Device Retired. The inventory record stays -- this does not delete it. This cannot be undone.`"
-      confirm-label="Deauthorize ONU"
-      destructive
-      :pending="deauthorizePending"
-      :error="deauthorizeError"
-      @confirm="confirmDeauthorizeONU"
-      @cancel="showDeauthorizeDialog = false"
+      :pending="removePending"
+      :error="removeError"
+      @confirm="confirmRemoveDevice"
+      @cancel="showRemoveDialog = false"
     />
 
     <SectionCard title="Summary" icon="devices">
