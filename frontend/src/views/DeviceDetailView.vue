@@ -178,7 +178,7 @@ async function confirmDeauthorizeONU() {
     if (err instanceof ApiError && err.kind === 'invalid') {
       deauthorizeError.value = 'This device is not an ONU/ONT on a Kontron OLT.'
     } else if (err instanceof ApiError && err.kind === 'not_found') {
-      deauthorizeError.value = 'This device has never been assigned to a Service, so there is nothing to deauthorize.'
+      deauthorizeError.value = 'This device has never been authorized through Palladium, so there is nothing to deauthorize.'
     } else {
       deauthorizeError.value = err instanceof ApiError ? err.message : 'The ONU could not be deauthorized.'
     }

@@ -308,7 +308,7 @@ func (c *Client) ApplyServiceProfile(ctx context.Context, iface, profileName str
 	return nil
 }
 
-// DeauthorizeONU runs the six-command sequence confirmed by the person
+// DeauthorizeONU runs the seven-command sequence confirmed by the person
 // operating this equipment for fully removing an ONU's authorization
 // from an interface — the mirror image of AuthorizeONU, not of
 // ApplyServiceProfile/RemoveServiceProfile: those two leave the ONU's
@@ -321,24 +321,41 @@ func (c *Client) ApplyServiceProfile(ctx context.Context, iface, profileName str
 //
 //	configure
 //	interface <iface>
+//	no service-profile <managementServiceProfile>
 //	no onu serial-number
 //	exit
 //	exit
 //	save config
+//
+// "no service-profile <managementServiceProfile>" runs first, undoing
+// AuthorizeONU's own two authorization steps in reverse order: the OLT
+// would not fully release the ONU's serial number for "no onu
+// serial-number" alone to clear it while the management service-profile
+// AuthorizeONU applied is still bound to it — a real failure this
+// package's caller hit in practice (attempting to re-authorize a serial
+// number this method had supposedly already deauthorized failed with
+// "Serial number already exists", even though the ONU no longer appeared
+// in "show onu interface all"), traced back to this step's absence and
+// confirmed fixed by the same person operating this equipment who
+// confirmed the original sequence.
 //
 // Unlike AuthorizeONU, no serial number is supplied here: "no onu
 // serial-number" takes no argument, clearing whatever is currently
 // authorized on iface. Success/failure detection follows every other
 // Client method's exact convention: the first step whose output is
 // non-empty aborts the sequence and becomes the returned error.
-func (c *Client) DeauthorizeONU(ctx context.Context, iface string) error {
+func (c *Client) DeauthorizeONU(ctx context.Context, iface, managementServiceProfile string) error {
 	if strings.ContainsAny(iface, "\n\r") {
 		return ErrInvalidInterface
+	}
+	if strings.ContainsAny(managementServiceProfile, "\n\r") {
+		return ErrInvalidManagementServiceProfile
 	}
 
 	steps := []string{
 		"configure",
 		fmt.Sprintf("interface %s", iface),
+		fmt.Sprintf("no service-profile %s", managementServiceProfile),
 		"no onu serial-number",
 		"exit",
 		"exit",

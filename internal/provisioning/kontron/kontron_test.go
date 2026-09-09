@@ -318,17 +318,18 @@ func TestRemoveServiceProfileRejectsProfileNameWithNewline(t *testing.T) {
 	}
 }
 
-func TestDeauthorizeONUSucceedsAndRunsAllSixStepsInOrder(t *testing.T) {
+func TestDeauthorizeONUSucceedsAndRunsAllSevenStepsInOrder(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{}}
 	client := kontron.NewClient(shell)
 
-	if err := client.DeauthorizeONU(context.Background(), "xgs/6/3"); err != nil {
+	if err := client.DeauthorizeONU(context.Background(), "xgs/6/3", "iphost"); err != nil {
 		t.Fatalf("DeauthorizeONU() = %v", err)
 	}
 
 	want := []string{
 		"configure",
 		"interface xgs/6/3",
+		"no service-profile iphost",
 		"no onu serial-number",
 		"exit",
 		"exit",
@@ -350,7 +351,7 @@ func TestDeauthorizeONUAbortsOnFirstNonEmptyOutput(t *testing.T) {
 	}}
 	client := kontron.NewClient(shell)
 
-	err := client.DeauthorizeONU(context.Background(), "xgs/6/3")
+	err := client.DeauthorizeONU(context.Background(), "xgs/6/3", "iphost")
 	if err == nil {
 		t.Fatal("DeauthorizeONU() error = nil, want an error")
 	}
@@ -358,7 +359,7 @@ func TestDeauthorizeONUAbortsOnFirstNonEmptyOutput(t *testing.T) {
 		t.Errorf("DeauthorizeONU() error = %q, want it to contain the device's raw message", got)
 	}
 
-	want := []string{"configure", "interface xgs/6/3", "no onu serial-number"}
+	want := []string{"configure", "interface xgs/6/3", "no service-profile iphost", "no onu serial-number"}
 	if len(shell.calls) != len(want) {
 		t.Fatalf("calls = %v, want exactly %v (save config must not run)", shell.calls, want)
 	}
@@ -368,9 +369,22 @@ func TestDeauthorizeONURejectsInterfaceWithNewline(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{}}
 	client := kontron.NewClient(shell)
 
-	err := client.DeauthorizeONU(context.Background(), "xgs/6/3\nrm -rf /")
+	err := client.DeauthorizeONU(context.Background(), "xgs/6/3\nrm -rf /", "iphost")
 	if !errors.Is(err, kontron.ErrInvalidInterface) {
 		t.Errorf("DeauthorizeONU() error = %v, want ErrInvalidInterface", err)
+	}
+	if len(shell.calls) != 0 {
+		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)
+	}
+}
+
+func TestDeauthorizeONURejectsManagementServiceProfileWithNewline(t *testing.T) {
+	shell := &fakeShell{outputs: map[string]string{}}
+	client := kontron.NewClient(shell)
+
+	err := client.DeauthorizeONU(context.Background(), "xgs/6/3", "iphost\nrm -rf /")
+	if !errors.Is(err, kontron.ErrInvalidManagementServiceProfile) {
+		t.Errorf("DeauthorizeONU() error = %v, want ErrInvalidManagementServiceProfile", err)
 	}
 	if len(shell.calls) != 0 {
 		t.Errorf("calls = %v, want none (validation must happen before anything runs)", shell.calls)

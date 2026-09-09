@@ -75,6 +75,8 @@ import (
 	oltmodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/httpapi"
 	oltmodelpostgres "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/postgres"
 	oltmodelservice "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/service"
+	onuauthorizationpostgres "github.com/paladindigitalgh/palladium-oss/internal/onuauthorization/postgres"
+	onuauthorizationservice "github.com/paladindigitalgh/palladium-oss/internal/onuauthorization/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/encryption"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
@@ -453,6 +455,17 @@ func run() error {
 	kontronSvc := kontronservice.NewKontronService(kontronDialer, oltRepo, oltModelRepo)
 	kontronHandler := kontronhttpapi.NewKontronHandler(kontronSvc)
 
+	// ONU Authorization (internal/onuauthorization) records that a Device
+	// has been authorized directly on an OLT, independent of any Service
+	// assignment — see that package's own doc comment for the gap this
+	// closes. Built here, alongside deviceRepo/deviceService above, since
+	// both of this milestone's Kontron write-command services below need
+	// it: AuthorizeAndCreateDeviceService to persist the record,
+	// DeauthorizationService to resolve it when a Device has no
+	// ServiceEquipment.
+	onuAuthorizationRepo := onuauthorizationpostgres.NewOnuAuthorizationRepository(pool, clock.New(), id.New())
+	onuAuthorizationSvc := onuauthorizationservice.NewOnuAuthorizationService(onuAuthorizationRepo)
+
 	// Kontron ONU authorization (internal/provisioning/kontron) is this
 	// codebase's first real vendor-specific *write* command surface —
 	// see that package's own doc comment on why it is a sibling of, not
@@ -465,11 +478,12 @@ func run() error {
 
 	// Authorize-and-create-Device (internal/provisioning/kontron/service.
 	// AuthorizeAndCreateDeviceService) composes provisioningKontronSvc
-	// (the OLT-side command) with deviceService (built above, alongside
-	// deviceHandler) rather than building either fresh — see that
-	// service's own doc comment for why this exists as a single action
-	// instead of two independently-forgettable ones.
-	provisioningKontronAuthorizeAndCreateDeviceSvc := provisioningkontronservice.NewAuthorizeAndCreateDeviceService(provisioningKontronSvc, deviceService)
+	// (the OLT-side command) with deviceService and onuAuthorizationSvc
+	// (both built above) rather than building any of them fresh — see
+	// that service's own doc comment for why this exists as a single
+	// action instead of two independently-forgettable ones.
+	provisioningKontronAuthorizeAndCreateDeviceSvc := provisioningkontronservice.NewAuthorizeAndCreateDeviceService(
+		provisioningKontronSvc, deviceService, onuAuthorizationSvc, clock.New())
 	provisioningKontronAuthorizeAndCreateDeviceHandler := provisioningkontronhttpapi.NewAuthorizeAndCreateDeviceHandler(provisioningKontronAuthorizeAndCreateDeviceSvc)
 
 	// Access Topology (internal/accesstopology) resolves where a
@@ -506,17 +520,20 @@ func run() error {
 	// endpoint like provisioningKontronHandler above, not a workflow
 	// Plugin: it is triggered from the Device Detail page (a DeviceID in
 	// hand, nothing else), fully removes the ONU's base authorization,
-	// and — once that succeeds — marks the active AccessAttachment and
-	// ServiceEquipment for the device removed, and the Device itself
-	// Retired (see markDeviceRetired's own doc comment). It reuses
-	// kontronDialer, serviceEquipmentRepo/serviceEquipmentSvc,
-	// accessTopologyResolver, oltRepo, oltModelRepo,
-	// accessAttachmentRepo/accessAttachmentSvc, and deviceService — all
-	// already built above for their own callers.
+	// and — once that succeeds — marks whichever record it resolved
+	// through (ServiceEquipment/AccessAttachment, or — when there is
+	// none — onuAuthorizationSvc's OnuAuthorization, built above)
+	// removed/deauthorized, and the Device itself Retired (see
+	// markDeviceRetired's own doc comment). It reuses kontronDialer,
+	// serviceEquipmentRepo/serviceEquipmentSvc, accessTopologyResolver,
+	// oltRepo, oltModelRepo, accessAttachmentRepo/accessAttachmentSvc,
+	// onuAuthorizationSvc, and deviceService — all already built above
+	// for their own callers.
 	provisioningKontronDeauthorizationSvc := provisioningkontronservice.NewDeauthorizationService(
 		kontronDialer, serviceEquipmentRepo, serviceEquipmentSvc, accessTopologyResolver,
 		oltRepo, oltModelRepo, accessAttachmentRepo, accessAttachmentSvc,
-		deviceService, deviceService, clock.New())
+		onuAuthorizationSvc, onuAuthorizationSvc,
+		deviceService, deviceService, clock.New(), cfg.Kontron.ManagementServiceProfile)
 	provisioningKontronDeauthorizationHandler := provisioningkontronhttpapi.NewDeauthorizationHandler(provisioningKontronDeauthorizationSvc)
 
 	// Customer removal ("Remove Customer",
