@@ -55,6 +55,7 @@ Hierarchy is Site -> Building -> Room -> Rack -> Device (internal/inventory).
 - [x] PON ports
 - [ ] Splitters
 - [x] ONUs
+- [ ] Connection Profile management UI (create/edit)
 - [ ] VLANs (explicitly out of scope -- see below)
 - [ ] IP pools (explicitly out of scope -- see below)
 
@@ -63,6 +64,8 @@ Covers AccessNetwork -> OLT -> PONPort -> AccessInterface -> AccessAttachment, f
 An ONU is a customer-premises inventory.Device (internal/inventory), not a new domain -- OLTs/switches stay under Network, CPE stays under Devices. "Discover ONU" (Device Collection View) is the built picker: internal/diagnostics/kontron's blacklist scan finds a physically-detected, not-yet-authorized serial number and its PON port interface, then internal/provisioning/kontron/service.AuthorizationService authorizes it on the OLT and fills in the Device record in one flow. The mirror action, "Deauthorize ONU" (Device Detail Workspace), removes the ONU's base authorization and retires the Device -- see docs/06-PLUGIN-ARCHITECTURE.md's Implementation Status note.
 
 VLAN/IP addressing is explicitly out of scope for this OSS (2026-09-08, at the user's explicit request): "All VLAN and IP addressing will be handled by outside equipment - routers and such, not part of the scope of this OSS." The two unchecked items above will stay unchecked.
+
+Connection Profile (internal/connectionprofile) has a complete backend domain and REST API but no frontend UI to create or edit one -- only OLTFormDialog.vue's picker (added 2026-09-08) to *assign* an existing profile to an OLT. A fresh environment with zero Connection Profiles has no in-product way to make its first one; someone has to POST /connection-profiles directly. Deferred rather than built alongside the picker since an existing profile already covered the immediate need.
 
 ---
 
