@@ -10,8 +10,9 @@ withDefaults(
     label: string
     type?: 'text' | 'email' | 'password'
     required?: boolean
+    disabled?: boolean
   }>(),
-  { type: 'text', required: false },
+  { type: 'text', required: false, disabled: false },
 )
 
 const model = defineModel<string>({ required: true })
@@ -20,7 +21,7 @@ const model = defineModel<string>({ required: true })
 <template>
   <label class="base-input">
     <span class="base-input__label">{{ label }}</span>
-    <input v-model="model" :type="type" :required="required" class="base-input__control" />
+    <input v-model="model" :type="type" :required="required" :disabled="disabled" class="base-input__control" />
   </label>
 </template>
 
@@ -56,5 +57,10 @@ const model = defineModel<string>({ required: true })
 .base-input__control:focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
+}
+
+.base-input__control:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

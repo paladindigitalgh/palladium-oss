@@ -50,47 +50,48 @@ import (
 // this package, keeping construction explicit rather than relying on
 // globals or a framework-managed container.
 type Dependencies struct {
-	Logger                                    *slog.Logger
-	HealthCheckers                            []health.Checker
-	Version                                   string
-	Commit                                    string
-	SiteHandler                               *httpapi.SiteHandler
-	BuildingHandler                           *httpapi.BuildingHandler
-	RoomHandler                               *httpapi.RoomHandler
-	RackHandler                               *httpapi.RackHandler
-	DeviceHandler                             *httpapi.DeviceHandler
-	DeviceManufacturerHandler                 *devicemanufacturerhttpapi.DeviceManufacturerHandler
-	DeviceModelHandler                        *devicemodelhttpapi.DeviceModelHandler
-	CustomerHandler                           *customerhttpapi.CustomerHandler
-	CustomerRemovalHandler                    *customerhttpapi.RemovalHandler
-	LocationHandler                           *locationhttpapi.LocationHandler
-	ContactHandler                            *contacthttpapi.ContactHandler
-	CatalogHandler                            *cataloghttpapi.CatalogHandler
-	ProductHandler                            *producthttpapi.ProductHandler
-	ProviderHandler                           *providerhttpapi.ProviderHandler
-	ProvisioningProfileHandler                *provisioninghttpapi.ProvisioningProfileHandler
-	ProvisioningKontronHandler                *provisioningkontronhttpapi.AuthorizationHandler
-	ProvisioningKontronDeauthorizationHandler *provisioningkontronhttpapi.DeauthorizationHandler
-	ServiceHandler                            *servicehttpapi.ServiceHandler
-	ServiceEquipmentHandler                   *serviceequipmenthttpapi.ServiceEquipmentHandler
-	WorkflowHandler                           *workflowhttpapi.WorkflowHandler
-	EventHandler                              *eventhttpapi.EventHandler
-	AccessNetworkHandler                      *accessnetworkhttpapi.AccessNetworkHandler
-	OLTHandler                                *olthttpapi.OLTHandler
-	OLTModelHandler                           *oltmodelhttpapi.OLTModelHandler
-	PONPortHandler                            *ponporthttpapi.PONPortHandler
-	AccessInterfaceHandler                    *accessinterfacehttpapi.AccessInterfaceHandler
-	AccessAttachmentHandler                   *accessattachmenthttpapi.AccessAttachmentHandler
-	ServiceProfileHandler                     *serviceprofilehttpapi.ServiceProfileHandler
-	DiagnosticsHandler                        *diagnosticshttpapi.DiagnosticsHandler
-	KontronHandler                            *kontronhttpapi.KontronHandler
-	AccessTopologyHandler                     *accesstopologyhttpapi.AccessTopologyHandler
-	AuthenticationHandler                     *authenticationhttpapi.AuthenticationHandler
-	ConnectionProfileHandler                  *connectionprofilehttpapi.ConnectionProfileHandler
-	Tokens                                    *auth.TokenIssuer
-	LoginHandler                              *authhttpapi.LoginHandler
-	UserHandler                               *authhttpapi.UserHandler
-	Authz                                     *authz.Middleware
+	Logger                                             *slog.Logger
+	HealthCheckers                                     []health.Checker
+	Version                                            string
+	Commit                                             string
+	SiteHandler                                        *httpapi.SiteHandler
+	BuildingHandler                                    *httpapi.BuildingHandler
+	RoomHandler                                        *httpapi.RoomHandler
+	RackHandler                                        *httpapi.RackHandler
+	DeviceHandler                                      *httpapi.DeviceHandler
+	DeviceManufacturerHandler                          *devicemanufacturerhttpapi.DeviceManufacturerHandler
+	DeviceModelHandler                                 *devicemodelhttpapi.DeviceModelHandler
+	CustomerHandler                                    *customerhttpapi.CustomerHandler
+	CustomerRemovalHandler                             *customerhttpapi.RemovalHandler
+	LocationHandler                                    *locationhttpapi.LocationHandler
+	ContactHandler                                     *contacthttpapi.ContactHandler
+	CatalogHandler                                     *cataloghttpapi.CatalogHandler
+	ProductHandler                                     *producthttpapi.ProductHandler
+	ProviderHandler                                    *providerhttpapi.ProviderHandler
+	ProvisioningProfileHandler                         *provisioninghttpapi.ProvisioningProfileHandler
+	ProvisioningKontronHandler                         *provisioningkontronhttpapi.AuthorizationHandler
+	ProvisioningKontronDeauthorizationHandler          *provisioningkontronhttpapi.DeauthorizationHandler
+	ProvisioningKontronAuthorizeAndCreateDeviceHandler *provisioningkontronhttpapi.AuthorizeAndCreateDeviceHandler
+	ServiceHandler                                     *servicehttpapi.ServiceHandler
+	ServiceEquipmentHandler                            *serviceequipmenthttpapi.ServiceEquipmentHandler
+	WorkflowHandler                                    *workflowhttpapi.WorkflowHandler
+	EventHandler                                       *eventhttpapi.EventHandler
+	AccessNetworkHandler                               *accessnetworkhttpapi.AccessNetworkHandler
+	OLTHandler                                         *olthttpapi.OLTHandler
+	OLTModelHandler                                    *oltmodelhttpapi.OLTModelHandler
+	PONPortHandler                                     *ponporthttpapi.PONPortHandler
+	AccessInterfaceHandler                             *accessinterfacehttpapi.AccessInterfaceHandler
+	AccessAttachmentHandler                            *accessattachmenthttpapi.AccessAttachmentHandler
+	ServiceProfileHandler                              *serviceprofilehttpapi.ServiceProfileHandler
+	DiagnosticsHandler                                 *diagnosticshttpapi.DiagnosticsHandler
+	KontronHandler                                     *kontronhttpapi.KontronHandler
+	AccessTopologyHandler                              *accesstopologyhttpapi.AccessTopologyHandler
+	AuthenticationHandler                              *authenticationhttpapi.AuthenticationHandler
+	ConnectionProfileHandler                           *connectionprofilehttpapi.ConnectionProfileHandler
+	Tokens                                             *auth.TokenIssuer
+	LoginHandler                                       *authhttpapi.LoginHandler
+	UserHandler                                        *authhttpapi.UserHandler
+	Authz                                              *authz.Middleware
 	// AllowedOrigin is the frontend origin CORS middleware accepts
 	// cross-origin requests from (see corsMiddleware). Empty disables
 	// CORS headers entirely, which is fine for tests that never go
@@ -765,6 +766,18 @@ func NewRouter(deps Dependencies) http.Handler {
 
 			r.Route("/olts/{oltId}", func(r chi.Router) {
 				r.Post("/authorize-onu", deps.ProvisioningKontronHandler.AuthorizeONU)
+
+				// /authorize-and-create-device is the Discover ONU picker's
+				// one action (folded into the New Device form -- see
+				// DeviceFormDialog.vue): authorize-onu alone left an
+				// operator who abandoned the follow-up New Device form
+				// with an ONU live on the OLT and no Device record
+				// anywhere in Palladium (see
+				// service.AuthorizeAndCreateDeviceService's own doc
+				// comment). This does not replace authorize-onu -- it
+				// still exists for any caller that only needs the raw
+				// OLT-side action.
+				r.Post("/authorize-and-create-device", deps.ProvisioningKontronAuthorizeAndCreateDeviceHandler.AuthorizeAndCreateDevice)
 			})
 
 			// /provisioning/devices/{deviceId}/deauthorize-onu ("Delete

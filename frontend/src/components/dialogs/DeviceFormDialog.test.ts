@@ -22,15 +22,21 @@ import type { DeviceModel } from '@/types/deviceModel'
  * through a DOMWrapper over `document.body` instead, the standard
  * Vue Test Utils pattern for asserting on teleported content.
  */
-const { createDevice, updateDevice } = vi.hoisted(() => ({ createDevice: vi.fn(), updateDevice: vi.fn() }))
+const { createDevice, updateDevice, authorizeAndCreateDevice } = vi.hoisted(() => ({
+  createDevice: vi.fn(),
+  updateDevice: vi.fn(),
+  authorizeAndCreateDevice: vi.fn(),
+}))
 const { listRacks } = vi.hoisted(() => ({ listRacks: vi.fn() }))
 const { listDeviceManufacturers } = vi.hoisted(() => ({ listDeviceManufacturers: vi.fn() }))
 const { listDeviceModels } = vi.hoisted(() => ({ listDeviceModels: vi.fn() }))
+const { getAggregatedBlacklist } = vi.hoisted(() => ({ getAggregatedBlacklist: vi.fn() }))
 
-vi.mock('@/services/devices/deviceRepository', () => ({ createDevice, updateDevice }))
+vi.mock('@/services/devices/deviceRepository', () => ({ createDevice, updateDevice, authorizeAndCreateDevice }))
 vi.mock('@/services/racks/rackRepository', () => ({ listRacks }))
 vi.mock('@/services/deviceManufacturers/deviceManufacturerRepository', () => ({ listDeviceManufacturers }))
 vi.mock('@/services/deviceModels/deviceModelRepository', () => ({ listDeviceModels }))
+vi.mock('@/services/diagnostics/diagnosticsRepository', () => ({ getAggregatedBlacklist }))
 
 function body() {
   return new DOMWrapper(document.body)
@@ -120,12 +126,15 @@ function selectByLabel(labelText: string) {
 beforeEach(() => {
   createDevice.mockReset()
   updateDevice.mockReset()
+  authorizeAndCreateDevice.mockReset()
   listRacks.mockReset()
   listRacks.mockResolvedValue([])
   listDeviceManufacturers.mockReset()
   listDeviceManufacturers.mockResolvedValue([existingManufacturer()])
   listDeviceModels.mockReset()
   listDeviceModels.mockResolvedValue([existingModel()])
+  getAggregatedBlacklist.mockReset()
+  getAggregatedBlacklist.mockResolvedValue({ onus: [], unreachableOlts: [] })
 })
 
 describe('create mode (no device prop)', () => {
@@ -296,6 +305,147 @@ describe('Manufacturer / Model cascading picker', () => {
     await nextTick()
 
     expect(submitButton.attributes('disabled')).toBeUndefined()
+  })
+})
+
+describe('Discovered ONU picker (create mode)', () => {
+  it('does not render when the blacklist scan returns nothing', async () => {
+    const wrapper = mount(DeviceFormDialog, { props: { open: true } })
+    await settle()
+
+    expect(
+      body()
+        .findAll('.base-select')
+        .some((el) => el.find('.base-select__label').text() === 'Discovered ONU'),
+    ).toBe(false)
+    expect(wrapper.exists()).toBe(true)
+  })
+
+  it('renders an option per blacklisted ONU plus "Enter manually" once the scan resolves', async () => {
+    getAggregatedBlacklist.mockResolvedValue({
+      onus: [
+        { oltId: 'olt1', oltName: 'OLT-A', interface: 'xgs/6', serialNumber: 'ISKT001', registrationId: '', cause: 'unregistered' },
+      ],
+      unreachableOlts: [],
+    })
+    mount(DeviceFormDialog, { props: { open: true } })
+    await settle()
+
+    const options = selectByLabel('Discovered ONU').findAll('option')
+    expect(options.map((option) => option.text())).toEqual(['Enter manually', 'ISKT001 — OLT-A (xgs/6)'])
+  })
+
+  it('never renders in edit mode even when the blacklist has entries', async () => {
+    getAggregatedBlacklist.mockResolvedValue({
+      onus: [
+        { oltId: 'olt1', oltName: 'OLT-A', interface: 'xgs/6', serialNumber: 'ISKT001', registrationId: '', cause: 'unregistered' },
+      ],
+      unreachableOlts: [],
+    })
+    mount(DeviceFormDialog, { props: { open: true, device: existingDevice() } })
+    await settle()
+
+    expect(getAggregatedBlacklist).not.toHaveBeenCalled()
+    expect(
+      body()
+        .findAll('.base-select')
+        .some((el) => el.find('.base-select__label').text() === 'Discovered ONU'),
+    ).toBe(false)
+  })
+
+  it('a failed blacklist scan leaves the picker hidden without blocking the form', async () => {
+    getAggregatedBlacklist.mockRejectedValue(new Error('every OLT unreachable'))
+    const wrapper = mount(DeviceFormDialog, { props: { open: true } })
+    await settle()
+
+    expect(
+      body()
+        .findAll('.base-select')
+        .some((el) => el.find('.base-select__label').text() === 'Discovered ONU'),
+    ).toBe(false)
+    expect(wrapper.exists()).toBe(true)
+  })
+
+  it('selecting a blacklisted ONU locks Serial Number to it and defaults Status to Installed', async () => {
+    getAggregatedBlacklist.mockResolvedValue({
+      onus: [
+        { oltId: 'olt1', oltName: 'OLT-A', interface: 'xgs/6', serialNumber: 'ISKT001', registrationId: '', cause: 'unregistered' },
+      ],
+      unreachableOlts: [],
+    })
+    mount(DeviceFormDialog, { props: { open: true } })
+    await settle()
+
+    await selectByLabel('Discovered ONU').setValue('ISKT001')
+    await nextTick()
+
+    const serialInput = inputByLabel('Serial Number')
+    expect((serialInput.element as HTMLInputElement).value).toBe('ISKT001')
+    expect((serialInput.element as HTMLInputElement).disabled).toBe(true)
+    expect((selectByLabel('Status').element as HTMLSelectElement).value).toBe('Installed')
+  })
+
+  it('submits through authorizeAndCreateDevice with the ONU\'s oltId/interface when a Discovered ONU is selected', async () => {
+    getAggregatedBlacklist.mockResolvedValue({
+      onus: [
+        { oltId: 'olt1', oltName: 'OLT-A', interface: 'xgs/6', serialNumber: 'ISKT001', registrationId: '', cause: 'unregistered' },
+      ],
+      unreachableOlts: [],
+    })
+    authorizeAndCreateDevice.mockResolvedValue(existingDevice({ id: 'new-2', serialNumber: 'ISKT001', status: 'Installed' }))
+    const wrapper = mount(DeviceFormDialog, { props: { open: true } })
+    await settle()
+
+    await inputByLabel('Name').setValue('Discovered ONT')
+    await selectByLabel('Manufacturer').setValue('mfr-nokia')
+    await selectByLabel('Model').setValue('model-nokia-g010g')
+    await selectByLabel('Discovered ONU').setValue('ISKT001')
+    await nextTick()
+    await body().find('form').trigger('submit.prevent')
+    await wrapper.vm.$nextTick()
+
+    expect(authorizeAndCreateDevice).toHaveBeenCalledWith('olt1', 'xgs/6', {
+      name: 'Discovered ONT',
+      deviceModelId: 'model-nokia-g010g',
+      serialNumber: 'ISKT001',
+      assetTag: '',
+      status: 'Installed',
+      description: '',
+      rackId: null,
+    })
+    expect(createDevice).not.toHaveBeenCalled()
+    expect(wrapper.emitted('created')?.[0]).toEqual([existingDevice({ id: 'new-2', serialNumber: 'ISKT001', status: 'Installed' })])
+  })
+
+  it('switching back to "Enter manually" unlocks Serial Number and submits through createDevice', async () => {
+    getAggregatedBlacklist.mockResolvedValue({
+      onus: [
+        { oltId: 'olt1', oltName: 'OLT-A', interface: 'xgs/6', serialNumber: 'ISKT001', registrationId: '', cause: 'unregistered' },
+      ],
+      unreachableOlts: [],
+    })
+    createDevice.mockResolvedValue(existingDevice({ id: 'new-3', serialNumber: 'SN999' }))
+    const wrapper = mount(DeviceFormDialog, { props: { open: true } })
+    await settle()
+
+    await selectByLabel('Discovered ONU').setValue('ISKT001')
+    await nextTick()
+    await selectByLabel('Discovered ONU').setValue('')
+    await nextTick()
+
+    expect((inputByLabel('Serial Number').element as HTMLInputElement).disabled).toBe(false)
+
+    await inputByLabel('Name').setValue('Manual ONT')
+    await selectByLabel('Manufacturer').setValue('mfr-nokia')
+    await selectByLabel('Model').setValue('model-nokia-g010g')
+    await inputByLabel('Serial Number').setValue('SN999')
+    await body().find('form').trigger('submit.prevent')
+    await wrapper.vm.$nextTick()
+
+    expect(createDevice).toHaveBeenCalledWith(
+      expect.objectContaining({ serialNumber: 'SN999' }),
+    )
+    expect(authorizeAndCreateDevice).not.toHaveBeenCalled()
   })
 })
 

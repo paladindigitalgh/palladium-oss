@@ -13,6 +13,7 @@ import (
 
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	"github.com/paladindigitalgh/palladium-oss/internal/authz"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/httpapi"
@@ -103,6 +104,90 @@ func newDeauthorizationAuthenticatedTestRouter(svc *fakeDeauthorizationService, 
 		})
 	})
 	return r
+}
+
+// newAuthorizeAndCreateDeviceAuthenticatedTestRouter mirrors
+// newAuthenticatedTestRouter for AuthorizeAndCreateDeviceHandler, exactly
+// as internal/server/router.go wires
+// /api/v1/provisioning/olts/{oltId}/authorize-and-create-device in
+// production -- the same RequireProvisioning group as authorize-onu,
+// since this is the same kind of live action, just also creating a
+// Device.
+func newAuthorizeAndCreateDeviceAuthenticatedTestRouter(svc *fakeAuthorizeAndCreateDeviceService, tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+	handler := httpapi.NewAuthorizeAndCreateDeviceHandler(svc)
+	authzMiddleware := authz.NewMiddleware(stubUserRepository{role: role})
+
+	r := chi.NewRouter()
+	r.Route("/provisioning/olts/{oltId}", func(r chi.Router) {
+		r.Use(auth.Middleware(tokens))
+
+		r.Group(func(r chi.Router) {
+			r.Use(authzMiddleware.RequireProvisioning())
+			r.Post("/authorize-and-create-device", handler.AuthorizeAndCreateDevice)
+		})
+	})
+	return r
+}
+
+func authorizeAndCreateDeviceRequestBody() string {
+	return `{"port":"xgs/6","serial_number":"ISKT2308DD88","name":"New ONU","device_model_id":"` + uuid.New().String() + `","status":"Installed"}`
+}
+
+// TestViewerCannotAuthorizeAndCreateDevice is "apply the standard RBAC
+// matrix", applied here: Viewer cannot run a live provisioning action.
+func TestViewerCannotAuthorizeAndCreateDevice(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
+	router := newAuthorizeAndCreateDeviceAuthenticatedTestRouter(
+		&fakeAuthorizeAndCreateDeviceService{device: inventory.Device{}, iface: "xgs/6/2"}, tokens, auth.RoleViewer)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/provisioning/olts/"+uuid.New().String()+"/authorize-and-create-device",
+		strings.NewReader(authorizeAndCreateDeviceRequestBody()))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+// TestOperatorCanAuthorizeAndCreateDevice is "apply the standard RBAC
+// matrix", applied here: Operator can run.
+func TestOperatorCanAuthorizeAndCreateDevice(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
+	router := newAuthorizeAndCreateDeviceAuthenticatedTestRouter(
+		&fakeAuthorizeAndCreateDeviceService{device: inventory.Device{}, iface: "xgs/6/2"}, tokens, auth.RoleOperator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/provisioning/olts/"+uuid.New().String()+"/authorize-and-create-device",
+		strings.NewReader(authorizeAndCreateDeviceRequestBody()))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
+// TestAdministratorCanAuthorizeAndCreateDevice is "apply the standard
+// RBAC matrix", applied here: Administrator can run.
+func TestAdministratorCanAuthorizeAndCreateDevice(t *testing.T) {
+	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.NewFrozen(authTestNow))
+	router := newAuthorizeAndCreateDeviceAuthenticatedTestRouter(
+		&fakeAuthorizeAndCreateDeviceService{device: inventory.Device{}, iface: "xgs/6/2"}, tokens, auth.RoleAdministrator)
+	token := mustIssueToken(t, tokens)
+
+	req := httptest.NewRequest(http.MethodPost, "/provisioning/olts/"+uuid.New().String()+"/authorize-and-create-device",
+		strings.NewReader(authorizeAndCreateDeviceRequestBody()))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
 }
 
 func TestUnauthenticatedRequestRejectedWithoutReachingHandler(t *testing.T) {

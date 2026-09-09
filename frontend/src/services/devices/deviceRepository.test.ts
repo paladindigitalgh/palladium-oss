@@ -6,6 +6,7 @@ import {
   getDeviceById,
   getDeviceBySerialNumber,
   createDevice,
+  authorizeAndCreateDevice,
   updateDevice,
   deleteDevice,
 } from './deviceRepository'
@@ -295,6 +296,39 @@ describe('createDevice', () => {
 
     const [, init] = apiFetch.mock.calls.find(([url]) => url === '/devices/')!
     expect((init.body as { rack_id: string | null }).rack_id).toBe('rack-1')
+  })
+})
+
+describe('authorizeAndCreateDevice', () => {
+  it('posts oltId/port alongside the device fields to the authorize-and-create-device endpoint', async () => {
+    mockApiFetch(deviceDto({ id: 'new', serial_number: 'ISKT001', status: 'Installed' }))
+
+    const device = await authorizeAndCreateDevice('olt1', 'xgs/6', {
+      name: 'Discovered ONT',
+      deviceModelId: 'model-nokia-g010g',
+      serialNumber: 'ISKT001',
+      assetTag: '',
+      status: 'Installed',
+      description: '',
+      rackId: null,
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith('/provisioning/olts/olt1/authorize-and-create-device', {
+      method: 'POST',
+      body: {
+        port: 'xgs/6',
+        name: 'Discovered ONT',
+        device_model_id: 'model-nokia-g010g',
+        serial_number: 'ISKT001',
+        asset_tag: '',
+        status: 'Installed',
+        description: '',
+        rack_id: null,
+      },
+    })
+    expect(device.id).toBe('new')
+    expect(device.serialNumber).toBe('ISKT001')
+    expect(device.manufacturer).toBe('Nokia')
   })
 })
 

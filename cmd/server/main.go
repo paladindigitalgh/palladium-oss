@@ -45,13 +45,13 @@ import (
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
 	customerremoval "github.com/paladindigitalgh/palladium-oss/internal/customer/removal"
 	customerservice "github.com/paladindigitalgh/palladium-oss/internal/customer/service"
+	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	devicemanufacturerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/httpapi"
 	devicemanufacturerpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/postgres"
 	devicemanufacturerservice "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/service"
 	devicemodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/httpapi"
 	devicemodelpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/postgres"
 	devicemodelservice "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/service"
-	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
 	kontronhttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron/httpapi"
@@ -463,6 +463,15 @@ func run() error {
 	provisioningKontronSvc := provisioningkontronservice.NewAuthorizationService(kontronDialer, cfg.Kontron.ManagementServiceProfile)
 	provisioningKontronHandler := provisioningkontronhttpapi.NewAuthorizationHandler(provisioningKontronSvc)
 
+	// Authorize-and-create-Device (internal/provisioning/kontron/service.
+	// AuthorizeAndCreateDeviceService) composes provisioningKontronSvc
+	// (the OLT-side command) with deviceService (built above, alongside
+	// deviceHandler) rather than building either fresh — see that
+	// service's own doc comment for why this exists as a single action
+	// instead of two independently-forgettable ones.
+	provisioningKontronAuthorizeAndCreateDeviceSvc := provisioningkontronservice.NewAuthorizeAndCreateDeviceService(provisioningKontronSvc, deviceService)
+	provisioningKontronAuthorizeAndCreateDeviceHandler := provisioningkontronhttpapi.NewAuthorizeAndCreateDeviceHandler(provisioningKontronAuthorizeAndCreateDeviceSvc)
+
 	// Access Topology (internal/accesstopology) resolves where a
 	// Customer's equipment sits on the access network — the OLT and
 	// interface a diagnostic needs — reusing accessAttachmentRepo,
@@ -570,28 +579,29 @@ func run() error {
 		ProviderHandler:            providerHandler,
 		ProvisioningProfileHandler: provisioningProfileHandler,
 		ProvisioningKontronHandler: provisioningKontronHandler,
-		ProvisioningKontronDeauthorizationHandler: provisioningKontronDeauthorizationHandler,
-		ServiceProfileHandler:                     serviceProfileHandler,
-		DiagnosticsHandler:                        diagnosticsHandler,
-		KontronHandler:                            kontronHandler,
-		AccessTopologyHandler:                     accessTopologyHandler,
-		ServiceHandler:                            serviceHandler,
-		ServiceEquipmentHandler:                   serviceEquipmentHandler,
-		WorkflowHandler:                           workflowHandler,
-		EventHandler:                              eventHandler,
-		AccessNetworkHandler:                      accessNetworkHandler,
-		OLTHandler:                                oltHandler,
-		OLTModelHandler:                           oltModelHandler,
-		PONPortHandler:                            ponPortHandler,
-		AccessInterfaceHandler:                    accessInterfaceHandler,
-		AccessAttachmentHandler:                   accessAttachmentHandler,
-		AuthenticationHandler:                     authenticationHandler,
-		ConnectionProfileHandler:                  connectionProfileHandler,
-		Tokens:                                    tokenIssuer,
-		LoginHandler:                              loginHandler,
-		UserHandler:                               userHandler,
-		Authz:                                     authzMiddleware,
-		AllowedOrigin:                             cfg.HTTP.AllowedOrigin,
+		ProvisioningKontronDeauthorizationHandler:          provisioningKontronDeauthorizationHandler,
+		ProvisioningKontronAuthorizeAndCreateDeviceHandler: provisioningKontronAuthorizeAndCreateDeviceHandler,
+		ServiceProfileHandler:                              serviceProfileHandler,
+		DiagnosticsHandler:                                 diagnosticsHandler,
+		KontronHandler:                                     kontronHandler,
+		AccessTopologyHandler:                              accessTopologyHandler,
+		ServiceHandler:                                     serviceHandler,
+		ServiceEquipmentHandler:                            serviceEquipmentHandler,
+		WorkflowHandler:                                    workflowHandler,
+		EventHandler:                                       eventHandler,
+		AccessNetworkHandler:                               accessNetworkHandler,
+		OLTHandler:                                         oltHandler,
+		OLTModelHandler:                                    oltModelHandler,
+		PONPortHandler:                                     ponPortHandler,
+		AccessInterfaceHandler:                             accessInterfaceHandler,
+		AccessAttachmentHandler:                            accessAttachmentHandler,
+		AuthenticationHandler:                              authenticationHandler,
+		ConnectionProfileHandler:                           connectionProfileHandler,
+		Tokens:                                             tokenIssuer,
+		LoginHandler:                                       loginHandler,
+		UserHandler:                                        userHandler,
+		Authz:                                              authzMiddleware,
+		AllowedOrigin:                                      cfg.HTTP.AllowedOrigin,
 	})
 
 	srv := httpserver.New(httpserver.Config{

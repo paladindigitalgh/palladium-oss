@@ -216,6 +216,40 @@ export async function createDevice(input: CreateDeviceInput): Promise<Device> {
   return fromDto(dto, modelsById, manufacturersById)
 }
 
+/**
+ * Authorizes a physically-detected-but-unauthorized ONU on oltId/port
+ * (see BlacklistedONU in types/onuDiagnostics.ts) and, only once that
+ * succeeds, creates a real Device for it -- one action instead of the
+ * two independently-skippable steps "Discover ONU" used to require
+ * (authorize, then separately remember to fill out New Device). Lives
+ * here rather than in provisioningRepository.ts because its result is
+ * exactly a Device: same request shape as createDevice (see
+ * CreateDeviceInput), same response DTO shape
+ * (internal/provisioning/kontron/httpapi's authorizeAndCreateDeviceResponse
+ * deliberately mirrors internal/inventory/httpapi's deviceResponse field
+ * names), so it reuses fromDto/fetchDeviceCatalogs directly instead of
+ * duplicating that join. DeviceFormDialog.vue calls this instead of
+ * createDevice whenever its Serial Number field is a blacklist selection
+ * rather than free text.
+ */
+export async function authorizeAndCreateDevice(oltId: string, port: string, input: CreateDeviceInput): Promise<Device> {
+  const dto = await apiFetch<DeviceDto>(`/provisioning/olts/${oltId}/authorize-and-create-device`, {
+    method: 'POST',
+    body: {
+      port,
+      name: input.name,
+      device_model_id: input.deviceModelId,
+      serial_number: input.serialNumber,
+      asset_tag: input.assetTag,
+      status: input.status,
+      description: input.description,
+      rack_id: input.rackId,
+    },
+  })
+  const { modelsById, manufacturersById } = await fetchDeviceCatalogs()
+  return fromDto(dto, modelsById, manufacturersById)
+}
+
 export interface UpdateDeviceInput {
   name: string
   deviceModelId: string

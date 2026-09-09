@@ -4,15 +4,17 @@ import BaseModal from '@/components/base/BaseModal.vue'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-import { createDevice, updateDevice } from '@/services/devices/deviceRepository'
+import { authorizeAndCreateDevice, createDevice, updateDevice } from '@/services/devices/deviceRepository'
 import { listRacks } from '@/services/racks/rackRepository'
 import { listDeviceManufacturers } from '@/services/deviceManufacturers/deviceManufacturerRepository'
 import { listDeviceModels } from '@/services/deviceModels/deviceModelRepository'
+import { getAggregatedBlacklist } from '@/services/diagnostics/diagnosticsRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { Device } from '@/types/device'
 import type { Rack } from '@/types/rack'
 import type { DeviceManufacturer } from '@/types/deviceManufacturer'
 import type { DeviceModel } from '@/types/deviceModel'
+import type { BlacklistedONU } from '@/types/onuDiagnostics'
 
 /**
  * Dual-mode: create when `device` is absent, edit when present -- one
@@ -32,8 +34,23 @@ import type { DeviceModel } from '@/types/deviceModel'
  * Manufacturer picker itself is a UI-only concept for narrowing the
  * Model list; only manufacturerId is used to filter modelOptions, and
  * only modelId (as deviceModelId) is ever sent to the backend.
+ *
+ * Create mode also folds in what used to be the separate "Discover ONU"
+ * dialog: the Serial Number field can be filled either by typing it or by
+ * picking a physically-detected-but-unauthorized ONU from the "Discovered
+ * ONU" picker below it, sourced from the same blacklist scan
+ * (getAggregatedBlacklist) DiscoverONUDialog.vue used to show on its own.
+ * Picking one locks Serial Number to that ONU's value and, on submit,
+ * routes through authorizeAndCreateDevice instead of createDevice --
+ * authorizing it on its OLT and creating the Device record together, so
+ * there is no longer a second, skippable step between "authorized on the
+ * OLT" and "shows up in the Device Collection View" (see
+ * internal/provisioning/kontron/service.AuthorizeAndCreateDeviceService's
+ * own doc comment for the gap this closes). The picker only ever appears
+ * in create mode: editing an already-tracked Device never needs to
+ * (re-)authorize anything.
  */
-const props = defineProps<{ open: boolean; device?: Device | null; initialSerialNumber?: string }>()
+const props = defineProps<{ open: boolean; device?: Device | null }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', device: Device): void
@@ -72,6 +89,31 @@ const modelOptions = computed(() =>
   models.value.filter((m) => m.manufacturerId === manufacturerId.value).map((m) => ({ value: m.id, label: m.name })),
 )
 
+const blacklistONUs = ref<BlacklistedONU[]>([])
+const selectedBlacklistSerial = ref('')
+const selectedBlacklistONU = computed(
+  () => blacklistONUs.value.find((onu) => onu.serialNumber === selectedBlacklistSerial.value) ?? null,
+)
+const blacklistOptions = computed(() => [
+  { value: '', label: 'Enter manually' },
+  ...blacklistONUs.value.map((onu) => ({
+    value: onu.serialNumber,
+    label: `${onu.serialNumber} — ${onu.oltName} (${onu.interface})`,
+  })),
+])
+
+// Picking a Discovered ONU locks Serial Number to its value (see the
+// component doc comment) and defaults Status to Installed -- it is about
+// to be authorized and serving traffic, not sitting in a warehouse.
+// Clearing the picker back to "Enter manually" hands Serial Number back
+// to the operator without forcing it blank, in case they had typed
+// something worth keeping before opening the picker.
+watch(selectedBlacklistSerial, (serial) => {
+  if (!serial) return
+  serialNumber.value = serial
+  status.value = 'Installed'
+})
+
 // Switching Manufacturer clears Model whenever it no longer belongs to
 // the newly-selected Manufacturer. This only guards the user actively
 // changing the Manufacturer picker: the fetch-then-populate watcher
@@ -90,11 +132,12 @@ function reset() {
   name.value = ''
   manufacturerId.value = ''
   modelId.value = ''
-  serialNumber.value = props.initialSerialNumber ?? ''
+  serialNumber.value = ''
   assetTag.value = ''
   status.value = 'InStock'
   description.value = ''
   rackId.value = ''
+  selectedBlacklistSerial.value = ''
   error.value = null
 }
 
@@ -126,8 +169,21 @@ watch(
   async (open) => {
     if (!open) return
     ;[racks.value, manufacturers.value, models.value] = await Promise.all([listRacks(), listDeviceManufacturers(), listDeviceModels()])
-    if (props.device) populateFrom(props.device)
-    else reset()
+    if (props.device) {
+      populateFrom(props.device)
+    } else {
+      reset()
+      // Best-effort: a failed blacklist scan (e.g. every Kontron OLT
+      // unreachable) should not block plain manual Device creation, so
+      // this is swallowed rather than surfaced as a form error -- the
+      // picker just stays empty and the form behaves exactly as it did
+      // before this existed.
+      try {
+        blacklistONUs.value = (await getAggregatedBlacklist()).onus
+      } catch {
+        blacklistONUs.value = []
+      }
+    }
   },
   { immediate: true },
 )
@@ -152,6 +208,19 @@ async function handleSubmit() {
         rackId: selectedRackId,
       })
       emit('updated', updated)
+    } else if (selectedBlacklistONU.value) {
+      const onu = selectedBlacklistONU.value
+      const device = await authorizeAndCreateDevice(onu.oltId, onu.interface, {
+        name: name.value,
+        deviceModelId: modelId.value,
+        serialNumber: serialNumber.value,
+        assetTag: assetTag.value,
+        status: status.value,
+        description: description.value,
+        rackId: selectedRackId,
+      })
+      reset()
+      emit('created', device)
     } else {
       const device = await createDevice({
         name: name.value,
@@ -166,7 +235,8 @@ async function handleSubmit() {
       emit('created', device)
     }
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : `The device could not be ${props.device ? 'saved' : 'created'}.`
+    const action = props.device ? 'saved' : selectedBlacklistONU.value ? 'authorized' : 'created'
+    error.value = err instanceof ApiError ? err.message : `The device could not be ${action}.`
   } finally {
     submitting.value = false
   }
@@ -179,7 +249,16 @@ async function handleSubmit() {
       <BaseInput v-model="name" label="Name" required />
       <BaseSelect v-model="manufacturerId" label="Manufacturer" :options="manufacturerOptions" />
       <BaseSelect v-model="modelId" label="Model" :options="modelOptions" />
-      <BaseInput v-model="serialNumber" label="Serial Number" required />
+      <BaseSelect
+        v-if="!device && blacklistONUs.length"
+        v-model="selectedBlacklistSerial"
+        label="Discovered ONU"
+        :options="blacklistOptions"
+      />
+      <BaseInput v-model="serialNumber" label="Serial Number" required :disabled="!!selectedBlacklistSerial" />
+      <p v-if="selectedBlacklistSerial" class="device-form__note">
+        Set by the selected Discovered ONU. Saving will authorize {{ serialNumber }} on {{ selectedBlacklistONU?.oltName }}.
+      </p>
       <BaseInput v-model="assetTag" label="Asset Tag" />
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
       <BaseInput v-model="description" label="Description" />
@@ -207,6 +286,12 @@ async function handleSubmit() {
 .device-form__error {
   font-size: var(--font-size-sm);
   color: var(--color-error);
+}
+
+.device-form__note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: calc(-1 * var(--space-2)) 0 0;
 }
 
 .device-form__actions {
