@@ -251,7 +251,7 @@ func createTestServiceEquipment(t *testing.T, ctx context.Context, q database.Qu
 		Metadata:      inventory.Metadata{Name: "Fixture Device " + uuid.NewString()},
 		DeviceModelID: model.ID,
 		SerialNumber:  uuid.NewString(),
-		Status:        inventory.DeviceStatusInstalled,
+		Status:        inventory.DeviceStatusUnused,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create device: %v", err)

@@ -65,7 +65,7 @@ function existingDevice(overrides: Partial<Device> = {}): Device {
     model: 'G-010G',
     serialNumber: 'SN123',
     assetTag: 'AT-1',
-    status: 'Installed',
+    status: 'Active',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -143,11 +143,24 @@ describe('create mode (no device prop)', () => {
 
     expect(body().find('.base-modal__title').text()).toBe('New Device')
     expect((inputByLabel('Name').element as HTMLInputElement).value).toBe('')
-    expect((selectByLabel('Status').element as HTMLSelectElement).value).toBe('InStock')
   })
 
-  it('submits the form fields to createDevice and emits created', async () => {
-    createDevice.mockResolvedValue(existingDevice({ id: 'new-1', name: 'New ONT' }))
+  it('does not render Rack, Asset Tag, or Status -- New Device is scoped to CPE, not shelf inventory', () => {
+    mount(DeviceFormDialog, { props: { open: true } })
+
+    const selectLabels = body()
+      .findAll('.base-select')
+      .map((el) => el.find('.base-select__label').text())
+    expect(selectLabels).not.toContain('Rack')
+    expect(selectLabels).not.toContain('Status')
+    const inputLabels = body()
+      .findAll('.base-input')
+      .map((el) => el.find('.base-input__label').text())
+    expect(inputLabels).not.toContain('Asset Tag')
+  })
+
+  it('submits the form fields to createDevice, defaulting Status to Unused, and emits created', async () => {
+    createDevice.mockResolvedValue(existingDevice({ id: 'new-1', name: 'New ONT', status: 'Unused' }))
     const wrapper = mount(DeviceFormDialog, { props: { open: true } })
     await settle()
 
@@ -163,12 +176,12 @@ describe('create mode (no device prop)', () => {
       deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN999',
       assetTag: '',
-      status: 'InStock',
+      status: 'Unused',
       description: '',
       rackId: null,
     })
     expect(updateDevice).not.toHaveBeenCalled()
-    expect(wrapper.emitted('created')?.[0]).toEqual([existingDevice({ id: 'new-1', name: 'New ONT' })])
+    expect(wrapper.emitted('created')?.[0]).toEqual([existingDevice({ id: 'new-1', name: 'New ONT', status: 'Unused' })])
   })
 
   it('surfaces the API error message instead of throwing', async () => {
@@ -192,9 +205,24 @@ describe('edit mode (device prop present)', () => {
     expect(body().find('.base-modal__title').text()).toBe('Edit Device')
     expect((inputByLabel('Name').element as HTMLInputElement).value).toBe('ONT-1')
     expect((inputByLabel('Serial Number').element as HTMLInputElement).value).toBe('SN123')
-    expect((selectByLabel('Status').element as HTMLSelectElement).value).toBe('Installed')
+    expect((selectByLabel('Status').element as HTMLSelectElement).value).toBe('Active')
     expect((selectByLabel('Manufacturer').element as HTMLSelectElement).value).toBe('mfr-nokia')
     expect((selectByLabel('Model').element as HTMLSelectElement).value).toBe('model-nokia-g010g')
+  })
+
+  it('renders Rack, Asset Tag, and Status -- unlike New Device, Edit Device keeps them as a correction path', async () => {
+    mount(DeviceFormDialog, { props: { open: true, device: existingDevice() } })
+    await settle()
+
+    const selectLabels = body()
+      .findAll('.base-select')
+      .map((el) => el.find('.base-select__label').text())
+    expect(selectLabels).toContain('Rack')
+    expect(selectLabels).toContain('Status')
+    const inputLabels = body()
+      .findAll('.base-input')
+      .map((el) => el.find('.base-input__label').text())
+    expect(inputLabels).toContain('Asset Tag')
   })
 
   it('submits the edited fields to updateDevice, preserving the existing rackId and deviceModelId, and emits updated', async () => {
@@ -366,7 +394,7 @@ describe('Discovered ONU picker (create mode)', () => {
     expect(wrapper.exists()).toBe(true)
   })
 
-  it('selecting a blacklisted ONU locks Serial Number to it and defaults Status to Installed', async () => {
+  it('selecting a blacklisted ONU locks Serial Number to it', async () => {
     getAggregatedBlacklist.mockResolvedValue({
       onus: [
         { oltId: 'olt1', oltName: 'OLT-A', interface: 'xgs/6', serialNumber: 'ISKT001', registrationId: '', cause: 'unregistered' },
@@ -382,17 +410,16 @@ describe('Discovered ONU picker (create mode)', () => {
     const serialInput = inputByLabel('Serial Number')
     expect((serialInput.element as HTMLInputElement).value).toBe('ISKT001')
     expect((serialInput.element as HTMLInputElement).disabled).toBe(true)
-    expect((selectByLabel('Status').element as HTMLSelectElement).value).toBe('Installed')
   })
 
-  it('submits through authorizeAndCreateDevice with the ONU\'s oltId/interface when a Discovered ONU is selected', async () => {
+  it('submits through authorizeAndCreateDevice with the ONU\'s oltId/interface when a Discovered ONU is selected, defaulting Status to Unused', async () => {
     getAggregatedBlacklist.mockResolvedValue({
       onus: [
         { oltId: 'olt1', oltName: 'OLT-A', interface: 'xgs/6', serialNumber: 'ISKT001', registrationId: '', cause: 'unregistered' },
       ],
       unreachableOlts: [],
     })
-    authorizeAndCreateDevice.mockResolvedValue(existingDevice({ id: 'new-2', serialNumber: 'ISKT001', status: 'Installed' }))
+    authorizeAndCreateDevice.mockResolvedValue(existingDevice({ id: 'new-2', serialNumber: 'ISKT001', status: 'Unused' }))
     const wrapper = mount(DeviceFormDialog, { props: { open: true } })
     await settle()
 
@@ -409,12 +436,12 @@ describe('Discovered ONU picker (create mode)', () => {
       deviceModelId: 'model-nokia-g010g',
       serialNumber: 'ISKT001',
       assetTag: '',
-      status: 'Installed',
+      status: 'Unused',
       description: '',
       rackId: null,
     })
     expect(createDevice).not.toHaveBeenCalled()
-    expect(wrapper.emitted('created')?.[0]).toEqual([existingDevice({ id: 'new-2', serialNumber: 'ISKT001', status: 'Installed' })])
+    expect(wrapper.emitted('created')?.[0]).toEqual([existingDevice({ id: 'new-2', serialNumber: 'ISKT001', status: 'Unused' })])
   })
 
   it('switching back to "Enter manually" unlocks Serial Number and submits through createDevice', async () => {
@@ -449,10 +476,10 @@ describe('Discovered ONU picker (create mode)', () => {
   })
 })
 
-describe('Rack field', () => {
+describe('Rack field (edit mode only -- see field-visibility tests above)', () => {
   it('fetches racks when the dialog opens and offers a "None" option first', async () => {
     listRacks.mockResolvedValue([existingRack({ id: 'rack-1', name: 'Rack A' }), existingRack({ id: 'rack-2', name: 'Rack B' })])
-    const wrapper = mount(DeviceFormDialog, { props: { open: false } })
+    const wrapper = mount(DeviceFormDialog, { props: { open: false, device: existingDevice() } })
 
     await wrapper.setProps({ open: true })
     await settle()
@@ -461,7 +488,7 @@ describe('Rack field', () => {
     expect(options.map((option) => option.text())).toEqual(['None', 'Rack A', 'Rack B'])
   })
 
-  it('defaults to "None" in create mode and submits a null rackId', async () => {
+  it('always submits a null rackId on create, since Rack is not offered there', async () => {
     createDevice.mockResolvedValue(existingDevice({ id: 'new-1' }))
     const wrapper = mount(DeviceFormDialog, { props: { open: true } })
     await settle()
@@ -474,24 +501,6 @@ describe('Rack field', () => {
     await wrapper.vm.$nextTick()
 
     expect((createDevice.mock.calls[0][0] as { rackId: string | null }).rackId).toBeNull()
-  })
-
-  it('submits the chosen rack on create', async () => {
-    listRacks.mockResolvedValue([existingRack({ id: 'rack-1', name: 'Rack A' })])
-    createDevice.mockResolvedValue(existingDevice({ id: 'new-1', rackId: 'rack-1' }))
-    const wrapper = mount(DeviceFormDialog, { props: { open: false } })
-    await wrapper.setProps({ open: true })
-    await settle()
-
-    await inputByLabel('Name').setValue('New ONT')
-    await selectByLabel('Manufacturer').setValue('mfr-nokia')
-    await selectByLabel('Model').setValue('model-nokia-g010g')
-    await inputByLabel('Serial Number').setValue('SN999')
-    await selectByLabel('Rack').setValue('rack-1')
-    await body().find('form').trigger('submit.prevent')
-    await wrapper.vm.$nextTick()
-
-    expect((createDevice.mock.calls[0][0] as { rackId: string | null }).rackId).toBe('rack-1')
   })
 
   it('prefills the Rack select from the device and submits "None" as a null rackId on edit', async () => {

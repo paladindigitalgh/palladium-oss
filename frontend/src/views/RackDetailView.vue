@@ -95,13 +95,9 @@ const deviceColumns: SimpleTableColumn[] = [
 ]
 
 const STATUS_VARIANTS: Record<DeviceStatus, 'success' | 'error' | 'warning' | 'info' | 'neutral'> = {
-  Ordered: 'info',
-  Received: 'info',
-  InStock: 'success',
-  Installed: 'success',
-  Maintenance: 'warning',
+  Unused: 'neutral',
+  Active: 'success',
   Retired: 'neutral',
-  Disposed: 'neutral',
 }
 
 function openDevice(device: Device) {

@@ -8,13 +8,9 @@ import (
 
 func TestDeviceStatusValidAcceptsDefinedValues(t *testing.T) {
 	defined := []inventory.DeviceStatus{
-		inventory.DeviceStatusOrdered,
-		inventory.DeviceStatusReceived,
-		inventory.DeviceStatusInStock,
-		inventory.DeviceStatusInstalled,
-		inventory.DeviceStatusMaintenance,
+		inventory.DeviceStatusUnused,
+		inventory.DeviceStatusActive,
 		inventory.DeviceStatusRetired,
-		inventory.DeviceStatusDisposed,
 	}
 
 	for _, status := range defined {
@@ -27,9 +23,10 @@ func TestDeviceStatusValidAcceptsDefinedValues(t *testing.T) {
 func TestDeviceStatusValidRejectsUnrecognizedValues(t *testing.T) {
 	cases := []inventory.DeviceStatus{
 		"",          // zero value: there is no default status
-		"ordered",   // wrong case
-		"INSTALLED", // wrong case
-		"Deployed",  // not a defined status at all
+		"active",    // wrong case
+		"UNUSED",    // wrong case
+		"InStock",   // a status this domain used to have, no longer defined
+		"Installed", // same
 	}
 
 	for _, status := range cases {
@@ -40,7 +37,7 @@ func TestDeviceStatusValidRejectsUnrecognizedValues(t *testing.T) {
 }
 
 func TestDeviceStatusStringReturnsUnderlyingValue(t *testing.T) {
-	if got := inventory.DeviceStatusInStock.String(); got != "InStock" {
-		t.Errorf("String() = %q, want %q", got, "InStock")
+	if got := inventory.DeviceStatusUnused.String(); got != "Unused" {
+		t.Errorf("String() = %q, want %q", got, "Unused")
 	}
 }

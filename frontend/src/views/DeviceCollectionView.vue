@@ -38,23 +38,15 @@ const columns: DataTableColumn[] = [
 
 const statusOptions = [
   { value: 'all', label: 'All Statuses' },
-  { value: 'Ordered', label: 'Ordered' },
-  { value: 'Received', label: 'Received' },
-  { value: 'InStock', label: 'In Stock' },
-  { value: 'Installed', label: 'Installed' },
-  { value: 'Maintenance', label: 'Maintenance' },
+  { value: 'Unused', label: 'Unused' },
+  { value: 'Active', label: 'Active' },
   { value: 'Retired', label: 'Retired' },
-  { value: 'Disposed', label: 'Disposed' },
 ]
 
 const STATUS_VARIANTS: Record<DeviceStatus, 'success' | 'error' | 'warning' | 'info' | 'neutral'> = {
-  Ordered: 'info',
-  Received: 'info',
-  InStock: 'success',
-  Installed: 'success',
-  Maintenance: 'warning',
+  Unused: 'neutral',
+  Active: 'success',
   Retired: 'neutral',
-  Disposed: 'neutral',
 }
 
 function rowLabel(device: Device): string {
@@ -97,7 +89,7 @@ function handleDeviceCreated(device: Device) {
 
     <CollectionToolbar v-model:search="search" search-placeholder="Search by name, serial, manufacturer, or model">
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
-      <BaseCheckbox v-if="status === 'all'" v-model="includeRetired" label="Include Retired / Disposed" />
+      <BaseCheckbox v-if="status === 'all'" v-model="includeRetired" label="Include Retired" />
     </CollectionToolbar>
 
     <BaseCard :padded="false">

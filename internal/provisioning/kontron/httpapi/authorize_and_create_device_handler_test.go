@@ -58,13 +58,13 @@ func TestAuthorizeAndCreateDeviceEndpoint(t *testing.T) {
 			Metadata:      inventory.Metadata{ID: deviceID, Name: "New ONU"},
 			DeviceModelID: modelID,
 			SerialNumber:  "ISKT2308DD88",
-			Status:        inventory.DeviceStatusInstalled,
+			Status:        inventory.DeviceStatusUnused,
 		},
 		iface: "xgs/6/2",
 	}
 	router := newAuthorizeAndCreateDeviceTestRouter(svc)
 
-	body := `{"port":"xgs/6","serial_number":"ISKT2308DD88","name":"New ONU","device_model_id":"` + modelID.String() + `","status":"Installed"}`
+	body := `{"port":"xgs/6","serial_number":"ISKT2308DD88","name":"New ONU","device_model_id":"` + modelID.String() + `","status":"Unused"}`
 	req := httptest.NewRequest(http.MethodPost, "/provisioning/olts/"+oltID.String()+"/authorize-and-create-device", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

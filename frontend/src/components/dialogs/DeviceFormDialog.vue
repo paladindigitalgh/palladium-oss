@@ -21,10 +21,19 @@ import type { BlacklistedONU } from '@/types/onuDiagnostics'
  * dialog rather than a near-duplicate EditDeviceDialog, since every field
  * below is shared between the two (CLAUDE.md, "avoid unnecessary
  * abstractions" cuts the other way here: two components would only
- * duplicate this form). Editable fields are everything an operator might
- * reasonably need to correct after the fact -- name, manufacturer, model,
- * serial number, asset tag, status, description, and (see below) rack.
- * Identity (id, createdAt/updatedAt) never was.
+ * duplicate this form). Identity (id, createdAt/updatedAt) is never
+ * editable either mode.
+ *
+ * Rack, Asset Tag, and Status are edit-mode-only (see the `v-if="device"`
+ * guards on them below): this Device Collection tracks CPE out in
+ * customer homes and businesses, not shelf/rack inventory, so New Device
+ * asks only what actually identifies a piece of CPE -- name,
+ * manufacturer/model, serial number -- and defaults every new Device to
+ * Status Unused (see inventory.DeviceStatus's own doc comment: Active/
+ * Unused are set automatically by ServiceEquipmentService as a Device
+ * gains or loses an active ServiceEquipment record, not chosen at
+ * creation). Rack and Asset Tag stay reachable through Edit Device for
+ * the rare correction, but New Device never surfaces them at all.
  *
  * Manufacturer and Model are cascading pickers, not free text: an
  * operator selects a Device Manufacturer (internal/devicemanufacturer),
@@ -48,7 +57,10 @@ import type { BlacklistedONU } from '@/types/onuDiagnostics'
  * internal/provisioning/kontron/service.AuthorizeAndCreateDeviceService's
  * own doc comment for the gap this closes). The picker only ever appears
  * in create mode: editing an already-tracked Device never needs to
- * (re-)authorize anything.
+ * (re-)authorize anything. Even a freshly-authorized ONU still starts
+ * Unused, the same as any other new Device -- authorized-on-the-OLT and
+ * attached-to-a-Customer are different facts, and only the latter is
+ * what Status tracks.
  */
 const props = defineProps<{ open: boolean; device?: Device | null }>()
 const emit = defineEmits<{
@@ -62,20 +74,16 @@ const manufacturerId = ref('')
 const modelId = ref('')
 const serialNumber = ref('')
 const assetTag = ref('')
-const status = ref<Device['status']>('InStock')
+const status = ref<Device['status']>('Unused')
 const description = ref('')
 const rackId = ref('')
 const submitting = ref(false)
 const error = ref<string | null>(null)
 
 const statusOptions = [
-  { value: 'Ordered', label: 'Ordered' },
-  { value: 'Received', label: 'Received' },
-  { value: 'InStock', label: 'In Stock' },
-  { value: 'Installed', label: 'Installed' },
-  { value: 'Maintenance', label: 'Maintenance' },
+  { value: 'Unused', label: 'Unused' },
+  { value: 'Active', label: 'Active' },
   { value: 'Retired', label: 'Retired' },
-  { value: 'Disposed', label: 'Disposed' },
 ]
 
 const racks = ref<Rack[]>([])
@@ -103,15 +111,15 @@ const blacklistOptions = computed(() => [
 ])
 
 // Picking a Discovered ONU locks Serial Number to its value (see the
-// component doc comment) and defaults Status to Installed -- it is about
-// to be authorized and serving traffic, not sitting in a warehouse.
-// Clearing the picker back to "Enter manually" hands Serial Number back
-// to the operator without forcing it blank, in case they had typed
-// something worth keeping before opening the picker.
+// component doc comment). Clearing the picker back to "Enter manually"
+// hands Serial Number back to the operator without forcing it blank, in
+// case they had typed something worth keeping before opening the
+// picker. Status is untouched either way -- it is create-mode-hidden
+// and always Unused (see the component doc comment on why authorized-
+// on-the-OLT does not imply Active).
 watch(selectedBlacklistSerial, (serial) => {
   if (!serial) return
   serialNumber.value = serial
-  status.value = 'Installed'
 })
 
 // Switching Manufacturer clears Model whenever it no longer belongs to
@@ -134,7 +142,7 @@ function reset() {
   modelId.value = ''
   serialNumber.value = ''
   assetTag.value = ''
-  status.value = 'InStock'
+  status.value = 'Unused'
   description.value = ''
   rackId.value = ''
   selectedBlacklistSerial.value = ''
@@ -259,10 +267,10 @@ async function handleSubmit() {
       <p v-if="selectedBlacklistSerial" class="device-form__note">
         Set by the selected Discovered ONU. Saving will authorize {{ serialNumber }} on {{ selectedBlacklistONU?.oltName }}.
       </p>
-      <BaseInput v-model="assetTag" label="Asset Tag" />
-      <BaseSelect v-model="status" label="Status" :options="statusOptions" />
+      <BaseInput v-if="device" v-model="assetTag" label="Asset Tag" />
+      <BaseSelect v-if="device" v-model="status" label="Status" :options="statusOptions" />
       <BaseInput v-model="description" label="Description" />
-      <BaseSelect v-model="rackId" label="Rack" :options="rackOptions" />
+      <BaseSelect v-if="device" v-model="rackId" label="Rack" :options="rackOptions" />
 
       <p v-if="error" class="device-form__error" role="alert">{{ error }}</p>
 

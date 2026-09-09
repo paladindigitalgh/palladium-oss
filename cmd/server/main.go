@@ -293,12 +293,14 @@ func run() error {
 	// Service Equipment follows the exact same repository -> service ->
 	// handler chain as every domain above, one package over
 	// (internal/serviceequipment instead of internal/service). Its two
-	// foreign keys are Service and inventory.Device; Device has no
-	// repository constructed above (it has no HTTP surface — see this
-	// milestone's scope), so nothing here needs a prior devicepostgres
-	// variable the way Service needed locationRepo/productRepo.
+	// foreign keys are Service and inventory.Device — deviceService
+	// (built above, alongside deviceHandler) is reused rather than built
+	// fresh, for the Device-status side effect
+	// ServiceEquipmentService.Create/Update now carry: attaching/
+	// detaching a Device flips it Active/Unused (see that service's own
+	// doc comment).
 	serviceEquipmentRepo := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
-	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo)
+	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo, deviceService, deviceService)
 	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
 
 	// Event has no service layer: there is no business logic beyond

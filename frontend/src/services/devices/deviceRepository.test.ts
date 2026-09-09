@@ -56,7 +56,7 @@ function deviceDto(overrides: Partial<Record<string, unknown>> = {}) {
     device_model_id: 'model-nokia-g010g',
     serial_number: 'SN123',
     asset_tag: 'AT-1',
-    status: 'Installed',
+    status: 'Active',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -110,7 +110,7 @@ describe('listDevices', () => {
 
   it('filters by status', async () => {
     mockApiFetch({
-      devices: [deviceDto({ id: 'd1', status: 'Installed' }), deviceDto({ id: 'd2', status: 'Retired' })],
+      devices: [deviceDto({ id: 'd1', status: 'Active' }), deviceDto({ id: 'd2', status: 'Retired' })],
     })
 
     const result = await listDevices({ status: 'Retired' })
@@ -118,13 +118,9 @@ describe('listDevices', () => {
     expect(result.items.map((d) => d.id)).toEqual(['d2'])
   })
 
-  it('excludes Retired and Disposed devices from the default (status: all) view', async () => {
+  it('excludes Retired devices from the default (status: all) view', async () => {
     mockApiFetch({
-      devices: [
-        deviceDto({ id: 'd1', status: 'Installed' }),
-        deviceDto({ id: 'd2', status: 'Retired' }),
-        deviceDto({ id: 'd3', status: 'Disposed' }),
-      ],
+      devices: [deviceDto({ id: 'd1', status: 'Active' }), deviceDto({ id: 'd2', status: 'Retired' })],
     })
 
     const result = await listDevices()
@@ -132,23 +128,19 @@ describe('listDevices', () => {
     expect(result.items.map((d) => d.id)).toEqual(['d1'])
   })
 
-  it('includes Retired and Disposed devices when includeRetired is set', async () => {
+  it('includes Retired devices when includeRetired is set', async () => {
     mockApiFetch({
-      devices: [
-        deviceDto({ id: 'd1', status: 'Installed' }),
-        deviceDto({ id: 'd2', status: 'Retired' }),
-        deviceDto({ id: 'd3', status: 'Disposed' }),
-      ],
+      devices: [deviceDto({ id: 'd1', status: 'Active' }), deviceDto({ id: 'd2', status: 'Retired' })],
     })
 
     const result = await listDevices({ includeRetired: true })
 
-    expect(result.items.map((d) => d.id).sort()).toEqual(['d1', 'd2', 'd3'])
+    expect(result.items.map((d) => d.id).sort()).toEqual(['d1', 'd2'])
   })
 
   it('does not apply includeRetired when a specific status is picked', async () => {
     mockApiFetch({
-      devices: [deviceDto({ id: 'd1', status: 'Retired' }), deviceDto({ id: 'd2', status: 'Disposed' })],
+      devices: [deviceDto({ id: 'd1', status: 'Retired' }), deviceDto({ id: 'd2', status: 'Unused' })],
     })
 
     const result = await listDevices({ status: 'Retired', includeRetired: false })
@@ -166,12 +158,12 @@ describe('listDevices', () => {
 
   it('sorts by status when requested', async () => {
     mockApiFetch({
-      devices: [deviceDto({ id: 'd1', status: 'Retired' }), deviceDto({ id: 'd2', status: 'InStock' })],
+      devices: [deviceDto({ id: 'd1', status: 'Retired' }), deviceDto({ id: 'd2', status: 'Active' })],
     })
 
     const result = await listDevices({ sortKey: 'status', includeRetired: true })
 
-    expect(result.items.map((d) => d.status)).toEqual(['InStock', 'Retired'])
+    expect(result.items.map((d) => d.status)).toEqual(['Active', 'Retired'])
   })
 
   it('paginates results while reporting the true total', async () => {
@@ -262,7 +254,7 @@ describe('createDevice', () => {
       deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN999',
       assetTag: 'AT-9',
-      status: 'InStock',
+      status: 'Unused',
       description: 'Spare',
       rackId: null,
     })
@@ -274,7 +266,7 @@ describe('createDevice', () => {
         device_model_id: 'model-nokia-g010g',
         serial_number: 'SN999',
         asset_tag: 'AT-9',
-        status: 'InStock',
+        status: 'Unused',
         description: 'Spare',
         rack_id: null,
       },
@@ -289,7 +281,7 @@ describe('createDevice', () => {
       deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN999',
       assetTag: 'AT-9',
-      status: 'InStock',
+      status: 'Unused',
       description: 'Spare',
       rackId: 'rack-1',
     })
@@ -301,14 +293,14 @@ describe('createDevice', () => {
 
 describe('authorizeAndCreateDevice', () => {
   it('posts oltId/port alongside the device fields to the authorize-and-create-device endpoint', async () => {
-    mockApiFetch(deviceDto({ id: 'new', serial_number: 'ISKT001', status: 'Installed' }))
+    mockApiFetch(deviceDto({ id: 'new', serial_number: 'ISKT001', status: 'Unused' }))
 
     const device = await authorizeAndCreateDevice('olt1', 'xgs/6', {
       name: 'Discovered ONT',
       deviceModelId: 'model-nokia-g010g',
       serialNumber: 'ISKT001',
       assetTag: '',
-      status: 'Installed',
+      status: 'Unused',
       description: '',
       rackId: null,
     })
@@ -321,7 +313,7 @@ describe('authorizeAndCreateDevice', () => {
         device_model_id: 'model-nokia-g010g',
         serial_number: 'ISKT001',
         asset_tag: '',
-        status: 'Installed',
+        status: 'Unused',
         description: '',
         rack_id: null,
       },
@@ -341,7 +333,7 @@ describe('updateDevice', () => {
       deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN123',
       assetTag: 'AT-1',
-      status: 'Maintenance',
+      status: 'Active',
       description: 'Lobby ONT',
       rackId: 'rack-1',
     })
@@ -353,7 +345,7 @@ describe('updateDevice', () => {
         device_model_id: 'model-nokia-g010g',
         serial_number: 'SN123',
         asset_tag: 'AT-1',
-        status: 'Maintenance',
+        status: 'Active',
         description: 'Lobby ONT',
         rack_id: 'rack-1',
       },
@@ -368,7 +360,7 @@ describe('updateDevice', () => {
       deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN123',
       assetTag: 'AT-1',
-      status: 'Installed',
+      status: 'Active',
       description: '',
       rackId: null,
     })

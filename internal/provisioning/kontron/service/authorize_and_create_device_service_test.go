@@ -82,7 +82,7 @@ func TestAuthorizeAndCreateDeviceAuthorizesThenCreatesThenRecordsAuthorization(t
 		Metadata:      inventory.Metadata{Name: "New ONU"},
 		DeviceModelID: deviceModelID,
 		SerialNumber:  "ISKT2308DD88",
-		Status:        inventory.DeviceStatusInstalled,
+		Status:        inventory.DeviceStatusUnused,
 	}
 
 	created, iface, err := s.AuthorizeAndCreateDevice(context.Background(), oltID, "xgs/6", device)

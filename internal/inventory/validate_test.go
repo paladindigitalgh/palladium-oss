@@ -90,7 +90,7 @@ func validDevice() inventory.Device {
 		Metadata:      inventory.Metadata{Name: "Switch 1"},
 		DeviceModelID: uuid.New(),
 		SerialNumber:  "SN-12345",
-		Status:        inventory.DeviceStatusInStock,
+		Status:        inventory.DeviceStatusUnused,
 	}
 }
 
@@ -148,13 +148,9 @@ func TestDeviceValidateRequiresKnownStatus(t *testing.T) {
 	assertInvalid(t, unset.Validate())
 
 	for _, status := range []inventory.DeviceStatus{
-		inventory.DeviceStatusOrdered,
-		inventory.DeviceStatusReceived,
-		inventory.DeviceStatusInStock,
-		inventory.DeviceStatusInstalled,
-		inventory.DeviceStatusMaintenance,
+		inventory.DeviceStatusUnused,
+		inventory.DeviceStatusActive,
 		inventory.DeviceStatusRetired,
-		inventory.DeviceStatusDisposed,
 	} {
 		d := validDevice()
 		d.Status = status

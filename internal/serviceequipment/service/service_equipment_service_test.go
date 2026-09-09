@@ -7,10 +7,45 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/service"
 )
+
+// fakeDeviceStore is an in-memory deviceGetter/deviceUpdater, mirroring
+// internal/provisioning/kontron/service's own fakeDeviceStore of the
+// same name exactly: Get defaults to a Device with DeviceStatusUnused
+// (the real-world default for any Device this test file didn't
+// pre-register — see inventory.DeviceStatus's own doc comment) when
+// none was explicitly seeded for that ID, so most tests never need to
+// register one at all.
+type fakeDeviceStore struct {
+	byID        map[uuid.UUID]inventory.Device
+	updateCalls []inventory.Device
+}
+
+func newFakeDeviceStore(devices ...inventory.Device) *fakeDeviceStore {
+	f := &fakeDeviceStore{byID: make(map[uuid.UUID]inventory.Device)}
+	for _, d := range devices {
+		f.byID[d.ID] = d
+	}
+	return f
+}
+
+func (f *fakeDeviceStore) Get(_ context.Context, id uuid.UUID) (inventory.Device, error) {
+	d, ok := f.byID[id]
+	if !ok {
+		d = inventory.Device{Metadata: inventory.Metadata{ID: id}, Status: inventory.DeviceStatusUnused}
+	}
+	return d, nil
+}
+
+func (f *fakeDeviceStore) Update(_ context.Context, d inventory.Device) (inventory.Device, error) {
+	f.updateCalls = append(f.updateCalls, d)
+	f.byID[d.ID] = d
+	return d, nil
+}
 
 // fakeServiceEquipmentRepository is an in-memory
 // serviceequipment.ServiceEquipmentRepository. Like
@@ -125,7 +160,8 @@ func validServiceEquipment() serviceequipment.ServiceEquipment {
 
 func TestServiceEquipmentServiceCreateSucceeds(t *testing.T) {
 	repo := newFakeServiceEquipmentRepository()
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	created, err := svc.Create(context.Background(), validServiceEquipment())
 	if err != nil {
@@ -141,7 +177,8 @@ func TestServiceEquipmentServiceCreateSucceeds(t *testing.T) {
 
 func TestServiceEquipmentServiceCreateRejectsInvalidServiceEquipmentWithoutPersisting(t *testing.T) {
 	repo := newFakeServiceEquipmentRepository()
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	_, err := svc.Create(context.Background(), serviceequipment.ServiceEquipment{}) // no ServiceID, DeviceID, Role
 
@@ -162,7 +199,8 @@ func TestServiceEquipmentServiceCreateRejectsSecondActiveAssignmentForSameDevice
 	existing.ID = uuid.New()
 	existing.DeviceID = deviceID
 	repo := newFakeServiceEquipmentRepository(existing)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	second := validServiceEquipment()
 	second.DeviceID = deviceID // same device, still active (no RemovedAt)
@@ -189,7 +227,8 @@ func TestServiceEquipmentServiceCreateAllowsHistoricalReassignment(t *testing.T)
 	historical.DeviceID = deviceID
 	historical.RemovedAt = &removedAt // no longer active
 	repo := newFakeServiceEquipmentRepository(historical)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	replacement := validServiceEquipment()
 	replacement.DeviceID = deviceID // same device, but the old assignment is history
@@ -218,7 +257,8 @@ func TestServiceEquipmentServiceCreateAllowsCreatingAlreadyHistoricalRecord(t *t
 	active.ID = uuid.New()
 	active.DeviceID = deviceID
 	repo := newFakeServiceEquipmentRepository(active)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	removedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	backfilled := validServiceEquipment()
@@ -234,7 +274,8 @@ func TestServiceEquipmentServiceUpdateSucceeds(t *testing.T) {
 	existing := validServiceEquipment()
 	existing.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(existing)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	toUpdate := existing
 	toUpdate.Description = "Updated description"
@@ -258,7 +299,8 @@ func TestServiceEquipmentServiceUpdateAllowsUpdatingTheActiveRecordItself(t *tes
 	existing := validServiceEquipment()
 	existing.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(existing)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	toUpdate := existing
 	toUpdate.Role = serviceequipment.EquipmentRoleRouter // still active, same DeviceID, same ID
@@ -281,7 +323,8 @@ func TestServiceEquipmentServiceUpdateRejectsReassigningDeviceWithExistingActive
 	toReassign := validServiceEquipment()
 	toReassign.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(busy, toReassign)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	toReassign.DeviceID = busyDeviceID // now targets a device that's already actively assigned
 
@@ -296,7 +339,8 @@ func TestServiceEquipmentServiceUpdateRejectsInvalidServiceEquipmentWithoutPersi
 	existing := validServiceEquipment()
 	existing.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(existing)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	invalid := existing
 	invalid.Role = "" // invalid
@@ -313,7 +357,8 @@ func TestServiceEquipmentServiceUpdateRejectsInvalidServiceEquipmentWithoutPersi
 
 func TestServiceEquipmentServiceGetPropagatesNotFound(t *testing.T) {
 	repo := newFakeServiceEquipmentRepository()
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	_, err := svc.Get(context.Background(), uuid.New())
 
@@ -328,7 +373,8 @@ func TestServiceEquipmentServiceListDelegatesToRepository(t *testing.T) {
 	b := validServiceEquipment()
 	b.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(a, b)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	equipment, err := svc.List(context.Background())
 	if err != nil {
@@ -343,7 +389,8 @@ func TestServiceEquipmentServiceDeleteSucceeds(t *testing.T) {
 	existing := validServiceEquipment()
 	existing.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(existing)
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	if err := svc.Delete(context.Background(), existing.ID); err != nil {
 		t.Fatalf("Delete() = %v", err)
@@ -355,13 +402,192 @@ func TestServiceEquipmentServiceDeleteSucceeds(t *testing.T) {
 	}
 }
 
+// TestServiceEquipmentServiceDeleteMarksDeviceUnused proves Delete's own
+// Device-status side effect: ServiceDetailView.vue's "Remove Equipment"
+// button hard-deletes the ServiceEquipment row entirely (see
+// internal/serviceequipment/httpapi's DELETE route) rather than going
+// through Update's RemovedAt-transition path, so Delete needs the
+// identical side effect Update carries -- deleting an active record must
+// still push its Device back to Unused.
+func TestServiceEquipmentServiceDeleteMarksDeviceUnused(t *testing.T) {
+	deviceID := uuid.New()
+	existing := validServiceEquipment()
+	existing.ID = uuid.New()
+	existing.DeviceID = deviceID
+	repo := newFakeServiceEquipmentRepository(existing)
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
+
+	if err := svc.Delete(context.Background(), existing.ID); err != nil {
+		t.Fatalf("Delete() = %v", err)
+	}
+	if len(devices.updateCalls) != 1 {
+		t.Fatalf("device Update calls = %d, want 1", len(devices.updateCalls))
+	}
+	if devices.updateCalls[0].Status != inventory.DeviceStatusUnused {
+		t.Errorf("device Status = %q, want %q", devices.updateCalls[0].Status, inventory.DeviceStatusUnused)
+	}
+}
+
+// TestServiceEquipmentServiceDeleteOfAlreadyRemovedRecordDoesNotTouchDevice
+// proves the Unused side effect only fires when the deleted record was
+// itself still active -- deleting old, already-removed history must not
+// touch a Device that may since have been legitimately reattached.
+func TestServiceEquipmentServiceDeleteOfAlreadyRemovedRecordDoesNotTouchDevice(t *testing.T) {
+	deviceID := uuid.New()
+	removedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	existing := validServiceEquipment()
+	existing.ID = uuid.New()
+	existing.DeviceID = deviceID
+	existing.RemovedAt = &removedAt
+	repo := newFakeServiceEquipmentRepository(existing)
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
+
+	if err := svc.Delete(context.Background(), existing.ID); err != nil {
+		t.Fatalf("Delete() = %v", err)
+	}
+	if len(devices.updateCalls) != 0 {
+		t.Errorf("device Update calls = %d, want 0 (record was already removed)", len(devices.updateCalls))
+	}
+}
+
 func TestServiceEquipmentServiceDeletePropagatesNotFound(t *testing.T) {
 	repo := newFakeServiceEquipmentRepository()
-	svc := service.NewServiceEquipmentService(repo)
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
 
 	err := svc.Delete(context.Background(), uuid.New())
 
 	if !apperror.Is(err, apperror.KindNotFound) {
 		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindNotFound)
+	}
+}
+
+// TestServiceEquipmentServiceCreateMarksDeviceActive proves Create's
+// Device-status side effect: a newly created active assignment flips its
+// Device from Unused (the fakeDeviceStore default) to Active.
+func TestServiceEquipmentServiceCreateMarksDeviceActive(t *testing.T) {
+	deviceID := uuid.New()
+	repo := newFakeServiceEquipmentRepository()
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusUnused})
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
+
+	e := validServiceEquipment()
+	e.DeviceID = deviceID
+
+	if _, err := svc.Create(context.Background(), e); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if len(devices.updateCalls) != 1 {
+		t.Fatalf("device Update calls = %d, want 1", len(devices.updateCalls))
+	}
+	if devices.updateCalls[0].Status != inventory.DeviceStatusActive {
+		t.Errorf("device Status = %q, want %q", devices.updateCalls[0].Status, inventory.DeviceStatusActive)
+	}
+}
+
+// TestServiceEquipmentServiceCreateOfHistoricalRecordDoesNotTouchDevice
+// proves the Active side effect only fires for a record that is itself
+// active on creation — see Create's own doc comment.
+func TestServiceEquipmentServiceCreateOfHistoricalRecordDoesNotTouchDevice(t *testing.T) {
+	deviceID := uuid.New()
+	repo := newFakeServiceEquipmentRepository()
+	devices := newFakeDeviceStore()
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
+
+	removedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	e := validServiceEquipment()
+	e.DeviceID = deviceID
+	e.RemovedAt = &removedAt
+
+	if _, err := svc.Create(context.Background(), e); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if len(devices.updateCalls) != 0 {
+		t.Errorf("device Update calls = %d, want 0 (record was never active)", len(devices.updateCalls))
+	}
+}
+
+// TestServiceEquipmentServiceUpdateMarksDeviceUnusedOnRemoval proves
+// Update's Device-status side effect: a write that transitions a
+// previously-active record to removed (RemovedAt going from nil to set)
+// flips its Device back to Unused.
+func TestServiceEquipmentServiceUpdateMarksDeviceUnusedOnRemoval(t *testing.T) {
+	deviceID := uuid.New()
+	existing := validServiceEquipment()
+	existing.ID = uuid.New()
+	existing.DeviceID = deviceID
+	repo := newFakeServiceEquipmentRepository(existing)
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
+
+	now := time.Now()
+	toRemove := existing
+	toRemove.RemovedAt = &now
+
+	if _, err := svc.Update(context.Background(), toRemove); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+	if len(devices.updateCalls) != 1 {
+		t.Fatalf("device Update calls = %d, want 1", len(devices.updateCalls))
+	}
+	if devices.updateCalls[0].Status != inventory.DeviceStatusUnused {
+		t.Errorf("device Status = %q, want %q", devices.updateCalls[0].Status, inventory.DeviceStatusUnused)
+	}
+}
+
+// TestServiceEquipmentServiceUpdateOfAlreadyRemovedRecordDoesNotTouchDevice
+// proves the Unused side effect only fires on the active-to-removed
+// transition itself, not on every subsequent edit to an already-removed
+// record — see Update's own doc comment on why: the Device may since
+// have been legitimately reattached (a new, different active record) and
+// must not be silently pulled back to Unused by an unrelated edit to old
+// history.
+func TestServiceEquipmentServiceUpdateOfAlreadyRemovedRecordDoesNotTouchDevice(t *testing.T) {
+	deviceID := uuid.New()
+	removedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	existing := validServiceEquipment()
+	existing.ID = uuid.New()
+	existing.DeviceID = deviceID
+	existing.RemovedAt = &removedAt
+	repo := newFakeServiceEquipmentRepository(existing)
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
+
+	toUpdate := existing
+	toUpdate.Description = "editing history, not removing anything new"
+
+	if _, err := svc.Update(context.Background(), toUpdate); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+	if len(devices.updateCalls) != 0 {
+		t.Errorf("device Update calls = %d, want 0 (record was already removed before this edit)", len(devices.updateCalls))
+	}
+}
+
+// TestServiceEquipmentServiceMarkDeviceUnusedNeverUnretires proves
+// markDeviceUnused's own idempotency guard: a Retired Device (fully
+// deauthorized from its OLT) must never be silently pulled back to
+// Unused just because an old ServiceEquipment record for it is also
+// being marked removed here.
+func TestServiceEquipmentServiceMarkDeviceUnusedNeverUnretires(t *testing.T) {
+	deviceID := uuid.New()
+	existing := validServiceEquipment()
+	existing.ID = uuid.New()
+	existing.DeviceID = deviceID
+	repo := newFakeServiceEquipmentRepository(existing)
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusRetired})
+	svc := service.NewServiceEquipmentService(repo, devices, devices)
+
+	now := time.Now()
+	toRemove := existing
+	toRemove.RemovedAt = &now
+
+	if _, err := svc.Update(context.Background(), toRemove); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+	if len(devices.updateCalls) != 0 {
+		t.Errorf("device Update calls = %d, want 0 (a Retired device must never be un-retired)", len(devices.updateCalls))
 	}
 }

@@ -175,8 +175,8 @@ func TestDeviceHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 }
 
 func TestDeviceHandlerList(t *testing.T) {
-	a := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "A"}, Status: inventory.DeviceStatusInStock}
-	b := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "B"}, Status: inventory.DeviceStatusInStock}
+	a := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "A"}, Status: inventory.DeviceStatusUnused}
+	b := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "B"}, Status: inventory.DeviceStatusUnused}
 	router := newDeviceTestRouter(newFakeDeviceService(a, b))
 
 	req := httptest.NewRequest(http.MethodGet, "/devices", nil)
@@ -201,7 +201,7 @@ func TestDeviceHandlerList(t *testing.T) {
 }
 
 func TestDeviceHandlerGet(t *testing.T) {
-	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "ONT-Main-01"}, Status: inventory.DeviceStatusInStock}
+	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "ONT-Main-01"}, Status: inventory.DeviceStatusUnused}
 	router := newDeviceTestRouter(newFakeDeviceService(device))
 
 	req := httptest.NewRequest(http.MethodGet, "/devices/"+device.ID.String(), nil)
@@ -226,7 +226,7 @@ func TestDeviceHandlerGetNotFound(t *testing.T) {
 }
 
 func TestDeviceHandlerGetBySerialNumber(t *testing.T) {
-	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "ONT-Main-01"}, SerialNumber: "CXNK00112233", Status: inventory.DeviceStatusInStock}
+	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "ONT-Main-01"}, SerialNumber: "CXNK00112233", Status: inventory.DeviceStatusUnused}
 	router := newDeviceTestRouter(newFakeDeviceService(device))
 
 	req := httptest.NewRequest(http.MethodGet, "/devices/by-serial-number/CXNK00112233", nil)
@@ -263,7 +263,7 @@ func TestDeviceHandlerGetRejectsMalformedID(t *testing.T) {
 }
 
 func TestDeviceHandlerUpdate(t *testing.T) {
-	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "Old Name"}, Status: inventory.DeviceStatusInStock}
+	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "Old Name"}, Status: inventory.DeviceStatusUnused}
 	router := newDeviceTestRouter(newFakeDeviceService(device))
 
 	req := httptest.NewRequest(http.MethodPut, "/devices/"+device.ID.String(), strings.NewReader(
@@ -299,7 +299,7 @@ func TestDeviceHandlerUpdateNotFound(t *testing.T) {
 }
 
 func TestDeviceHandlerDelete(t *testing.T) {
-	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "Temporary"}, Status: inventory.DeviceStatusInStock}
+	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "Temporary"}, Status: inventory.DeviceStatusUnused}
 	router := newDeviceTestRouter(newFakeDeviceService(device))
 
 	req := httptest.NewRequest(http.MethodDelete, "/devices/"+device.ID.String(), nil)

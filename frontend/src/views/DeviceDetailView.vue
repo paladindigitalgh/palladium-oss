@@ -154,13 +154,18 @@ async function confirmDeleteDevice() {
 // whenever the Device has any real Service history, by design).
 
 /**
- * Only offered for an Installed device: internal/provisioning/kontron/
- * service.DeauthorizationService resolves the rest (equipment, OLT,
- * interface) server-side, and errors cleanly if that resolution fails --
- * Installed is just the cheap client-side gate that avoids offering the
- * action when it plainly cannot apply.
+ * Offered for any device not already Retired: a Device can be
+ * OLT-authorized while Unused (freshly discovered/authorized, not yet
+ * attached to a Customer) or Active (attached), and either one might
+ * genuinely still be live on its OLT -- only Retired means it has
+ * already been fully deauthorized. internal/provisioning/kontron/
+ * service.DeauthorizationService resolves the rest (equipment or
+ * OnuAuthorization record, OLT, interface) server-side, and errors
+ * cleanly if that resolution fails -- this is just the cheap
+ * client-side gate that avoids offering the action when it plainly
+ * cannot apply.
  */
-const canDeauthorizeONU = computed(() => device.value?.status === 'Installed')
+const canDeauthorizeONU = computed(() => !!device.value && device.value.status !== 'Retired')
 
 const showDeauthorizeDialog = ref(false)
 const deauthorizePending = ref(false)
@@ -206,7 +211,7 @@ async function confirmDeauthorizeONU() {
     <WorkspaceHeader
       :title="device.name"
       :subtitle="`${device.manufacturer} ${device.model}`"
-      :status="{ label: device.status, variant: device.status === 'Installed' || device.status === 'InStock' ? 'success' : 'neutral' }"
+      :status="{ label: device.status, variant: device.status === 'Active' ? 'success' : 'neutral' }"
       :metadata="headerMetadata"
     >
       <template #actions>

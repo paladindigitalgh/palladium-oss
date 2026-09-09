@@ -325,15 +325,15 @@ func (s *DeauthorizationService) runDeauthorizeCommand(ctx context.Context, oltI
 // what lets a deauthorized ONU drop out of the Device Collection View's
 // default (non-Retired) filter without a second, separate action.
 //
-// A no-op if the Device is already Retired or Disposed — this can
-// happen on a retry after a prior partial failure, and re-writing an
-// already-terminal status would be pointless.
+// A no-op if the Device is already Retired — this can happen on a retry
+// after a prior partial failure, and re-writing an already-terminal
+// status would be pointless.
 func (s *DeauthorizationService) markDeviceRetired(ctx context.Context, deviceID uuid.UUID) error {
 	device, err := s.devices.Get(ctx, deviceID)
 	if err != nil {
 		return classify("OLT was deauthorized, but the device could not be loaded to retire it", err)
 	}
-	if device.Status == inventory.DeviceStatusRetired || device.Status == inventory.DeviceStatusDisposed {
+	if device.Status == inventory.DeviceStatusRetired {
 		return nil
 	}
 

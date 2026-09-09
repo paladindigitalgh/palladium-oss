@@ -31,7 +31,7 @@ func validDevice(t *testing.T, ctx context.Context, q database.Querier, name str
 		Metadata:      inventory.Metadata{Name: name},
 		DeviceModelID: model.ID,
 		SerialNumber:  "SN-" + uuid.NewString(),
-		Status:        inventory.DeviceStatusInStock,
+		Status:        inventory.DeviceStatusUnused,
 	}
 }
 
@@ -66,8 +66,8 @@ func TestDeviceRepositoryCreate(t *testing.T) {
 	if created.AssetTag != "AT-001" {
 		t.Errorf("AssetTag = %q, want %q", created.AssetTag, "AT-001")
 	}
-	if created.Status != inventory.DeviceStatusInStock {
-		t.Errorf("Status = %q, want %q", created.Status, inventory.DeviceStatusInStock)
+	if created.Status != inventory.DeviceStatusUnused {
+		t.Errorf("Status = %q, want %q", created.Status, inventory.DeviceStatusUnused)
 	}
 	if !created.CreatedAt.Equal(created.UpdatedAt) {
 		t.Errorf("CreatedAt (%v) != UpdatedAt (%v) on a newly created row", created.CreatedAt, created.UpdatedAt)
@@ -242,7 +242,7 @@ func TestDeviceRepositoryUpdateRacksAndUnracks(t *testing.T) {
 
 	racked := created
 	racked.RackID = &rackID
-	racked.Status = inventory.DeviceStatusInstalled
+	racked.Status = inventory.DeviceStatusActive
 
 	updated, err := repo.Update(ctx, racked)
 	if err != nil {
@@ -251,8 +251,8 @@ func TestDeviceRepositoryUpdateRacksAndUnracks(t *testing.T) {
 	if updated.RackID == nil || *updated.RackID != rack.ID {
 		t.Errorf("RackID = %v, want %v", updated.RackID, rack.ID)
 	}
-	if updated.Status != inventory.DeviceStatusInstalled {
-		t.Errorf("Status = %q, want %q", updated.Status, inventory.DeviceStatusInstalled)
+	if updated.Status != inventory.DeviceStatusActive {
+		t.Errorf("Status = %q, want %q", updated.Status, inventory.DeviceStatusActive)
 	}
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Errorf("CreatedAt changed on Update(): was %v, now %v", created.CreatedAt, updated.CreatedAt)
@@ -260,7 +260,7 @@ func TestDeviceRepositoryUpdateRacksAndUnracks(t *testing.T) {
 
 	unracked := updated
 	unracked.RackID = nil
-	unracked.Status = inventory.DeviceStatusInStock
+	unracked.Status = inventory.DeviceStatusUnused
 
 	final, err := repo.Update(ctx, unracked)
 	if err != nil {

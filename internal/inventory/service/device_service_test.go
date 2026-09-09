@@ -86,7 +86,7 @@ func validDevice() inventory.Device {
 		Metadata:      inventory.Metadata{Name: "ONT-Main-01"},
 		DeviceModelID: uuid.New(),
 		SerialNumber:  "CXNK00112233",
-		Status:        inventory.DeviceStatusInStock,
+		Status:        inventory.DeviceStatusUnused,
 	}
 }
 

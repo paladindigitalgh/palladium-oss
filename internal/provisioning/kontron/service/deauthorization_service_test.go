@@ -113,7 +113,7 @@ func (f *fakeDeviceStore) Get(_ context.Context, id uuid.UUID) (inventory.Device
 	}
 	d := f.device
 	if d.Status == "" {
-		d = inventory.Device{Metadata: inventory.Metadata{ID: id}, Status: inventory.DeviceStatusInstalled}
+		d = inventory.Device{Metadata: inventory.Metadata{ID: id}, Status: inventory.DeviceStatusActive}
 	}
 	return d, nil
 }
@@ -288,7 +288,7 @@ func TestDeauthorizationServiceRetiresTheDevice(t *testing.T) {
 	olts := &fakeOLTGetter{olt: olt.OLT{ID: oltID, OLTModelID: kontronOLTModel.ID}}
 	models := &fakeOLTModelGetter{model: kontronOLTModel}
 	attachmentStore := &fakeAccessAttachmentStore{getErr: apperror.NotFound("no active attachment")}
-	devices := &fakeDeviceStore{device: inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusInstalled}}
+	devices := &fakeDeviceStore{device: inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive}}
 
 	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, defaultAuthorizations(), devices, clock.NewFrozen(fixedClockTime))
 
@@ -315,7 +315,7 @@ func TestDeauthorizationServiceDoesNotRewriteAnAlreadyTerminalDeviceStatus(t *te
 	olts := &fakeOLTGetter{olt: olt.OLT{ID: oltID, OLTModelID: kontronOLTModel.ID}}
 	models := &fakeOLTModelGetter{model: kontronOLTModel}
 	attachmentStore := &fakeAccessAttachmentStore{getErr: apperror.NotFound("no active attachment")}
-	devices := &fakeDeviceStore{device: inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusDisposed}}
+	devices := &fakeDeviceStore{device: inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusRetired}}
 
 	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, locator, olts, models, attachmentStore, attachmentStore, defaultAuthorizations(), devices, clock.NewFrozen(fixedClockTime))
 
@@ -399,7 +399,7 @@ func TestDeauthorizationServiceFallsBackToOnuAuthorizationWhenNoEquipment(t *tes
 	}}
 	olts := &fakeOLTGetter{olt: olt.OLT{ID: oltID, OLTModelID: kontronOLTModel.ID}}
 	models := &fakeOLTModelGetter{model: kontronOLTModel}
-	devices := &fakeDeviceStore{device: inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusInstalled}}
+	devices := &fakeDeviceStore{device: inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive}}
 
 	s := newTestDeauthorizationService(dialer, equipmentStore, equipmentStore, &fakeLocator{}, olts, models, &fakeAccessAttachmentStore{}, &fakeAccessAttachmentStore{}, authorizations, devices, clock.NewFrozen(fixedClockTime))
 

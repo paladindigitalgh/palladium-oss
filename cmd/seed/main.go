@@ -196,7 +196,7 @@ func run() error {
 		},
 		DeviceModelID: demoDeviceModel.ID,
 		SerialNumber:  "SIM-ONT-0001",
-		Status:        inventory.DeviceStatusInstalled,
+		Status:        inventory.DeviceStatusActive,
 	})
 	if err != nil {
 		return fmt.Errorf("create demo device: %w", err)

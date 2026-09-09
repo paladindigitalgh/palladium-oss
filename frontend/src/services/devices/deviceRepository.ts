@@ -78,12 +78,12 @@ export interface DeviceListQuery {
   search?: string
   status?: Device['status'] | 'all'
   /**
-   * When status is 'all' (no specific status picked), Retired and
-   * Disposed devices are excluded by default -- a deauthorized ONU
+   * When status is 'all' (no specific status picked), Retired devices
+   * are excluded by default -- a deauthorized ONU
    * (internal/provisioning/kontron/service.DeauthorizationService marks
    * it Retired) should stop cluttering the default device list. Set
-   * true to include them, or pick status: 'Retired'/'Disposed' directly
-   * to see only those.
+   * true to include them, or pick status: 'Retired' directly to see
+   * only those.
    */
   includeRetired?: boolean
   sortKey?: 'name' | 'status'
@@ -146,7 +146,7 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
   if (status !== 'all') {
     results = results.filter((device) => device.status === status)
   } else if (!includeRetired) {
-    results = results.filter((device) => device.status !== 'Retired' && device.status !== 'Disposed')
+    results = results.filter((device) => device.status !== 'Retired')
   }
 
   results = results.slice().sort(compareDevices(sortKey, sortDirection === 'desc' ? -1 : 1))
