@@ -136,7 +136,11 @@ async function confirmDeleteDevice() {
     await deleteDevice(device.value.id)
     router.push('/devices')
   } catch (err) {
-    deleteError.value = err instanceof ApiError ? err.message : 'The device could not be deleted.'
+    if (err instanceof ApiError && err.kind === 'conflict') {
+      deleteError.value = 'This device has been part of a Service and cannot be permanently erased. Use Deauthorize ONU instead to retire it while preserving its history.'
+    } else {
+      deleteError.value = err instanceof ApiError ? err.message : 'The device could not be deleted.'
+    }
   } finally {
     deletePending.value = false
   }
