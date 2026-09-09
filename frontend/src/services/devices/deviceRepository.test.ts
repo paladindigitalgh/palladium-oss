@@ -18,14 +18,41 @@ vi.mock('@/services/api/httpClient', async (importOriginal) => {
   return { ...actual, apiFetch }
 })
 
+const deviceModelsResponse = {
+  device_models: [
+    {
+      id: 'model-nokia-g010g',
+      manufacturer_id: 'mfr-nokia',
+      name: 'G-010G',
+      description: '',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'model-cisco-x100',
+      manufacturer_id: 'mfr-cisco',
+      name: 'X-100',
+      description: '',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+  ],
+}
+
+const deviceManufacturersResponse = {
+  device_manufacturers: [
+    { id: 'mfr-nokia', name: 'Nokia', description: '', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    { id: 'mfr-cisco', name: 'Cisco', description: '', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+  ],
+}
+
 function deviceDto(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'd1',
     name: 'ONT-1',
     description: 'Lobby ONT',
     rack_id: null,
-    manufacturer: 'Nokia',
-    model: 'G-010G',
+    device_model_id: 'model-nokia-g010g',
     serial_number: 'SN123',
     asset_tag: 'AT-1',
     status: 'Installed',
@@ -35,16 +62,33 @@ function deviceDto(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
+/**
+ * Every deviceRepository.ts function that returns a Device also fetches
+ * the Device Model and Device Manufacturer catalogs to resolve the
+ * display manufacturer/model strings (see fromDto's own doc comment).
+ * This routes the single mocked apiFetch by URL so a test only has to
+ * say what /devices/... should return -- the catalog responses are
+ * always these two fixtures above, resolving "model-nokia-g010g" to
+ * Nokia/G-010G and "model-cisco-x100" to Cisco/X-100.
+ */
+function mockApiFetch(devicesResult: unknown) {
+  apiFetch.mockImplementation(async (url: string) => {
+    if (url === '/device-models/') return deviceModelsResponse
+    if (url === '/device-manufacturers/') return deviceManufacturersResponse
+    return devicesResult
+  })
+}
+
 beforeEach(() => {
   apiFetch.mockReset()
 })
 
 describe('listDevices', () => {
   it('filters by search term across name, serial number, manufacturer, and model', async () => {
-    apiFetch.mockResolvedValue({
+    mockApiFetch({
       devices: [
-        deviceDto({ id: 'd1', name: 'ONT-1', serial_number: 'AAA', manufacturer: 'Nokia', model: 'G-010G' }),
-        deviceDto({ id: 'd2', name: 'Switch-1', serial_number: 'BBB', manufacturer: 'Cisco', model: 'X-100' }),
+        deviceDto({ id: 'd1', name: 'ONT-1', serial_number: 'AAA', device_model_id: 'model-nokia-g010g' }),
+        deviceDto({ id: 'd2', name: 'Switch-1', serial_number: 'BBB', device_model_id: 'model-cisco-x100' }),
       ],
     })
 
@@ -54,8 +98,17 @@ describe('listDevices', () => {
     expect((await listDevices({ search: 'x-100' })).items.map((d) => d.id)).toEqual(['d2'])
   })
 
+  it('resolves manufacturer/model display strings by joining the Device Model and Device Manufacturer catalogs', async () => {
+    mockApiFetch({ devices: [deviceDto({ id: 'd1', device_model_id: 'model-nokia-g010g' })] })
+
+    const result = await listDevices()
+
+    expect(result.items[0].manufacturer).toBe('Nokia')
+    expect(result.items[0].model).toBe('G-010G')
+  })
+
   it('filters by status', async () => {
-    apiFetch.mockResolvedValue({
+    mockApiFetch({
       devices: [deviceDto({ id: 'd1', status: 'Installed' }), deviceDto({ id: 'd2', status: 'Retired' })],
     })
 
@@ -65,7 +118,7 @@ describe('listDevices', () => {
   })
 
   it('excludes Retired and Disposed devices from the default (status: all) view', async () => {
-    apiFetch.mockResolvedValue({
+    mockApiFetch({
       devices: [
         deviceDto({ id: 'd1', status: 'Installed' }),
         deviceDto({ id: 'd2', status: 'Retired' }),
@@ -79,7 +132,7 @@ describe('listDevices', () => {
   })
 
   it('includes Retired and Disposed devices when includeRetired is set', async () => {
-    apiFetch.mockResolvedValue({
+    mockApiFetch({
       devices: [
         deviceDto({ id: 'd1', status: 'Installed' }),
         deviceDto({ id: 'd2', status: 'Retired' }),
@@ -93,7 +146,7 @@ describe('listDevices', () => {
   })
 
   it('does not apply includeRetired when a specific status is picked', async () => {
-    apiFetch.mockResolvedValue({
+    mockApiFetch({
       devices: [deviceDto({ id: 'd1', status: 'Retired' }), deviceDto({ id: 'd2', status: 'Disposed' })],
     })
 
@@ -103,7 +156,7 @@ describe('listDevices', () => {
   })
 
   it('sorts by name ascending by default', async () => {
-    apiFetch.mockResolvedValue({ devices: [deviceDto({ id: 'd1', name: 'Zeta' }), deviceDto({ id: 'd2', name: 'Alpha' })] })
+    mockApiFetch({ devices: [deviceDto({ id: 'd1', name: 'Zeta' }), deviceDto({ id: 'd2', name: 'Alpha' })] })
 
     const result = await listDevices()
 
@@ -111,7 +164,7 @@ describe('listDevices', () => {
   })
 
   it('sorts by status when requested', async () => {
-    apiFetch.mockResolvedValue({
+    mockApiFetch({
       devices: [deviceDto({ id: 'd1', status: 'Retired' }), deviceDto({ id: 'd2', status: 'InStock' })],
     })
 
@@ -122,7 +175,7 @@ describe('listDevices', () => {
 
   it('paginates results while reporting the true total', async () => {
     const devices = Array.from({ length: 20 }, (_, i) => deviceDto({ id: `d${i}`, name: `Device ${i}` }))
-    apiFetch.mockResolvedValue({ devices })
+    mockApiFetch({ devices })
 
     const result = await listDevices({ page: 2, pageSize: 15 })
 
@@ -133,7 +186,7 @@ describe('listDevices', () => {
 
 describe('listDevicesByRackId', () => {
   it('returns only devices racked in the given rack', async () => {
-    apiFetch.mockResolvedValue({
+    mockApiFetch({
       devices: [
         deviceDto({ id: 'd1', rack_id: 'rack-1' }),
         deviceDto({ id: 'd2', rack_id: 'rack-2' }),
@@ -149,12 +202,14 @@ describe('listDevicesByRackId', () => {
 })
 
 describe('getDeviceById', () => {
-  it('returns the device when found', async () => {
-    apiFetch.mockResolvedValue(deviceDto({ id: 'd1' }))
+  it('returns the device when found, with manufacturer/model resolved', async () => {
+    mockApiFetch(deviceDto({ id: 'd1' }))
 
     const result = await getDeviceById('d1')
 
     expect(result?.id).toBe('d1')
+    expect(result?.manufacturer).toBe('Nokia')
+    expect(result?.model).toBe('G-010G')
   })
 
   it('returns null instead of throwing when the device does not exist', async () => {
@@ -174,7 +229,7 @@ describe('getDeviceById', () => {
 
 describe('getDeviceBySerialNumber', () => {
   it('returns the device when found', async () => {
-    apiFetch.mockResolvedValue(deviceDto({ id: 'd1', serial_number: 'SN123' }))
+    mockApiFetch(deviceDto({ id: 'd1', serial_number: 'SN123' }))
 
     const result = await getDeviceBySerialNumber('SN123')
 
@@ -199,12 +254,11 @@ describe('getDeviceBySerialNumber', () => {
 
 describe('createDevice', () => {
   it('sends the request body in the API wire shape, with a null rack_id when no rack is chosen', async () => {
-    apiFetch.mockResolvedValue(deviceDto({ id: 'new' }))
+    mockApiFetch(deviceDto({ id: 'new' }))
 
     await createDevice({
       name: 'ONT-2',
-      manufacturer: 'Nokia',
-      model: 'G-010G',
+      deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN999',
       assetTag: 'AT-9',
       status: 'InStock',
@@ -216,8 +270,7 @@ describe('createDevice', () => {
       method: 'POST',
       body: {
         name: 'ONT-2',
-        manufacturer: 'Nokia',
-        model: 'G-010G',
+        device_model_id: 'model-nokia-g010g',
         serial_number: 'SN999',
         asset_tag: 'AT-9',
         status: 'InStock',
@@ -228,12 +281,11 @@ describe('createDevice', () => {
   })
 
   it('sends the chosen rack_id when a rack is selected', async () => {
-    apiFetch.mockResolvedValue(deviceDto({ id: 'new', rack_id: 'rack-1' }))
+    mockApiFetch(deviceDto({ id: 'new', rack_id: 'rack-1' }))
 
     await createDevice({
       name: 'ONT-2',
-      manufacturer: 'Nokia',
-      model: 'G-010G',
+      deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN999',
       assetTag: 'AT-9',
       status: 'InStock',
@@ -241,19 +293,18 @@ describe('createDevice', () => {
       rackId: 'rack-1',
     })
 
-    const [, init] = apiFetch.mock.calls[0]
+    const [, init] = apiFetch.mock.calls.find(([url]) => url === '/devices/')!
     expect((init.body as { rack_id: string | null }).rack_id).toBe('rack-1')
   })
 })
 
 describe('updateDevice', () => {
   it('sends the request body as a PUT, passing the given rackId through unchanged', async () => {
-    apiFetch.mockResolvedValue(deviceDto({ id: 'd1', rack_id: 'rack-1' }))
+    mockApiFetch(deviceDto({ id: 'd1', rack_id: 'rack-1' }))
 
     await updateDevice('d1', {
       name: 'ONT-1 Renamed',
-      manufacturer: 'Nokia',
-      model: 'G-010G',
+      deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN123',
       assetTag: 'AT-1',
       status: 'Maintenance',
@@ -265,8 +316,7 @@ describe('updateDevice', () => {
       method: 'PUT',
       body: {
         name: 'ONT-1 Renamed',
-        manufacturer: 'Nokia',
-        model: 'G-010G',
+        device_model_id: 'model-nokia-g010g',
         serial_number: 'SN123',
         asset_tag: 'AT-1',
         status: 'Maintenance',
@@ -277,12 +327,11 @@ describe('updateDevice', () => {
   })
 
   it('sends a null rack_id through unchanged when the device was never racked', async () => {
-    apiFetch.mockResolvedValue(deviceDto({ id: 'd1' }))
+    mockApiFetch(deviceDto({ id: 'd1' }))
 
     await updateDevice('d1', {
       name: 'ONT-1',
-      manufacturer: 'Nokia',
-      model: 'G-010G',
+      deviceModelId: 'model-nokia-g010g',
       serialNumber: 'SN123',
       assetTag: 'AT-1',
       status: 'Installed',
@@ -290,7 +339,7 @@ describe('updateDevice', () => {
       rackId: null,
     })
 
-    const [, init] = apiFetch.mock.calls[0]
+    const [, init] = apiFetch.mock.calls.find(([url]) => url === '/devices/d1')!
     expect((init.body as { rack_id: string | null }).rack_id).toBeNull()
   })
 })

@@ -58,6 +58,9 @@ func (r Rack) Validate() error {
 // Validate reports whether d has every required field set.
 //
 // RackID is intentionally not checked, for the same reason as Rack.RoomID.
+// DeviceModelID is required -- see Device's own doc comment for why a
+// Device without one is meaningless, the same reasoning
+// devicemodel.DeviceModel.Validate applies to its own ManufacturerID.
 // AssetTag is optional and is never checked for presence. Status has no
 // zero value among the defined statuses (see device_status.go), so it is
 // effectively required: an empty Status fails the "must be one of" check
@@ -67,11 +70,8 @@ func (d Device) Validate() error {
 	if !validate.Required(d.Name) {
 		errs.Add("name", "is required")
 	}
-	if !validate.Required(d.Manufacturer) {
-		errs.Add("manufacturer", "is required")
-	}
-	if !validate.Required(d.Model) {
-		errs.Add("model", "is required")
+	if d.DeviceModelID == uuid.Nil {
+		errs.Add("device_model_id", "is required")
 	}
 	if !validate.Required(d.SerialNumber) {
 		errs.Add("serial_number", "is required")

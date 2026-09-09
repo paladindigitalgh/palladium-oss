@@ -29,9 +29,13 @@ package authz
 
 import "github.com/paladindigitalgh/palladium-oss/internal/auth"
 
-// CanReadInventory reports whether role may read Inventory data (Sites
-// today; the same rule will apply to Buildings, Rooms, Racks, and Devices
-// once they have HTTP endpoints). All three built-in roles can.
+// CanReadInventory reports whether role may read Inventory data (Sites,
+// Buildings, Rooms, Racks, and Devices), plus the Device Manufacturer
+// and Device Model catalogs (internal/devicemanufacturer,
+// internal/devicemodel) a Device's DeviceModelID references — the same
+// reasoning authz.CanReadAccessNetwork's doc comment gives for OLTModel
+// sharing OLT's capability pair rather than defining its own. All three
+// built-in roles can.
 func CanReadInventory(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
@@ -42,9 +46,10 @@ func CanReadInventory(role auth.Role) bool {
 }
 
 // CanWriteInventory reports whether role may create, update, or delete
-// Inventory data. Administrator and Operator can; Viewer cannot — a
-// Viewer can see the inventory but never change it, which is the entire
-// reason that role exists as distinct from Operator.
+// Inventory data, plus the Device Manufacturer and Device Model
+// catalogs. Administrator and Operator can; Viewer cannot — a Viewer can
+// see the inventory but never change it, which is the entire reason
+// that role exists as distinct from Operator.
 func CanWriteInventory(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator:

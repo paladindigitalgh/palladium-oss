@@ -10,6 +10,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
+	"github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer"
+	devicemanufacturerpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/devicemodel"
+	devicemodelpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
@@ -139,4 +143,31 @@ func createTestRack(t *testing.T, ctx context.Context, q database.Querier) inven
 		t.Fatalf("fixture: create rack: %v", err)
 	}
 	return rack
+}
+
+// createTestDeviceModel builds a fixture DeviceModel (and the
+// DeviceManufacturer it belongs to) for device_test.go's validDevice to
+// reference via DeviceModelID -- the same "build a valid parent chain
+// through the already-tested repository for its level" reasoning the
+// Site/Building/Room/Rack fixtures above give, one domain package over.
+func createTestDeviceModel(t *testing.T, ctx context.Context, q database.Querier) devicemodel.DeviceModel {
+	t.Helper()
+
+	manufacturerRepo := devicemanufacturerpostgres.NewDeviceManufacturerRepository(q, clock.New(), id.New())
+	manufacturer, err := manufacturerRepo.Create(ctx, devicemanufacturer.DeviceManufacturer{
+		Name: "Fixture Manufacturer " + uuid.NewString(),
+	})
+	if err != nil {
+		t.Fatalf("fixture: create device manufacturer: %v", err)
+	}
+
+	modelRepo := devicemodelpostgres.NewDeviceModelRepository(q, clock.New(), id.New())
+	model, err := modelRepo.Create(ctx, devicemodel.DeviceModel{
+		ManufacturerID: manufacturer.ID,
+		Name:           "Fixture Model " + uuid.NewString(),
+	})
+	if err != nil {
+		t.Fatalf("fixture: create device model: %v", err)
+	}
+	return model
 }

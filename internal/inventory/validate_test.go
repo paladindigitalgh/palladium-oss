@@ -87,11 +87,10 @@ func TestRackValidate(t *testing.T) {
 // base for tests to mutate one field at a time.
 func validDevice() inventory.Device {
 	return inventory.Device{
-		Metadata:     inventory.Metadata{Name: "Switch 1"},
-		Manufacturer: "Acme Corp",
-		Model:        "X100",
-		SerialNumber: "SN-12345",
-		Status:       inventory.DeviceStatusInStock,
+		Metadata:      inventory.Metadata{Name: "Switch 1"},
+		DeviceModelID: uuid.New(),
+		SerialNumber:  "SN-12345",
+		Status:        inventory.DeviceStatusInStock,
 	}
 }
 
@@ -110,11 +109,10 @@ func TestDeviceValidate(t *testing.T) {
 	assertInvalid(t, inventory.Device{}.Validate())
 }
 
-func TestDeviceValidateRequiresManufacturerModelSerialNumber(t *testing.T) {
+func TestDeviceValidateRequiresDeviceModelIDSerialNumber(t *testing.T) {
 	cases := map[string]func(*inventory.Device){
-		"manufacturer": func(d *inventory.Device) { d.Manufacturer = "" },
-		"model":        func(d *inventory.Device) { d.Model = "" },
-		"serialNumber": func(d *inventory.Device) { d.SerialNumber = "" },
+		"deviceModelID": func(d *inventory.Device) { d.DeviceModelID = uuid.Nil },
+		"serialNumber":  func(d *inventory.Device) { d.SerialNumber = "" },
 	}
 
 	for name, mutate := range cases {

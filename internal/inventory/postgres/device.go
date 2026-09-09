@@ -40,7 +40,7 @@ func NewDeviceRepository(db database.Querier, clock clock.Clock, ids id.Generato
 // exists.
 func (r *DeviceRepository) Get(ctx context.Context, deviceID uuid.UUID) (inventory.Device, error) {
 	const query = `
-		SELECT id, rack_id, name, description, manufacturer, model, serial_number,
+		SELECT id, rack_id, name, description, device_model_id, serial_number,
 		       asset_tag, status, created_at, updated_at
 		FROM devices
 		WHERE id = $1
@@ -63,7 +63,7 @@ func (r *DeviceRepository) Get(ctx context.Context, deviceID uuid.UUID) (invento
 // having no unique constraint.
 func (r *DeviceRepository) GetBySerialNumber(ctx context.Context, serialNumber string) (inventory.Device, error) {
 	const query = `
-		SELECT id, rack_id, name, description, manufacturer, model, serial_number,
+		SELECT id, rack_id, name, description, device_model_id, serial_number,
 		       asset_tag, status, created_at, updated_at
 		FROM devices
 		WHERE serial_number = $1
@@ -84,7 +84,7 @@ func (r *DeviceRepository) GetBySerialNumber(ctx context.Context, serialNumber s
 // output (see the index added on that column in the migration).
 func (r *DeviceRepository) List(ctx context.Context) ([]inventory.Device, error) {
 	const query = `
-		SELECT id, rack_id, name, description, manufacturer, model, serial_number,
+		SELECT id, rack_id, name, description, device_model_id, serial_number,
 		       asset_tag, status, created_at, updated_at
 		FROM devices
 		ORDER BY name
@@ -117,20 +117,21 @@ func (r *DeviceRepository) List(ctx context.Context) ([]inventory.Device, error)
 // UpdatedAt itself; any values already set on the input Device for those
 // fields are ignored. RackID may be nil (see inventory.Device); a non-nil
 // RackID that does not reference an existing Rack fails with an
-// apperror.KindConflict error (see translateError).
+// apperror.KindConflict error (see translateError), and likewise a
+// DeviceModelID that does not reference an existing DeviceModel.
 func (r *DeviceRepository) Create(ctx context.Context, device inventory.Device) (inventory.Device, error) {
 	const query = `
-		INSERT INTO devices (id, rack_id, name, description, manufacturer, model,
+		INSERT INTO devices (id, rack_id, name, description, device_model_id,
 		                      serial_number, asset_tag, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
-		RETURNING id, rack_id, name, description, manufacturer, model, serial_number,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+		RETURNING id, rack_id, name, description, device_model_id, serial_number,
 		          asset_tag, status, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanDevice(r.db.QueryRow(ctx, query,
 		r.ids.New(), device.RackID, device.Name, device.Description,
-		device.Manufacturer, device.Model, device.SerialNumber, device.AssetTag,
+		device.DeviceModelID, device.SerialNumber, device.AssetTag,
 		string(device.Status), now))
 	if err != nil {
 		return inventory.Device{}, translateError("create device", err)
@@ -149,16 +150,16 @@ func (r *DeviceRepository) Create(ctx context.Context, device inventory.Device) 
 func (r *DeviceRepository) Update(ctx context.Context, device inventory.Device) (inventory.Device, error) {
 	const query = `
 		UPDATE devices
-		SET rack_id = $1, name = $2, description = $3, manufacturer = $4, model = $5,
-		    serial_number = $6, asset_tag = $7, status = $8, updated_at = $9
-		WHERE id = $10
-		RETURNING id, rack_id, name, description, manufacturer, model, serial_number,
+		SET rack_id = $1, name = $2, description = $3, device_model_id = $4,
+		    serial_number = $5, asset_tag = $6, status = $7, updated_at = $8
+		WHERE id = $9
+		RETURNING id, rack_id, name, description, device_model_id, serial_number,
 		          asset_tag, status, created_at, updated_at
 	`
 
 	updated, err := scanDevice(r.db.QueryRow(ctx, query,
 		device.RackID, device.Name, device.Description,
-		device.Manufacturer, device.Model, device.SerialNumber, device.AssetTag,
+		device.DeviceModelID, device.SerialNumber, device.AssetTag,
 		string(device.Status), r.clock.Now(), device.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -171,8 +172,11 @@ func (r *DeviceRepository) Update(ctx context.Context, device inventory.Device) 
 
 // Delete removes the Device identified by id, or returns an
 // apperror.KindNotFound error if it does not exist. Device is a leaf in
-// the inventory hierarchy, so unlike the other three repositories in this
-// package, no other table's foreign key can ever block this delete.
+// the inventory hierarchy itself, but it is still referenced from
+// outside it: service_equipment.device_id ON DELETE RESTRICT rejects
+// this delete with an apperror.KindConflict error (see translateError)
+// whenever this Device has ever been part of a Service, active or not
+// (see internal/serviceequipment).
 func (r *DeviceRepository) Delete(ctx context.Context, deviceID uuid.UUID) error {
 	const query = `DELETE FROM devices WHERE id = $1`
 
@@ -196,7 +200,7 @@ func scanDevice(row rowScanner) (inventory.Device, error) {
 		status string
 	)
 	err := row.Scan(&device.ID, &device.RackID, &device.Name, &device.Description,
-		&device.Manufacturer, &device.Model, &device.SerialNumber, &device.AssetTag,
+		&device.DeviceModelID, &device.SerialNumber, &device.AssetTag,
 		&status, &device.CreatedAt, &device.UpdatedAt)
 	device.Status = inventory.DeviceStatus(status)
 	return device, err

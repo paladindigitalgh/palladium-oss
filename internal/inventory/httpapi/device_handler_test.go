@@ -116,7 +116,9 @@ func newDeviceTestRouter(svc *fakeDeviceService) http.Handler {
 	return r
 }
 
-const validDeviceBody = `{"name":"ONT-Main-01","manufacturer":"Calix","model":"716GE","serial_number":"CXNK00112233","status":"InStock"}`
+const validDeviceModelIDJSON = `"11111111-1111-1111-1111-111111111111"`
+
+const validDeviceBody = `{"name":"ONT-Main-01","device_model_id":` + validDeviceModelIDJSON + `,"serial_number":"CXNK00112233","status":"InStock"}`
 
 func TestDeviceHandlerCreate(t *testing.T) {
 	router := newDeviceTestRouter(newFakeDeviceService())
@@ -130,10 +132,10 @@ func TestDeviceHandlerCreate(t *testing.T) {
 	}
 
 	var body struct {
-		ID           string `json:"id"`
-		Name         string `json:"name"`
-		Manufacturer string `json:"manufacturer"`
-		Status       string `json:"status"`
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		DeviceModelID string `json:"device_model_id"`
+		Status        string `json:"status"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -141,8 +143,8 @@ func TestDeviceHandlerCreate(t *testing.T) {
 	if body.ID == "" {
 		t.Error("response did not include an id")
 	}
-	if body.Name != "ONT-Main-01" || body.Manufacturer != "Calix" || body.Status != "InStock" {
-		t.Errorf("body = %+v, want Name=ONT-Main-01 Manufacturer=Calix Status=InStock", body)
+	if body.Name != "ONT-Main-01" || body.DeviceModelID != "11111111-1111-1111-1111-111111111111" || body.Status != "InStock" {
+		t.Errorf("body = %+v, want Name=ONT-Main-01 DeviceModelID=11111111-1111-1111-1111-111111111111 Status=InStock", body)
 	}
 }
 
@@ -265,7 +267,7 @@ func TestDeviceHandlerUpdate(t *testing.T) {
 	router := newDeviceTestRouter(newFakeDeviceService(device))
 
 	req := httptest.NewRequest(http.MethodPut, "/devices/"+device.ID.String(), strings.NewReader(
-		`{"name":"New Name","manufacturer":"Calix","model":"716GE","serial_number":"CXNK00112233","status":"Installed"}`))
+		`{"name":"New Name","device_model_id":`+validDeviceModelIDJSON+`,"serial_number":"CXNK00112233","status":"Installed"}`))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

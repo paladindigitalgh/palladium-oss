@@ -67,22 +67,29 @@ type Rack struct {
 // RackID is nullable for the same reason as Rack.RoomID: a device can be
 // ordered, received, and stored before it is ever racked.
 //
-// Manufacturer, Model, and SerialNumber are plain strings rather than
-// separate Manufacturer/Model entities. Per CLAUDE.md's "avoid unnecessary
-// abstractions": normalizing them into their own tables only pays off once
-// something needs to query or dedupe across devices by manufacturer or
-// model, and nothing does yet — see docs/ARCHITECTURE.md's Data
-// Philosophy ("denormalize only after measurement proves necessary",
-// applied here in reverse: don't normalize before it's needed either).
+// DeviceModelID replaced this type's former free-text Manufacturer and
+// Model string fields: an operator creating or editing a Device now
+// picks from the internal/devicemanufacturer / internal/devicemodel
+// catalogs instead of retyping a vendor and model name every time,
+// which invited drift and typos across otherwise-identical hardware
+// (e.g. "Nokia" vs "nokia" vs "NOKIA" on three different Devices for
+// the same physical model). This reverses the reasoning
+// docs/ARCHITECTURE.md's Data Philosophy previously gave for keeping
+// them as plain strings ("normalizing them into their own tables only
+// pays off once something needs to query or dedupe across devices by
+// manufacturer or model, and nothing does yet") — an operator now does
+// need exactly that, to select from a curated list rather than type
+// freely. See internal/devicemodel/model.go's own doc comment for the
+// two-level Manufacturer -> Model catalog shape this points into,
+// mirroring internal/oltmodel's own OLTModelID pattern on OLT.
 //
 // AssetTag is optional, so it is a plain string (empty means "not set"),
 // consistent with how Metadata.Description — also optional — is handled.
 type Device struct {
 	Metadata
-	RackID       *uuid.UUID
-	Manufacturer string
-	Model        string
-	SerialNumber string
-	AssetTag     string
-	Status       DeviceStatus
+	RackID        *uuid.UUID
+	DeviceModelID uuid.UUID
+	SerialNumber  string
+	AssetTag      string
+	Status        DeviceStatus
 }

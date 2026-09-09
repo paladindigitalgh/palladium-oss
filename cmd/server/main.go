@@ -45,6 +45,12 @@ import (
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
 	customerremoval "github.com/paladindigitalgh/palladium-oss/internal/customer/removal"
 	customerservice "github.com/paladindigitalgh/palladium-oss/internal/customer/service"
+	devicemanufacturerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/httpapi"
+	devicemanufacturerpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/postgres"
+	devicemanufacturerservice "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/service"
+	devicemodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/httpapi"
+	devicemodelpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/postgres"
+	devicemodelservice "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
@@ -198,6 +204,19 @@ func run() error {
 	deviceRepo := inventorypostgres.NewDeviceRepository(pool, clock.New(), id.New())
 	deviceService := service.NewDeviceService(deviceRepo)
 	deviceHandler := httpapi.NewDeviceHandler(deviceService)
+
+	// DeviceManufacturer and DeviceModel are constructed before Device's
+	// handler is used, mirroring OLTModel/PONPort's own construction
+	// order relative to OLT below: Device.DeviceModelID references
+	// DeviceModel, which references DeviceManufacturer, so both catalogs
+	// exist before anything that looks them up runs.
+	deviceManufacturerRepo := devicemanufacturerpostgres.NewDeviceManufacturerRepository(pool, clock.New(), id.New())
+	deviceManufacturerSvc := devicemanufacturerservice.NewDeviceManufacturerService(deviceManufacturerRepo)
+	deviceManufacturerHandler := devicemanufacturerhttpapi.NewDeviceManufacturerHandler(deviceManufacturerSvc)
+
+	deviceModelRepo := devicemodelpostgres.NewDeviceModelRepository(pool, clock.New(), id.New())
+	deviceModelSvc := devicemodelservice.NewDeviceModelService(deviceModelRepo)
+	deviceModelHandler := devicemodelhttpapi.NewDeviceModelHandler(deviceModelSvc)
 
 	// Customer follows the exact same repository -> service -> handler
 	// chain as Site, one domain package over (internal/customer instead
@@ -540,6 +559,8 @@ func run() error {
 		RoomHandler:                roomHandler,
 		RackHandler:                rackHandler,
 		DeviceHandler:              deviceHandler,
+		DeviceManufacturerHandler:  deviceManufacturerHandler,
+		DeviceModelHandler:         deviceModelHandler,
 		CustomerHandler:            customerHandler,
 		CustomerRemovalHandler:     customerRemovalHandler,
 		LocationHandler:            locationHandler,

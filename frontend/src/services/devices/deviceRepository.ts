@@ -1,4 +1,8 @@
 import type { Device } from '@/types/device'
+import type { DeviceModel } from '@/types/deviceModel'
+import type { DeviceManufacturer } from '@/types/deviceManufacturer'
+import { listDeviceModels } from '@/services/deviceModels/deviceModelRepository'
+import { listDeviceManufacturers } from '@/services/deviceManufacturers/deviceManufacturerRepository'
 import { apiFetch, ApiError } from '@/services/api/httpClient'
 
 /**
@@ -11,8 +15,7 @@ interface DeviceDto {
   name: string
   description: string
   rack_id: string | null
-  manufacturer: string
-  model: string
+  device_model_id: string
   serial_number: string
   asset_tag: string
   status: Device['status']
@@ -20,19 +23,54 @@ interface DeviceDto {
   updated_at: string
 }
 
-function fromDto(dto: DeviceDto): Device {
+/**
+ * Resolves a DeviceDto's device_model_id into the Device type's
+ * read-only manufacturer/model display strings, by looking it up in
+ * modelsById and, from there, its manufacturer in manufacturersById --
+ * see types/device.ts's own doc comment for why Device carries both the
+ * raw id and this resolved text. Falls back to "Unknown" rather than
+ * throwing if a lookup misses: the two catalogs are fetched moments
+ * earlier in the same request (see withDeviceCatalogs below), so a miss
+ * here would mean a real data inconsistency, not a normal race --
+ * surfacing a clearly-wrong label beats crashing the whole list over it.
+ */
+function fromDto(dto: DeviceDto, modelsById: Map<string, DeviceModel>, manufacturersById: Map<string, DeviceManufacturer>): Device {
+  const model = modelsById.get(dto.device_model_id)
+  const manufacturer = model ? manufacturersById.get(model.manufacturerId) : undefined
+
   return {
     id: dto.id,
     name: dto.name,
     description: dto.description,
     rackId: dto.rack_id,
-    manufacturer: dto.manufacturer,
-    model: dto.model,
+    deviceModelId: dto.device_model_id,
+    manufacturer: manufacturer?.name ?? 'Unknown',
+    model: model?.name ?? 'Unknown',
     serialNumber: dto.serial_number,
     assetTag: dto.asset_tag,
     status: dto.status,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
+  }
+}
+
+/**
+ * Fetches the Device Model and Device Manufacturer catalogs once and
+ * returns lookup maps, for fromDto to join against -- both catalogs are
+ * small (Administration-managed reference data, not per-device rows),
+ * so fetching them fresh alongside every Device read is the same
+ * "no server-side filtering, join client-side" tradeoff this codebase
+ * makes throughout (see e.g. oltRepository.ts's
+ * listOLTsByAccessNetworkId) rather than a real cost.
+ */
+async function fetchDeviceCatalogs(): Promise<{
+  modelsById: Map<string, DeviceModel>
+  manufacturersById: Map<string, DeviceManufacturer>
+}> {
+  const [models, manufacturers] = await Promise.all([listDeviceModels(), listDeviceManufacturers()])
+  return {
+    modelsById: new Map(models.map((m) => [m.id, m])),
+    manufacturersById: new Map(manufacturers.map((m) => [m.id, m])),
   }
 }
 
@@ -78,8 +116,11 @@ function compareDevices(sortKey: NonNullable<DeviceListQuery['sortKey']>, direct
 }
 
 async function listAllDevices(): Promise<Device[]> {
-  const { devices } = await apiFetch<{ devices: DeviceDto[] }>('/devices/')
-  return devices.map(fromDto)
+  const [{ devices }, { modelsById, manufacturersById }] = await Promise.all([
+    apiFetch<{ devices: DeviceDto[] }>('/devices/'),
+    fetchDeviceCatalogs(),
+  ])
+  return devices.map((dto) => fromDto(dto, modelsById, manufacturersById))
 }
 
 /** Returns every Device racked in the given Rack, for RackDetailView.vue's read-only Devices section. */
@@ -118,8 +159,11 @@ export async function listDevices(query: DeviceListQuery = {}): Promise<DeviceLi
 /** Fetches a single Device, returning null (not throwing) when it does not exist. */
 export async function getDeviceById(id: string): Promise<Device | null> {
   try {
-    const dto = await apiFetch<DeviceDto>(`/devices/${id}`)
-    return fromDto(dto)
+    const [dto, { modelsById, manufacturersById }] = await Promise.all([
+      apiFetch<DeviceDto>(`/devices/${id}`),
+      fetchDeviceCatalogs(),
+    ])
+    return fromDto(dto, modelsById, manufacturersById)
   } catch (err) {
     if (err instanceof ApiError && err.kind === 'not_found') return null
     throw err
@@ -134,8 +178,11 @@ export async function getDeviceById(id: string): Promise<Device | null> {
  */
 export async function getDeviceBySerialNumber(serialNumber: string): Promise<Device | null> {
   try {
-    const dto = await apiFetch<DeviceDto>(`/devices/by-serial-number/${encodeURIComponent(serialNumber)}`)
-    return fromDto(dto)
+    const [dto, { modelsById, manufacturersById }] = await Promise.all([
+      apiFetch<DeviceDto>(`/devices/by-serial-number/${encodeURIComponent(serialNumber)}`),
+      fetchDeviceCatalogs(),
+    ])
+    return fromDto(dto, modelsById, manufacturersById)
   } catch (err) {
     if (err instanceof ApiError && err.kind === 'not_found') return null
     throw err
@@ -144,8 +191,7 @@ export async function getDeviceBySerialNumber(serialNumber: string): Promise<Dev
 
 export interface CreateDeviceInput {
   name: string
-  manufacturer: string
-  model: string
+  deviceModelId: string
   serialNumber: string
   assetTag: string
   status: Device['status']
@@ -158,8 +204,7 @@ export async function createDevice(input: CreateDeviceInput): Promise<Device> {
     method: 'POST',
     body: {
       name: input.name,
-      manufacturer: input.manufacturer,
-      model: input.model,
+      device_model_id: input.deviceModelId,
       serial_number: input.serialNumber,
       asset_tag: input.assetTag,
       status: input.status,
@@ -167,13 +212,13 @@ export async function createDevice(input: CreateDeviceInput): Promise<Device> {
       rack_id: input.rackId,
     },
   })
-  return fromDto(dto)
+  const { modelsById, manufacturersById } = await fetchDeviceCatalogs()
+  return fromDto(dto, modelsById, manufacturersById)
 }
 
 export interface UpdateDeviceInput {
   name: string
-  manufacturer: string
-  model: string
+  deviceModelId: string
   serialNumber: string
   assetTag: string
   status: Device['status']
@@ -192,8 +237,7 @@ export async function updateDevice(id: string, input: UpdateDeviceInput): Promis
     method: 'PUT',
     body: {
       name: input.name,
-      manufacturer: input.manufacturer,
-      model: input.model,
+      device_model_id: input.deviceModelId,
       serial_number: input.serialNumber,
       asset_tag: input.assetTag,
       status: input.status,
@@ -201,15 +245,17 @@ export async function updateDevice(id: string, input: UpdateDeviceInput): Promis
       rack_id: input.rackId,
     },
   })
-  return fromDto(dto)
+  const { modelsById, manufacturersById } = await fetchDeviceCatalogs()
+  return fromDto(dto, modelsById, manufacturersById)
 }
 
 /**
  * Deletes the Device identified by id. Device is a leaf in the Inventory
- * hierarchy -- no other table's foreign key can ever block this delete
- * (see internal/inventory/postgres/device.go's Delete) -- so unlike
- * deleteCustomer/deleteService, callers do not need to handle a
- * "conflict" ApiError specially.
+ * hierarchy itself, but is still referenced from outside it by
+ * service_equipment.device_id ON DELETE RESTRICT -- see
+ * internal/inventory/postgres/device.go's Delete -- so this can throw an
+ * ApiError with kind "conflict" once the Device has ever been part of a
+ * Service, active or not.
  */
 export async function deleteDevice(id: string): Promise<void> {
   await apiFetch<void>(`/devices/${id}`, { method: 'DELETE' })

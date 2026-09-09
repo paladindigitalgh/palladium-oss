@@ -3,11 +3,13 @@
 package postgres_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
@@ -15,16 +17,21 @@ import (
 )
 
 // validDevice returns a Device that satisfies every column with a NOT NULL
-// constraint (manufacturer, model, serial_number, status), so tests below
+// constraint (device_model_id, serial_number, status), so tests below
 // only need to override the field(s) they actually care about. Mirrors
-// validDevice in internal/inventory/validate_test.go.
-func validDevice(name string) inventory.Device {
+// validDevice in internal/inventory/validate_test.go, except it needs a
+// real DeviceModel fixture (see createTestDeviceModel in
+// testing_test.go): device_model_id is a foreign key, unlike the plain
+// strings it replaced.
+func validDevice(t *testing.T, ctx context.Context, q database.Querier, name string) inventory.Device {
+	t.Helper()
+
+	model := createTestDeviceModel(t, ctx, q)
 	return inventory.Device{
-		Metadata:     inventory.Metadata{Name: name},
-		Manufacturer: "Acme Corp",
-		Model:        "X100",
-		SerialNumber: "SN-" + uuid.NewString(),
-		Status:       inventory.DeviceStatusInStock,
+		Metadata:      inventory.Metadata{Name: name},
+		DeviceModelID: model.ID,
+		SerialNumber:  "SN-" + uuid.NewString(),
+		Status:        inventory.DeviceStatusInStock,
 	}
 }
 
@@ -34,7 +41,7 @@ func TestDeviceRepositoryCreate(t *testing.T) {
 	rackID := rack.ID
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	device := validDevice("Switch 1")
+	device := validDevice(t, ctx, q, "Switch 1")
 	device.Description = "24-port"
 	device.AssetTag = "AT-001"
 	device.RackID = &rackID
@@ -50,8 +57,8 @@ func TestDeviceRepositoryCreate(t *testing.T) {
 	if created.RackID == nil || *created.RackID != rack.ID {
 		t.Errorf("RackID = %v, want %v", created.RackID, rack.ID)
 	}
-	if created.Manufacturer != "Acme Corp" || created.Model != "X100" {
-		t.Errorf("Manufacturer/Model = %q/%q, want Acme Corp/X100", created.Manufacturer, created.Model)
+	if created.DeviceModelID != device.DeviceModelID {
+		t.Errorf("DeviceModelID = %v, want %v", created.DeviceModelID, device.DeviceModelID)
 	}
 	if created.SerialNumber != device.SerialNumber {
 		t.Errorf("SerialNumber = %q, want %q", created.SerialNumber, device.SerialNumber)
@@ -74,7 +81,7 @@ func TestDeviceRepositoryCreateWithoutRack(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, validDevice("Spare Switch"))
+	created, err := repo.Create(ctx, validDevice(t, ctx, q, "Spare Switch"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -94,7 +101,7 @@ func TestDeviceRepositoryCreateIgnoresCallerSuppliedIdentity(t *testing.T) {
 	bogusID := uuid.New()
 	bogusTime := time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	device := validDevice("Edge Device")
+	device := validDevice(t, ctx, q, "Edge Device")
 	device.ID = bogusID
 	device.CreatedAt = bogusTime
 	device.UpdatedAt = bogusTime
@@ -117,7 +124,7 @@ func TestDeviceRepositoryCreateFailsWhenRackDoesNotExist(t *testing.T) {
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
 	bogusRackID := uuid.New() // does not exist
-	device := validDevice("Orphan Device")
+	device := validDevice(t, ctx, q, "Orphan Device")
 	device.RackID = &bogusRackID
 
 	_, err := repo.Create(ctx, device)
@@ -129,7 +136,7 @@ func TestDeviceRepositoryGet(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, validDevice("Device A"))
+	created, err := repo.Create(ctx, validDevice(t, ctx, q, "Device A"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -159,7 +166,7 @@ func TestDeviceRepositoryGetBySerialNumber(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, validDevice("Device A"))
+	created, err := repo.Create(ctx, validDevice(t, ctx, q, "Device A"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -186,11 +193,11 @@ func TestDeviceRepositoryList(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	first, err := repo.Create(ctx, validDevice("Alpha Device"))
+	first, err := repo.Create(ctx, validDevice(t, ctx, q, "Alpha Device"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	second, err := repo.Create(ctx, validDevice("Beta Device"))
+	second, err := repo.Create(ctx, validDevice(t, ctx, q, "Beta Device"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -228,7 +235,7 @@ func TestDeviceRepositoryUpdateRacksAndUnracks(t *testing.T) {
 	rackID := rack.ID
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, validDevice("Mobile Device"))
+	created, err := repo.Create(ctx, validDevice(t, ctx, q, "Mobile Device"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -268,7 +275,7 @@ func TestDeviceRepositoryUpdateNotFound(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	ghost := validDevice("Ghost")
+	ghost := validDevice(t, ctx, q, "Ghost")
 	ghost.ID = uuid.New()
 
 	_, err := repo.Update(ctx, ghost)
@@ -280,7 +287,7 @@ func TestDeviceRepositoryDelete(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, validDevice("Temporary"))
+	created, err := repo.Create(ctx, validDevice(t, ctx, q, "Temporary"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -307,11 +314,11 @@ func TestDeviceRepositoryCreateConflictOnDuplicateID(t *testing.T) {
 	fixedID := uuid.New()
 	repo := postgres.NewDeviceRepository(q, clock.New(), id.Static{Value: fixedID})
 
-	if _, err := repo.Create(ctx, validDevice("First")); err != nil {
+	if _, err := repo.Create(ctx, validDevice(t, ctx, q, "First")); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
 
-	_, err := repo.Create(ctx, validDevice("Second"))
+	_, err := repo.Create(ctx, validDevice(t, ctx, q, "Second"))
 	assertConflict(t, err)
 }
 
@@ -325,7 +332,7 @@ func TestRackRepositoryDeleteBlockedByExistingDevice(t *testing.T) {
 	rackID := rack.ID
 	deviceRepo := postgres.NewDeviceRepository(q, clock.New(), id.New())
 
-	device := validDevice("Blocking Device")
+	device := validDevice(t, ctx, q, "Blocking Device")
 	device.RackID = &rackID
 	if _, err := deviceRepo.Create(ctx, device); err != nil {
 		t.Fatalf("Create() = %v", err)

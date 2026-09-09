@@ -1,10 +1,11 @@
 // Command seed populates a freshly migrated database with a minimal,
 // realistic demo dataset — one Customer, Location, Catalog, Provider,
-// Product, Service Profile, Service, inventory Device, and Service
-// Equipment assignment — so a new installation has something real to
-// look at and act on (a Service the Workflow Engine can actually
-// provision, suspend, and resume against internal/plugin/mock's
-// simulated vendor) before any real customer data or hardware exists.
+// Product, Service Profile, Service, Device Manufacturer, Device Model,
+// inventory Device, and Service Equipment assignment — so a new
+// installation has something real to look at and act on (a Service the
+// Workflow Engine can actually provision, suspend, and resume against
+// internal/plugin/mock's simulated vendor) before any real customer
+// data or hardware exists.
 //
 // It is a separate binary from cmd/bootstrap for the same reason
 // cmd/bootstrap is separate from cmd/migrate: account creation, schema
@@ -25,6 +26,10 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/customer"
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
+	"github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer"
+	devicemanufacturerpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/devicemodel"
+	devicemodelpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	inventorypostgres "github.com/paladindigitalgh/palladium-oss/internal/inventory/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/location"
@@ -83,6 +88,8 @@ func run() error {
 	products := productpostgres.NewProductRepository(pool, clock.New(), id.New())
 	serviceProfiles := serviceprofilepostgres.NewServiceProfileRepository(pool, clock.New(), id.New())
 	services := servicepostgres.NewServiceRepository(pool, clock.New(), id.New())
+	deviceManufacturers := devicemanufacturerpostgres.NewDeviceManufacturerRepository(pool, clock.New(), id.New())
+	deviceModels := devicemodelpostgres.NewDeviceModelRepository(pool, clock.New(), id.New())
 	devices := inventorypostgres.NewDeviceRepository(pool, clock.New(), id.New())
 	serviceEquipment := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
 
@@ -167,15 +174,29 @@ func run() error {
 		return fmt.Errorf("create demo service: %w", err)
 	}
 
+	demoManufacturer, err := deviceManufacturers.Create(ctx, devicemanufacturer.DeviceManufacturer{
+		Name: "Simulated Vendor",
+	})
+	if err != nil {
+		return fmt.Errorf("create demo device manufacturer: %w", err)
+	}
+
+	demoDeviceModel, err := deviceModels.Create(ctx, devicemodel.DeviceModel{
+		ManufacturerID: demoManufacturer.ID,
+		Name:           "ONT-100",
+	})
+	if err != nil {
+		return fmt.Errorf("create demo device model: %w", err)
+	}
+
 	demoDevice, err := devices.Create(ctx, inventory.Device{
 		Metadata: inventory.Metadata{
 			Name:        "Demo ONT",
 			Description: "Simulated ONT — acted on by internal/plugin/mock, not real hardware",
 		},
-		Manufacturer: "Simulated Vendor",
-		Model:        "ONT-100",
-		SerialNumber: "SIM-ONT-0001",
-		Status:       inventory.DeviceStatusInstalled,
+		DeviceModelID: demoDeviceModel.ID,
+		SerialNumber:  "SIM-ONT-0001",
+		Status:        inventory.DeviceStatusInstalled,
 	})
 	if err != nil {
 		return fmt.Errorf("create demo device: %w", err)

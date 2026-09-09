@@ -12,6 +12,19 @@
  * Which Service, if any, it currently fulfills is a separate concern --
  * see internal/serviceequipment and types/serviceEquipment.ts -- resolved
  * on demand by the Device Detail Workspace, never embedded here.
+ *
+ * deviceModelId is the real, authoritative field (see
+ * internal/inventory/model.go's Device doc comment): it references a
+ * @/types/deviceModel.DeviceModel, itself belonging to a
+ * @/types/deviceManufacturer.DeviceManufacturer, in place of what used
+ * to be free-text Manufacturer/Model strings directly on Device.
+ * manufacturer/model here are read-only display strings resolved by
+ * joining those two catalogs -- see deviceRepository.ts's fromDto --
+ * kept on this type so every existing display/search call site
+ * (DeviceCollectionView.vue, DeviceDetailView.vue,
+ * AssignServiceEquipmentDialog.vue, ServiceDetailView.vue) reads exactly
+ * as it did before. Only DeviceFormDialog.vue writes deviceModelId
+ * directly, via its Manufacturer/Model picker.
  */
 export type DeviceStatus = 'Ordered' | 'Received' | 'InStock' | 'Installed' | 'Maintenance' | 'Retired' | 'Disposed'
 
@@ -20,6 +33,7 @@ export interface Device {
   name: string
   description: string
   rackId: string | null
+  deviceModelId: string
   manufacturer: string
   model: string
   serialNumber: string

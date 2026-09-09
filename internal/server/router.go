@@ -23,6 +23,8 @@ import (
 	connectionprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/httpapi"
 	contacthttpapi "github.com/paladindigitalgh/palladium-oss/internal/contact/httpapi"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
+	devicemanufacturerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/httpapi"
+	devicemodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/httpapi"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
 	kontronhttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/kontron/httpapi"
 	eventhttpapi "github.com/paladindigitalgh/palladium-oss/internal/event/httpapi"
@@ -57,6 +59,8 @@ type Dependencies struct {
 	RoomHandler                               *httpapi.RoomHandler
 	RackHandler                               *httpapi.RackHandler
 	DeviceHandler                             *httpapi.DeviceHandler
+	DeviceManufacturerHandler                 *devicemanufacturerhttpapi.DeviceManufacturerHandler
+	DeviceModelHandler                        *devicemodelhttpapi.DeviceModelHandler
 	CustomerHandler                           *customerhttpapi.CustomerHandler
 	CustomerRemovalHandler                    *customerhttpapi.RemovalHandler
 	LocationHandler                           *locationhttpapi.LocationHandler
@@ -241,6 +245,47 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.DeviceHandler.Create)
 				r.Put("/{id}", deps.DeviceHandler.Update)
 				r.Delete("/{id}", deps.DeviceHandler.Delete)
+			})
+		})
+
+		// /device-manufacturers and /device-models share /devices' own
+		// capability pair (RequireInventoryRead/RequireInventoryWrite):
+		// a DeviceManufacturer and DeviceModel are the Administration-
+		// managed catalog a Device's DeviceModelID references (see
+		// internal/devicemodel's own doc comment), the same reasoning
+		// /olt-models below shares /olts' capability pair rather than
+		// defining its own.
+		r.Route("/device-manufacturers", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryRead())
+				r.Get("/", deps.DeviceManufacturerHandler.List)
+				r.Get("/{id}", deps.DeviceManufacturerHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryWrite())
+				r.Post("/", deps.DeviceManufacturerHandler.Create)
+				r.Put("/{id}", deps.DeviceManufacturerHandler.Update)
+				r.Delete("/{id}", deps.DeviceManufacturerHandler.Delete)
+			})
+		})
+
+		r.Route("/device-models", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryRead())
+				r.Get("/", deps.DeviceModelHandler.List)
+				r.Get("/{id}", deps.DeviceModelHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireInventoryWrite())
+				r.Post("/", deps.DeviceModelHandler.Create)
+				r.Put("/{id}", deps.DeviceModelHandler.Update)
+				r.Delete("/{id}", deps.DeviceModelHandler.Delete)
 			})
 		})
 

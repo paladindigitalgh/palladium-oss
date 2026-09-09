@@ -83,11 +83,10 @@ var _ inventory.DeviceRepository = (*fakeDeviceRepository)(nil)
 
 func validDevice() inventory.Device {
 	return inventory.Device{
-		Metadata:     inventory.Metadata{Name: "ONT-Main-01"},
-		Manufacturer: "Calix",
-		Model:        "716GE",
-		SerialNumber: "CXNK00112233",
-		Status:       inventory.DeviceStatusInStock,
+		Metadata:      inventory.Metadata{Name: "ONT-Main-01"},
+		DeviceModelID: uuid.New(),
+		SerialNumber:  "CXNK00112233",
+		Status:        inventory.DeviceStatusInStock,
 	}
 }
 
@@ -111,7 +110,7 @@ func TestDeviceServiceCreateRejectsInvalidDeviceWithoutPersisting(t *testing.T) 
 	repo := newFakeDeviceRepository()
 	svc := service.NewDeviceService(repo)
 
-	_, err := svc.Create(context.Background(), inventory.Device{}) // no Name, Manufacturer, Model, SerialNumber, Status
+	_, err := svc.Create(context.Background(), inventory.Device{}) // no Name, DeviceModelID, SerialNumber, Status
 
 	if !apperror.Is(err, apperror.KindInvalid) {
 		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindInvalid)

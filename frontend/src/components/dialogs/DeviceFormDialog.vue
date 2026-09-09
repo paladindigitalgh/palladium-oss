@@ -6,9 +6,13 @@ import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import { createDevice, updateDevice } from '@/services/devices/deviceRepository'
 import { listRacks } from '@/services/racks/rackRepository'
+import { listDeviceManufacturers } from '@/services/deviceManufacturers/deviceManufacturerRepository'
+import { listDeviceModels } from '@/services/deviceModels/deviceModelRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { Device } from '@/types/device'
 import type { Rack } from '@/types/rack'
+import type { DeviceManufacturer } from '@/types/deviceManufacturer'
+import type { DeviceModel } from '@/types/deviceModel'
 
 /**
  * Dual-mode: create when `device` is absent, edit when present -- one
@@ -19,6 +23,15 @@ import type { Rack } from '@/types/rack'
  * reasonably need to correct after the fact -- name, manufacturer, model,
  * serial number, asset tag, status, description, and (see below) rack.
  * Identity (id, createdAt/updatedAt) never was.
+ *
+ * Manufacturer and Model are cascading pickers, not free text: an
+ * operator selects a Device Manufacturer (internal/devicemanufacturer),
+ * which narrows the Model picker to that manufacturer's Device Models
+ * (internal/devicemodel) -- see those catalogs' own doc comments for why
+ * Device stopped carrying these as free-text strings directly. The
+ * Manufacturer picker itself is a UI-only concept for narrowing the
+ * Model list; only manufacturerId is used to filter modelOptions, and
+ * only modelId (as deviceModelId) is ever sent to the backend.
  */
 const props = defineProps<{ open: boolean; device?: Device | null; initialSerialNumber?: string }>()
 const emit = defineEmits<{
@@ -28,8 +41,8 @@ const emit = defineEmits<{
 }>()
 
 const name = ref('')
-const manufacturer = ref('')
-const model = ref('')
+const manufacturerId = ref('')
+const modelId = ref('')
 const serialNumber = ref('')
 const assetTag = ref('')
 const status = ref<Device['status']>('InStock')
@@ -51,21 +64,32 @@ const statusOptions = [
 const racks = ref<Rack[]>([])
 const rackOptions = computed(() => [{ value: '', label: 'None' }, ...racks.value.map((rack) => ({ value: rack.id, label: rack.name }))])
 
-// Racks are fetched fresh each time the dialog opens, the same reasoning
-// AttachAccessAttachmentDialog.vue documents for ServiceEquipment -- no
-// cache to keep fresh, and this dataset is small.
-watch(
-  () => props.open,
-  async (isOpen) => {
-    if (!isOpen) return
-    racks.value = await listRacks()
-  },
+const manufacturers = ref<DeviceManufacturer[]>([])
+const manufacturerOptions = computed(() => manufacturers.value.map((m) => ({ value: m.id, label: m.name })))
+
+const models = ref<DeviceModel[]>([])
+const modelOptions = computed(() =>
+  models.value.filter((m) => m.manufacturerId === manufacturerId.value).map((m) => ({ value: m.id, label: m.name })),
 )
+
+// Switching Manufacturer clears Model whenever it no longer belongs to
+// the newly-selected Manufacturer. This only guards the user actively
+// changing the Manufacturer picker: the fetch-then-populate watcher
+// below sets manufacturerId and modelId together correctly on every
+// open, and by the time this watcher's callback runs (deferred to the
+// next microtask flush, same as every Vue watcher), both assignments
+// have already happened -- so it sees a modelId that already belongs to
+// the just-set manufacturerId and leaves it alone.
+watch(manufacturerId, () => {
+  if (!models.value.some((m) => m.id === modelId.value && m.manufacturerId === manufacturerId.value)) {
+    modelId.value = ''
+  }
+})
 
 function reset() {
   name.value = ''
-  manufacturer.value = ''
-  model.value = ''
+  manufacturerId.value = ''
+  modelId.value = ''
   serialNumber.value = props.initialSerialNumber ?? ''
   assetTag.value = ''
   status.value = 'InStock'
@@ -76,8 +100,8 @@ function reset() {
 
 function populateFrom(device: Device) {
   name.value = device.name
-  manufacturer.value = device.manufacturer
-  model.value = device.model
+  modelId.value = device.deviceModelId
+  manufacturerId.value = models.value.find((m) => m.id === device.deviceModelId)?.manufacturerId ?? ''
   serialNumber.value = device.serialNumber
   assetTag.value = device.assetTag
   status.value = device.status
@@ -86,14 +110,22 @@ function populateFrom(device: Device) {
   error.value = null
 }
 
-// Fields are (re)populated every time the dialog opens, from `device`
-// when editing or blank when creating -- not just once on mount, since
-// the same mounted dialog instance is reused across opens (e.g. editing
-// two different devices in the same session without navigating away).
+// Racks, Device Manufacturers, and Device Models are fetched fresh each
+// time the dialog opens, the same reasoning AttachAccessAttachmentDialog.vue
+// documents for ServiceEquipment -- no cache to keep fresh, and these
+// datasets are small. Fields are (re)populated in this same watcher,
+// after the fetch resolves -- not just once on mount, since the same
+// mounted dialog instance is reused across opens (e.g. editing two
+// different devices in the same session without navigating away) --
+// the same one-watcher-not-two ordering OLTFormDialog.vue's own
+// OLTModel/ConnectionProfile fetch documents, so populateFrom's
+// models.value lookup is guaranteed to see the freshly-fetched list,
+// never a stale one from a race between two independent watchers.
 watch(
   () => props.open,
-  (open) => {
+  async (open) => {
     if (!open) return
+    ;[racks.value, manufacturers.value, models.value] = await Promise.all([listRacks(), listDeviceManufacturers(), listDeviceModels()])
     if (props.device) populateFrom(props.device)
     else reset()
   },
@@ -112,8 +144,7 @@ async function handleSubmit() {
     if (props.device) {
       const updated = await updateDevice(props.device.id, {
         name: name.value,
-        manufacturer: manufacturer.value,
-        model: model.value,
+        deviceModelId: modelId.value,
         serialNumber: serialNumber.value,
         assetTag: assetTag.value,
         status: status.value,
@@ -124,8 +155,7 @@ async function handleSubmit() {
     } else {
       const device = await createDevice({
         name: name.value,
-        manufacturer: manufacturer.value,
-        model: model.value,
+        deviceModelId: modelId.value,
         serialNumber: serialNumber.value,
         assetTag: assetTag.value,
         status: status.value,
@@ -147,8 +177,8 @@ async function handleSubmit() {
   <BaseModal :open="open" :title="device ? 'Edit Device' : 'New Device'" @close="close">
     <form class="device-form" @submit.prevent="handleSubmit">
       <BaseInput v-model="name" label="Name" required />
-      <BaseInput v-model="manufacturer" label="Manufacturer" required />
-      <BaseInput v-model="model" label="Model" required />
+      <BaseSelect v-model="manufacturerId" label="Manufacturer" :options="manufacturerOptions" />
+      <BaseSelect v-model="modelId" label="Model" :options="modelOptions" />
       <BaseInput v-model="serialNumber" label="Serial Number" required />
       <BaseInput v-model="assetTag" label="Asset Tag" />
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
@@ -159,7 +189,7 @@ async function handleSubmit() {
 
       <div class="device-form__actions">
         <BaseButton type="button" variant="secondary" :disabled="submitting" @click="close">Cancel</BaseButton>
-        <BaseButton type="submit" variant="primary" :disabled="submitting">
+        <BaseButton type="submit" variant="primary" :disabled="submitting || !modelId">
           {{ submitting ? 'Saving…' : device ? 'Save Changes' : 'Create Device' }}
         </BaseButton>
       </div>

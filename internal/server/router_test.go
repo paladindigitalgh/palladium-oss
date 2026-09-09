@@ -622,7 +622,7 @@ func newRouterWithDevices(tokens *auth.TokenIssuer, role auth.Role) http.Handler
 	})
 }
 
-const validDeviceBody = `{"name":"Test Device","manufacturer":"Calix","model":"716GE","serial_number":"CXNK00112233","status":"InStock"}`
+const validDeviceBody = `{"name":"Test Device","device_model_id":"11111111-1111-1111-1111-111111111111","serial_number":"CXNK00112233","status":"InStock"}`
 
 func TestRouterRejectsUnauthenticatedDeviceRequests(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
