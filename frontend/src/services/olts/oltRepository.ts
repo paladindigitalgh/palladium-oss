@@ -64,15 +64,16 @@ export interface CreateOLTInput {
   oltModelId: string
   managementIpAddress: string
   description: string
+  connectionProfileId: string | null
 }
 
 /**
- * Creates an OLT. connectionProfileId is always sent as null -- there is
- * no picker for it in this workspace yet (see OLTFormDialog.vue); an OLT
- * can be created without one and have it set later once that UI exists.
- * oltModelId is required (see internal/olt.OLT.OLTModelID) -- creating
- * this OLT auto-creates PON ports matching the chosen model's port
- * count, on the backend.
+ * Creates an OLT. oltModelId is required (see internal/olt.OLT.OLTModelID)
+ * -- creating this OLT auto-creates PON ports matching the chosen
+ * model's port count, on the backend. connectionProfileId is nullable
+ * (see OLTFormDialog.vue's picker): an OLT can still be created without
+ * one and have it set later, e.g. before a Connection Profile exists to
+ * assign.
  */
 export async function createOLT(input: CreateOLTInput): Promise<OLT> {
   const dto = await apiFetch<OLTDto>('/olts/', {
@@ -83,7 +84,7 @@ export async function createOLT(input: CreateOLTInput): Promise<OLT> {
       olt_model_id: input.oltModelId,
       management_ip_address: input.managementIpAddress,
       description: input.description,
-      connection_profile_id: null,
+      connection_profile_id: input.connectionProfileId,
     },
   })
   return fromDto(dto)
@@ -94,17 +95,15 @@ export interface UpdateOLTInput {
   oltModelId: string
   managementIpAddress: string
   description: string
+  connectionProfileId: string | null
   /**
    * Not user-editable (see OLTFormDialog.vue -- no accessNetwork picker
-   * or connectionProfile picker exist in this workspace yet). Callers
-   * pass the OLT's current accessNetworkId/connectionProfileId through
-   * unchanged: PUT replaces every mutable column (see
-   * internal/olt/postgres's Update), so omitting them here would
-   * silently move the OLT to no access network and unassign a real
-   * connection profile.
+   * exists in this workspace). Callers pass the OLT's current
+   * accessNetworkId through unchanged: PUT replaces every mutable column
+   * (see internal/olt/postgres's Update), so omitting it here would
+   * silently move the OLT to no access network.
    */
   accessNetworkId: string
-  connectionProfileId: string | null
 }
 
 export async function updateOLT(id: string, input: UpdateOLTInput): Promise<OLT> {

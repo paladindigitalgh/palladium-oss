@@ -86,7 +86,7 @@ describe('getOLTById', () => {
 })
 
 describe('createOLT', () => {
-  it('sends the request body in the API wire shape, always with a null connection_profile_id', async () => {
+  it('sends the request body in the API wire shape, including a null connection_profile_id when none is chosen', async () => {
     apiFetch.mockResolvedValue(oltDto({ id: 'new' }))
 
     await createOLT({
@@ -95,6 +95,7 @@ describe('createOLT', () => {
       oltModelId: 'model1',
       managementIpAddress: '10.0.0.1',
       description: 'Core site OLT',
+      connectionProfileId: null,
     })
 
     expect(apiFetch).toHaveBeenCalledWith('/olts/', {
@@ -108,6 +109,24 @@ describe('createOLT', () => {
         connection_profile_id: null,
       },
     })
+  })
+
+  it('sends the chosen connection_profile_id when one is set', async () => {
+    apiFetch.mockResolvedValue(oltDto({ id: 'new' }))
+
+    await createOLT({
+      accessNetworkId: 'an1',
+      name: 'OLT-Core-1',
+      oltModelId: 'model1',
+      managementIpAddress: '10.0.0.1',
+      description: 'Core site OLT',
+      connectionProfileId: 'cp1',
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/olts/',
+      expect.objectContaining({ body: expect.objectContaining({ connection_profile_id: 'cp1' }) }),
+    )
   })
 })
 
