@@ -90,3 +90,25 @@ var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 func Email(value string) bool {
 	return emailPattern.MatchString(value)
 }
+
+// usStatePattern matches exactly two uppercase letters — a USPS state
+// abbreviation's shape (e.g. "CA", "NY"), not membership in the actual
+// list of states/territories: like Email above, this is a pragmatic
+// format check, not a lookup against an authoritative list.
+var usStatePattern = regexp.MustCompile(`^[A-Z]{2}$`)
+
+// USState reports whether value looks like a USPS state abbreviation:
+// exactly two uppercase letters.
+func USState(value string) bool {
+	return usStatePattern.MatchString(value)
+}
+
+// usPostalCodePattern matches exactly five digits — a US ZIP code's
+// shape, not the longer ZIP+4 form, consistent with this being the only
+// format Palladium's Location addresses use today.
+var usPostalCodePattern = regexp.MustCompile(`^[0-9]{5}$`)
+
+// USPostalCode reports whether value looks like a 5-digit US ZIP code.
+func USPostalCode(value string) bool {
+	return usPostalCodePattern.MatchString(value)
+}

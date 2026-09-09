@@ -4,6 +4,7 @@ import { nextTick } from 'vue'
 import { ApiError } from '@/services/api/httpClient'
 import ServiceFormDialog from './ServiceFormDialog.vue'
 import type { Service } from '@/types/service'
+import type { Device } from '@/types/device'
 
 /**
  * Dual-mode, mirroring DeviceFormDialog.test.ts/CustomerFormDialog.test.ts:
@@ -20,10 +21,12 @@ import type { Service } from '@/types/service'
 const { createService, updateService } = vi.hoisted(() => ({ createService: vi.fn(), updateService: vi.fn() }))
 const { listProducts } = vi.hoisted(() => ({ listProducts: vi.fn() }))
 const { listServiceProfiles } = vi.hoisted(() => ({ listServiceProfiles: vi.fn() }))
+const { createServiceEquipment } = vi.hoisted(() => ({ createServiceEquipment: vi.fn() }))
 
 vi.mock('@/services/services/serviceRepository', () => ({ createService, updateService }))
 vi.mock('@/services/products/productRepository', () => ({ listProducts }))
 vi.mock('@/services/serviceProfiles/serviceProfileRepository', () => ({ listServiceProfiles }))
+vi.mock('@/services/serviceEquipment/serviceEquipmentRepository', () => ({ createServiceEquipment }))
 
 function body() {
   return new DOMWrapper(document.body)
@@ -65,25 +68,54 @@ function productSelect() {
     .find('select')
 }
 
+function deviceSelect() {
+  return body()
+    .findAll('.base-select')
+    .find((el) => el.find('.base-select__label').text() === 'Device')
+    ?.find('select')
+}
+
+function fixtureDevice(overrides: Partial<Device> = {}): Device {
+  return {
+    id: 'd1',
+    name: 'ONT-Main-01',
+    description: '',
+    rackId: null,
+    deviceModelId: 'dm1',
+    manufacturer: 'Iskratel',
+    model: 'InnboxX24',
+    serialNumber: 'SN001',
+    assetTag: '',
+    status: 'Unused',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   createService.mockReset()
   updateService.mockReset()
   listProducts.mockReset()
   listServiceProfiles.mockReset()
+  createServiceEquipment.mockReset()
+  createServiceEquipment.mockResolvedValue({ id: 'se1' })
 })
 
 describe('create mode (no service prop)', () => {
-  it('preselects the first product and service profile once loaded, and submits them with the required fields', async () => {
+  it('preselects the first product and service profile once loaded, auto-selects the sole device, and submits them with the required fields', async () => {
     listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     createService.mockResolvedValue(existingService())
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1' } })
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
     await wrapper.setProps({ open: true })
     await settle()
 
     expect((productSelect().element as HTMLSelectElement).value).toBe('p1')
     expect(body().find('.base-modal__title').text()).toBe('Add Service')
+    // Exactly one eligible device: auto-selected, no picker shown.
+    expect(deviceSelect()).toBeUndefined()
 
     await body().find('form').trigger('submit.prevent')
     await wrapper.vm.$nextTick()
@@ -95,7 +127,64 @@ describe('create mode (no service prop)', () => {
       status: 'Pending',
       description: '',
     })
+    expect(createServiceEquipment).toHaveBeenCalledWith({
+      serviceId: 's1',
+      deviceId: 'd1',
+      role: 'ONU',
+      description: '',
+    })
     expect(updateService).not.toHaveBeenCalled()
+    expect(wrapper.emitted('created')?.[0]).toEqual([existingService()])
+  })
+
+  it('shows a Device picker when the customer has more than one eligible device, and submits the chosen one', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
+    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    createService.mockResolvedValue(existingService())
+
+    const devices = [fixtureDevice({ id: 'd1', name: 'ONT-Main-01' }), fixtureDevice({ id: 'd2', name: 'ONT-Main-02' })]
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    const select = deviceSelect()!
+    await select.setValue('d2')
+    await body().find('form').trigger('submit.prevent')
+    await wrapper.vm.$nextTick()
+
+    expect(createServiceEquipment).toHaveBeenCalledWith({
+      serviceId: 's1',
+      deviceId: 'd2',
+      role: 'ONU',
+      description: '',
+    })
+  })
+
+  it('blocks submission and shows a message when the customer has no eligible device', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
+    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [] } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    expect(body().find('.service-form__error').text()).toContain('no device available')
+    expect(body().findAll('button').some((b) => b.text() === 'Add Service')).toBe(false)
+  })
+
+  it('still creates the service, and emits created, even if attaching the device afterward fails', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
+    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    createService.mockResolvedValue(existingService())
+    createServiceEquipment.mockRejectedValue(new ApiError('device already assigned', 'conflict', 409))
+
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    await body().find('form').trigger('submit.prevent')
+    await wrapper.vm.$nextTick()
+
     expect(wrapper.emitted('created')?.[0]).toEqual([existingService()])
   })
 
@@ -103,7 +192,7 @@ describe('create mode (no service prop)', () => {
     listProducts.mockResolvedValue([])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1' } })
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -116,7 +205,7 @@ describe('create mode (no service prop)', () => {
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     createService.mockRejectedValue(new ApiError('a service already exists for this location', 'conflict', 409))
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1' } })
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -137,7 +226,7 @@ describe('edit mode (service prop present)', () => {
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     const service = existingService({ productId: 'p2', status: 'Active', description: 'Existing service' })
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', service } })
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', service, devices: [] } })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -154,7 +243,9 @@ describe('edit mode (service prop present)', () => {
     const service = existingService({ locationId: 'l-actual', status: 'Active', activatedAt: '2026-02-01T00:00:00Z' })
     updateService.mockResolvedValue({ ...service, description: 'Updated' })
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l-prop-should-be-ignored', service } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l-prop-should-be-ignored', service, devices: [] },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 

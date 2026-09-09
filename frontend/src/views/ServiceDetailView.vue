@@ -318,6 +318,7 @@ const workflowColumns: SimpleTableColumn[] = [
       :open="showEditDialog"
       :location-id="service.locationId"
       :service="service"
+      :devices="[]"
       @close="showEditDialog = false"
       @updated="handleServiceUpdated"
     />

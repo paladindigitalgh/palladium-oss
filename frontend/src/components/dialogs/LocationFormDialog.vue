@@ -6,6 +6,7 @@ import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import { createLocation, updateLocation } from '@/services/locations/locationRepository'
 import { ApiError } from '@/services/api/httpClient'
+import { US_STATE_OPTIONS } from '@/lib/usStates'
 import type { Location } from '@/types/location'
 
 /**
@@ -150,7 +151,7 @@ async function handleSubmit() {
       <BaseInput v-model="address2" label="Address Line 2" />
       <div class="location-form__row">
         <BaseInput v-model="city" label="City" />
-        <BaseInput v-model="state" label="State" />
+        <BaseSelect v-model="state" label="State" :options="US_STATE_OPTIONS" />
       </div>
       <div class="location-form__row">
         <BaseInput v-model="postalCode" label="Postal Code" />

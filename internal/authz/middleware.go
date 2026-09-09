@@ -198,6 +198,22 @@ func (m *Middleware) RequireServiceEquipmentWrite() func(http.Handler) http.Hand
 	return m.Require(CanWriteServiceEquipment)
 }
 
+// RequireCustomerDevicesRead returns middleware allowing any Role that
+// CanReadCustomerDevices (Administrator, Operator, Viewer) — the same
+// authorization model as RequireServiceEquipmentRead, applied to the
+// Customer Device domain.
+func (m *Middleware) RequireCustomerDevicesRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadCustomerDevices)
+}
+
+// RequireCustomerDevicesWrite returns middleware allowing any Role that
+// CanWriteCustomerDevices (Administrator, Operator) — the same
+// authorization model as RequireServiceEquipmentWrite, applied to the
+// Customer Device domain.
+func (m *Middleware) RequireCustomerDevicesWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteCustomerDevices)
+}
+
 // RequireWorkflowRead returns middleware allowing any Role that
 // CanReadWorkflow (Administrator, Operator, Viewer) — the same
 // authorization model as RequireServiceEquipmentRead, applied to the

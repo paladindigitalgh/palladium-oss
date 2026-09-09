@@ -124,6 +124,38 @@ func TestLocationValidateAddressFieldsAreOptional(t *testing.T) {
 	}
 }
 
+func TestLocationValidateStateFormat(t *testing.T) {
+	l := validLocation()
+	l.State = "IL"
+	if err := l.Validate(); err != nil {
+		t.Errorf("Validate() (state %q) = %v, want nil", l.State, err)
+	}
+
+	for _, invalid := range []string{"Illinois", "il", "I", "ILL", "I1"} {
+		l := validLocation()
+		l.State = invalid
+		if err := l.Validate(); err == nil {
+			t.Errorf("Validate() (state %q) = nil, want error", invalid)
+		}
+	}
+}
+
+func TestLocationValidatePostalCodeFormat(t *testing.T) {
+	l := validLocation()
+	l.PostalCode = "62704"
+	if err := l.Validate(); err != nil {
+		t.Errorf("Validate() (postal code %q) = %v, want nil", l.PostalCode, err)
+	}
+
+	for _, invalid := range []string{"6270", "627044", "6270a", "62704-1234"} {
+		l := validLocation()
+		l.PostalCode = invalid
+		if err := l.Validate(); err == nil {
+			t.Errorf("Validate() (postal code %q) = nil, want error", invalid)
+		}
+	}
+}
+
 func TestLocationValidateLatitudeLongitudeAreOptional(t *testing.T) {
 	withoutCoordinates := validLocation()
 	if err := withoutCoordinates.Validate(); err != nil {

@@ -274,6 +274,42 @@ func TestCanWriteServiceEquipment(t *testing.T) {
 	}
 }
 
+// TestCanReadCustomerDevices and TestCanWriteCustomerDevices are the
+// same direct proof as TestCanReadServiceEquipment/TestCanWriteServiceEquipment,
+// applied to the Customer Device domain's access-control table ("apply
+// the standard RBAC matrix").
+func TestCanReadCustomerDevices(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadCustomerDevices(role); got != want {
+			t.Errorf("CanReadCustomerDevices(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
+func TestCanWriteCustomerDevices(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        false,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanWriteCustomerDevices(role); got != want {
+			t.Errorf("CanWriteCustomerDevices(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
 // TestCanReadWorkflow and TestCanWriteWorkflow are the same
 // direct proof as TestCanReadServiceEquipment/TestCanWriteServiceEquipment,
 // applied to the Workflow domain's access-control table ("apply the
@@ -564,6 +600,8 @@ func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 		"CanWriteServices":           authz.CanWriteServices,
 		"CanReadServiceEquipment":    authz.CanReadServiceEquipment,
 		"CanWriteServiceEquipment":   authz.CanWriteServiceEquipment,
+		"CanReadCustomerDevices":     authz.CanReadCustomerDevices,
+		"CanWriteCustomerDevices":    authz.CanWriteCustomerDevices,
 		"CanReadWorkflow":            authz.CanReadWorkflow,
 		"CanWriteWorkflow":           authz.CanWriteWorkflow,
 		"CanReadAccessNetwork":       authz.CanReadAccessNetwork,

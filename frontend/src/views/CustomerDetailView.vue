@@ -17,6 +17,7 @@ import ContactFormDialog from '@/components/dialogs/ContactFormDialog.vue'
 import CustomerFormDialog from '@/components/dialogs/CustomerFormDialog.vue'
 import LocationFormDialog from '@/components/dialogs/LocationFormDialog.vue'
 import ServiceFormDialog from '@/components/dialogs/ServiceFormDialog.vue'
+import AttachCustomerDeviceDialog from '@/components/dialogs/AttachCustomerDeviceDialog.vue'
 import RemoveCustomerDialog from '@/components/dialogs/RemoveCustomerDialog.vue'
 import { getCustomerById } from '@/services/customers/customerRepository'
 import { listContactsByCustomerId, deleteContact } from '@/services/contacts/contactRepository'
@@ -33,6 +34,8 @@ import {
   runMACAddressTableEntries,
 } from '@/services/diagnostics/diagnosticsRepository'
 import { getOLTById } from '@/services/olts/oltRepository'
+import { getDeviceById } from '@/services/devices/deviceRepository'
+import { listActiveCustomerDevicesByCustomerId, detachCustomerDevice } from '@/services/customerDevices/customerDeviceRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { Contact } from '@/types/contact'
@@ -42,29 +45,39 @@ import type { Service } from '@/types/service'
 import type { TimelineEvent } from '@/types/timelineEvent'
 import type { CustomerEquipmentLocation } from '@/types/onuDiagnostics'
 import type { OLT } from '@/types/olt'
+import type { Device } from '@/types/device'
+import type { CustomerDevice } from '@/types/customerDevice'
 
 /**
  * The Customer Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
  * section 8, "Customer Workspace"), backed by the real backend.
  *
  * Sections that depended on concepts the backend does not model at all
- * (Alerts) are removed rather than faked. Contacts, Locations, and
- * Services are all real, resolved on demand (docs/03-DOMAIN-MODEL.md: a
- * Customer owns Services through Locations, and equipment is associated
- * through Services -- never embedded on Customer itself; Contacts are
- * the same shape one level simpler, with no further child of their own).
- * Timeline is real Events (docs/02-DESIGN-PRINCIPLES.md principle 10).
+ * (Alerts) are removed rather than faked. Contacts, Locations, Devices,
+ * and Services are all real, resolved on demand (docs/03-DOMAIN-MODEL.md:
+ * a Customer owns Services through Locations; Contacts are the same
+ * shape one level simpler, with no further child of their own). Devices
+ * are the one deliberate exception to "equipment is associated through
+ * Services, never embedded on Customer itself": internal/customerdevice
+ * lets a Device be attached to a Customer directly, independent of any
+ * Service, for the real install-before-activation case (see that
+ * package's own doc comment). Timeline is real Events
+ * (docs/02-DESIGN-PRINCIPLES.md principle 10).
  *
  * Create/edit/delete lets an operator build up (and tear down) a test
  * customer the same way a real onboarding would: customer, then contact,
- * then location, then service. Deletes go through the backend's real
- * foreign key restrictions (customers <- locations <- services) rather
- * than cascading -- a blocked delete surfaces a specific, friendly
- * message instead of the raw backend error. Contacts are the one
- * exception: contacts.customer_id is ON DELETE CASCADE, not RESTRICT
- * (see internal/contact/postgres/contact.go's doc comment), so removing
- * a Contact never blocks anything and deleting the Customer itself
- * removes its Contacts along with it.
+ * then location, then device, then service -- Add Service is disabled
+ * until at least one attached Device is eligible (Unused, not already
+ * serving another Service), and creating a Service ties it to that
+ * Device in the same action (see ServiceFormDialog.vue's own doc
+ * comment). Deletes go through the backend's real foreign key
+ * restrictions (customers <- locations <- services) rather than
+ * cascading -- a blocked delete surfaces a specific, friendly message
+ * instead of the raw backend error. Contacts are the one exception:
+ * contacts.customer_id is ON DELETE CASCADE, not RESTRICT (see
+ * internal/contact/postgres/contact.go's doc comment), so removing a
+ * Contact never blocks anything and deleting the Customer itself removes
+ * its Contacts along with it.
  */
 const route = useRoute()
 const router = useRouter()
@@ -72,6 +85,8 @@ const router = useRouter()
 const customer = ref<Customer | null>(null)
 const contacts = ref<Contact[]>([])
 const locations = ref<Location[]>([])
+const customerDevices = ref<CustomerDevice[]>([])
+const devicesById = ref<Map<string, Device>>(new Map())
 const services = ref<Service[]>([])
 const serviceLabelsById = ref<Map<string, string>>(new Map())
 const timeline = ref<TimelineEvent[]>([])
@@ -81,12 +96,32 @@ const onuDiagnostics = ref<Map<string, ONUDiagnosticsState>>(new Map())
 const loading = ref(true)
 const notFound = ref(false)
 
+/**
+ * Re-resolves the full Device record for every currently-attached
+ * CustomerDevice, refreshing devicesById -- called on initial load and
+ * again after any action that can change a Device's Status out from
+ * under this view (creating a Service flips the chosen Device to Active
+ * server-side; see ServiceFormDialog.vue), so eligibleServiceDevices
+ * below never offers a Device that is secretly already in use.
+ */
+async function refreshAttachedDevices() {
+  const attachedDevices = await Promise.all(customerDevices.value.map((cd) => getDeviceById(cd.deviceId)))
+  const byDeviceId = new Map<string, Device>()
+  customerDevices.value.forEach((cd, index) => {
+    const device = attachedDevices[index]
+    if (device) byDeviceId.set(cd.deviceId, device)
+  })
+  devicesById.value = byDeviceId
+}
+
 async function load(id: string) {
   loading.value = true
   notFound.value = false
   customer.value = null
   contacts.value = []
   locations.value = []
+  customerDevices.value = []
+  devicesById.value = new Map()
   services.value = []
   serviceLabelsById.value = new Map()
   timeline.value = []
@@ -102,17 +137,22 @@ async function load(id: string) {
   }
   customer.value = result
 
-  const [customerContacts, customerLocations, events, customerEquipmentLocations] = await Promise.all([
-    listContactsByCustomerId(id),
-    listLocationsByCustomerId(id),
-    listEvents('customer', id),
-    listCustomerEquipmentLocations(id),
-  ])
+  const [customerContacts, customerLocations, events, customerEquipmentLocations, activeCustomerDevices] =
+    await Promise.all([
+      listContactsByCustomerId(id),
+      listLocationsByCustomerId(id),
+      listEvents('customer', id),
+      listCustomerEquipmentLocations(id),
+      listActiveCustomerDevicesByCustomerId(id),
+    ])
   contacts.value = customerContacts
   locations.value = customerLocations
   timeline.value = events
   services.value = await listServicesByLocationIds(customerLocations.map((location) => location.id))
   serviceLabelsById.value = await resolveServiceLabels(services.value)
+
+  customerDevices.value = activeCustomerDevices
+  await refreshAttachedDevices()
 
   equipmentLocations.value = customerEquipmentLocations
   const uniqueOltIds = [...new Set(customerEquipmentLocations.map((item) => item.oltId))]
@@ -159,6 +199,12 @@ const locationColumns: SimpleTableColumn[] = [
 
 const serviceColumns: SimpleTableColumn[] = [
   { key: 'service', label: 'Service' },
+  { key: 'status', label: 'Status' },
+  { key: 'actions', label: '' },
+]
+
+const deviceColumns: SimpleTableColumn[] = [
+  { key: 'device', label: 'Device' },
   { key: 'status', label: 'Status' },
   { key: 'actions', label: '' },
 ]
@@ -272,6 +318,59 @@ async function confirmDeleteLocation() {
   }
 }
 
+// --- Attach/Detach Device ---
+
+const showAttachDeviceDialog = ref(false)
+
+async function handleDeviceAttached(record: CustomerDevice) {
+  showAttachDeviceDialog.value = false
+  customerDevices.value = [...customerDevices.value, record]
+  const device = await getDeviceById(record.deviceId)
+  if (device) devicesById.value = new Map(devicesById.value).set(device.id, device)
+}
+
+function openDevice(record: CustomerDevice) {
+  router.push(`/devices/${record.deviceId}`)
+}
+
+const deviceDetachTarget = ref<CustomerDevice | null>(null)
+const deviceDetachPending = ref(false)
+const deviceDetachError = ref<string | null>(null)
+
+async function confirmDetachDevice() {
+  const target = deviceDetachTarget.value
+  if (!target) return
+  deviceDetachPending.value = true
+  deviceDetachError.value = null
+  try {
+    await detachCustomerDevice(target)
+    customerDevices.value = customerDevices.value.filter((cd) => cd.id !== target.id)
+    deviceDetachTarget.value = null
+  } catch (err) {
+    deviceDetachError.value =
+      err instanceof ApiError && err.kind === 'conflict'
+        ? 'This device still fulfills an active service — remove it from the service before detaching.'
+        : 'The device could not be detached.'
+  } finally {
+    deviceDetachPending.value = false
+  }
+}
+
+/**
+ * The devices ServiceFormDialog's create mode may pick from: attached to
+ * this customer, and Unused -- a Device's Status only ever means
+ * "currently serving a Customer" by way of an active ServiceEquipment
+ * record (see types/device.ts), so an attached Device already Active is
+ * already tied to a different Service and cannot take on another (the
+ * same uniqueness rule internal/serviceequipment/service enforces
+ * server-side). This is also what "Add Service" gates on below.
+ */
+const eligibleServiceDevices = computed(() =>
+  customerDevices.value
+    .map((cd) => devicesById.value.get(cd.deviceId))
+    .filter((device): device is Device => !!device && device.status === 'Unused'),
+)
+
 // --- Add/Remove Service ---
 
 const showServiceForm = ref(false)
@@ -287,6 +386,7 @@ async function handleServiceCreated(service: Service) {
   services.value = [...services.value, service]
   const labels = await resolveServiceLabels([service])
   serviceLabelsById.value = new Map(serviceLabelsById.value).set(service.id, labels.get(service.id) ?? service.id)
+  await refreshAttachedDevices() // the device this Service just claimed is now Active, not Unused
 }
 
 const serviceDeleteTarget = ref<Service | null>(null)
@@ -523,6 +623,55 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
       </SimpleTable>
     </SectionCard>
 
+    <SectionCard title="Devices" icon="devices" :badge="customerDevices.length">
+      <div class="section-toolbar">
+        <BaseButton variant="secondary" size="sm" @click="showAttachDeviceDialog = true">Attach Device</BaseButton>
+      </div>
+
+      <AttachCustomerDeviceDialog
+        :open="showAttachDeviceDialog"
+        :customer-id="customer.id"
+        @close="showAttachDeviceDialog = false"
+        @attached="handleDeviceAttached"
+      />
+
+      <ConfirmationDialog
+        :open="deviceDetachTarget !== null"
+        title="Detach Device"
+        :description="`Detach ${deviceDetachTarget ? devicesById.get(deviceDetachTarget.deviceId)?.name ?? deviceDetachTarget.deviceId : ''} from this customer? The device record and its history stay -- Palladium never deletes it. This cannot be undone.`"
+        confirm-label="Detach Device"
+        destructive
+        :pending="deviceDetachPending"
+        :error="deviceDetachError"
+        @confirm="confirmDetachDevice"
+        @cancel="deviceDetachTarget = null"
+      />
+
+      <SimpleTable
+        :columns="deviceColumns"
+        :rows="customerDevices"
+        :row-key="(record) => record.id"
+        clickable
+        empty-icon="devices"
+        empty-title="No devices attached"
+        @row-click="openDevice"
+      >
+        <template #cell-device="{ row }">
+          <div class="device-cell">
+            <span class="cell-strong">{{ devicesById.get(row.deviceId)?.name ?? row.deviceId }}</span>
+            <span class="device-cell__meta">
+              {{ devicesById.get(row.deviceId)?.manufacturer }} {{ devicesById.get(row.deviceId)?.model }} — Serial
+              {{ devicesById.get(row.deviceId)?.serialNumber }}
+            </span>
+          </div>
+        </template>
+        <template #cell-status="{ row }">{{ devicesById.get(row.deviceId)?.status ?? '—' }}</template>
+        <template #cell-actions="{ row }">
+          <BaseButton variant="ghost" size="sm" @click.stop="deviceDetachTarget = row">Detach</BaseButton>
+        </template>
+      </SimpleTable>
+    </SectionCard>
+
     <SectionCard title="Services" icon="services" :badge="services.length">
       <div class="section-toolbar">
         <BaseSelect
@@ -534,8 +683,16 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         <BaseButton
           variant="secondary"
           size="sm"
-          :disabled="locations.length === 0"
-          :disabled-reason="locations.length === 0 ? 'Add a location first' : undefined"
+          :disabled="locations.length === 0 || eligibleServiceDevices.length === 0"
+          :disabled-reason="
+            locations.length === 0
+              ? 'Add a location first'
+              : eligibleServiceDevices.length === 0
+                ? customerDevices.length === 0
+                  ? 'Attach a device first'
+                  : 'All attached devices already have a service'
+                : undefined
+          "
           @click="openServiceForm"
         >
           Add Service
@@ -545,6 +702,7 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
       <ServiceFormDialog
         :open="showServiceForm"
         :location-id="serviceFormLocationId"
+        :devices="eligibleServiceDevices"
         @close="showServiceForm = false"
         @created="handleServiceCreated"
       />
@@ -651,6 +809,17 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
 }
 
 .location-cell__address {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.device-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.device-cell__meta {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }

@@ -87,3 +87,38 @@ func TestInRange(t *testing.T) {
 		t.Error("InRange(11, 1, 10) = true, want false")
 	}
 }
+
+func TestUSState(t *testing.T) {
+	cases := map[string]bool{
+		"CA":  true,
+		"NY":  true,
+		"DC":  true,
+		"":    false,
+		"ca":  false, // lowercase does not count -- callers normalize casing before validating
+		"C":   false,
+		"CAL": false,
+		"C1":  false,
+	}
+	for input, want := range cases {
+		if got := validate.USState(input); got != want {
+			t.Errorf("USState(%q) = %v, want %v", input, got, want)
+		}
+	}
+}
+
+func TestUSPostalCode(t *testing.T) {
+	cases := map[string]bool{
+		"62704":      true,
+		"00501":      true,
+		"":           false,
+		"6270":       false,
+		"627044":     false,
+		"6270a":      false,
+		"62704-1234": false, // ZIP+4 is not this shape
+	}
+	for input, want := range cases {
+		if got := validate.USPostalCode(input); got != want {
+			t.Errorf("USPostalCode(%q) = %v, want %v", input, got, want)
+		}
+	}
+}

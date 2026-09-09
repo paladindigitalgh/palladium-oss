@@ -296,6 +296,41 @@ func CanWriteServiceEquipment(role auth.Role) bool {
 	}
 }
 
+// CanReadCustomerDevices reports whether role may read Customer Device
+// data — the link between a Customer and the inventory.Device placed at
+// their premises (see internal/customerdevice). All three built-in roles
+// can — identical to CanReadServiceEquipment's rule today.
+//
+// This is a separate function from CanReadServiceEquipment, not a call
+// to it, for the same reasoning CanReadServiceEquipment's own doc
+// comment gives for not deferring to CanReadServices: Customer Device
+// sits at the intersection of two domains — Customer and Inventory — and
+// answering "who can see this link" by deferring to either one's rule
+// would wire Customer Device's access question to a domain it merely
+// references.
+func CanReadCustomerDevices(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteCustomerDevices reports whether role may create or update
+// Customer Device data (attach/detach a Device). Administrator and
+// Operator can; Viewer cannot. See CanReadCustomerDevices's doc comment
+// for why this is not implemented in terms of CanWriteServiceEquipment
+// despite the identical rule today.
+func CanWriteCustomerDevices(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}
+
 // CanReadWorkflow reports whether role may read Workflow Instance
 // data — the orchestration record for a request to provision, modify,
 // suspend, resume, disconnect, or synchronize a Service (see

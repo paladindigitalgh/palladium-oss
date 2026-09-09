@@ -23,6 +23,7 @@ import (
 	connectionprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/httpapi"
 	contacthttpapi "github.com/paladindigitalgh/palladium-oss/internal/contact/httpapi"
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
+	customerdevicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/customerdevice/httpapi"
 	devicemanufacturerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/httpapi"
 	devicemodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/httpapi"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
@@ -74,6 +75,7 @@ type Dependencies struct {
 	ProvisioningKontronAuthorizeAndCreateDeviceHandler *provisioningkontronhttpapi.AuthorizeAndCreateDeviceHandler
 	ServiceHandler                                     *servicehttpapi.ServiceHandler
 	ServiceEquipmentHandler                            *serviceequipmenthttpapi.ServiceEquipmentHandler
+	CustomerDeviceHandler                              *customerdevicehttpapi.CustomerDeviceHandler
 	WorkflowHandler                                    *workflowhttpapi.WorkflowHandler
 	EventHandler                                       *eventhttpapi.EventHandler
 	AccessNetworkHandler                               *accessnetworkhttpapi.AccessNetworkHandler
@@ -474,6 +476,29 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Post("/", deps.ServiceEquipmentHandler.Create)
 				r.Put("/{id}", deps.ServiceEquipmentHandler.Update)
 				r.Delete("/{id}", deps.ServiceEquipmentHandler.Delete)
+			})
+		})
+
+		// /customer-devices gets its own dedicated capability pair
+		// (RequireCustomerDevicesRead/RequireCustomerDevicesWrite), not a
+		// reuse of /service-equipment's — the same reasoning
+		// authz.CanReadCustomerDevices's doc comment gives. There is no
+		// DELETE route: detaching a Device is a PUT that sets
+		// detached_at (see customerdevice.CustomerDeviceRepository's own
+		// doc comment on why this domain has no Delete).
+		r.Route("/customer-devices", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCustomerDevicesRead())
+				r.Get("/", deps.CustomerDeviceHandler.List)
+				r.Get("/{id}", deps.CustomerDeviceHandler.Get)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireCustomerDevicesWrite())
+				r.Post("/", deps.CustomerDeviceHandler.Create)
+				r.Put("/{id}", deps.CustomerDeviceHandler.Update)
 			})
 		})
 

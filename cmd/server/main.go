@@ -45,6 +45,9 @@ import (
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
 	customerremoval "github.com/paladindigitalgh/palladium-oss/internal/customer/removal"
 	customerservice "github.com/paladindigitalgh/palladium-oss/internal/customer/service"
+	customerdevicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/customerdevice/httpapi"
+	customerdevicepostgres "github.com/paladindigitalgh/palladium-oss/internal/customerdevice/postgres"
+	customerdeviceservice "github.com/paladindigitalgh/palladium-oss/internal/customerdevice/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	devicemanufacturerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/httpapi"
 	devicemanufacturerpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/postgres"
@@ -302,6 +305,23 @@ func run() error {
 	serviceEquipmentRepo := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
 	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo, deviceService, deviceService)
 	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
+
+	// Customer Device follows the exact same repository -> service ->
+	// handler chain as Service Equipment, one domain up
+	// (internal/customerdevice instead of internal/serviceequipment): its
+	// two foreign keys are Customer and inventory.Device, the latter
+	// reusing deviceService for the same "run the real business-rule
+	// check, not the raw repository" reason serviceEquipmentSvc does.
+	// serviceEquipmentRepo (the repository, not serviceEquipmentSvc) is
+	// reused for CustomerDeviceService's own detach-blocking check ("a
+	// Device still fulfilling an active Service cannot be detached from
+	// its Customer" — see that service's own doc comment): the read it
+	// needs, GetActiveByDeviceID, is a repository-level query with no
+	// business logic of its own, never exposed on ServiceEquipmentService
+	// itself.
+	customerDeviceRepo := customerdevicepostgres.NewCustomerDeviceRepository(pool, clock.New(), id.New())
+	customerDeviceSvc := customerdeviceservice.NewCustomerDeviceService(customerDeviceRepo, deviceService, serviceEquipmentRepo)
+	customerDeviceHandler := customerdevicehttpapi.NewCustomerDeviceHandler(customerDeviceSvc)
 
 	// Event has no service layer: there is no business logic beyond
 	// append and list (see internal/event's package doc comment), so the
@@ -606,6 +626,7 @@ func run() error {
 		AccessTopologyHandler:                              accessTopologyHandler,
 		ServiceHandler:                                     serviceHandler,
 		ServiceEquipmentHandler:                            serviceEquipmentHandler,
+		CustomerDeviceHandler:                              customerDeviceHandler,
 		WorkflowHandler:                                    workflowHandler,
 		EventHandler:                                       eventHandler,
 		AccessNetworkHandler:                               accessNetworkHandler,
