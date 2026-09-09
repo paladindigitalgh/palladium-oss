@@ -221,7 +221,15 @@ async function runAction(definition: WorkflowDefinitionName) {
   actionPending.value = true
   actionError.value = null
   try {
-    await runWorkflow(service.value.id, definition)
+    // runWorkflow only throws if the instance never reaches a terminal
+    // status within its polling window (see that function's own doc
+    // comment) -- a clean Failed/Cancelled result resolves normally, so
+    // it has to be checked explicitly here rather than assumed to
+    // always throw on failure.
+    const instance = await runWorkflow(service.value.id, definition)
+    if (instance.status !== 'Succeeded') {
+      actionError.value = instance.errorMessage ?? 'The workflow could not be executed.'
+    }
     await load(service.value.id)
   } catch (err) {
     actionError.value = err instanceof ApiError || err instanceof Error ? err.message : 'The workflow could not be executed.'

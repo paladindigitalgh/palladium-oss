@@ -6,6 +6,7 @@ import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import { createService, updateService } from '@/services/services/serviceRepository'
 import { createServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
+import { runWorkflow } from '@/services/workflow/workflowRepository'
 import { listProducts } from '@/services/products/productRepository'
 import { listProviders } from '@/services/providers/providerRepository'
 import { listServiceProfiles } from '@/services/serviceProfiles/serviceProfileRepository'
@@ -37,12 +38,28 @@ import type { Device } from '@/types/device'
  * On submit, creating the ServiceEquipment link that ties the two
  * together is folded into this same action rather than left as a
  * separate "remember to assign equipment on the Service page" step (see
- * feedback_merge_dont_chain_workflow_steps in project memory).
+ * feedback_merge_dont_chain_workflow_steps in project memory) -- and so
+ * is actually running the real provision-service workflow
+ * (internal/workflow/engine, internal/provisioning/kontron) against the
+ * ONU, rather than leaving the operator to separately open the new
+ * Service and click "Provision Service" there themselves. This can take
+ * a few seconds (a real SSH round trip to the OLT) and, like that same
+ * button on ServiceDetailView.vue, blocks the form while it runs. If it
+ * fails -- most commonly because the Device has no AccessAttachment yet
+ * (internal/accesstopology.Resolver.Locate has nothing to resolve; see
+ * ServiceProfileService.Apply's own doc comment) -- the Service and its
+ * ServiceEquipment link still exist and are not rolled back (no
+ * cross-repository transaction in this codebase; same limitation
+ * documented throughout internal/serviceequipment/service and
+ * internal/customerdevice/service). The failure is reported back via the
+ * emitted 'created' event's second argument rather than swallowed, since
+ * silently failing to configure the physical ONU is exactly the outcome
+ * this feature exists to prevent.
  */
 const props = defineProps<{ open: boolean; locationId: string; service?: Service | null; devices: Device[] }>()
 const emit = defineEmits<{
   (event: 'close'): void
-  (event: 'created', service: Service): void
+  (event: 'created', service: Service, provisionError: string | null): void
   (event: 'updated', service: Service): void
 }>()
 
@@ -66,6 +83,7 @@ const serviceProfileId = ref('')
 const status = ref<Service['status']>('Active')
 const description = ref('')
 const submitting = ref(false)
+const provisioning = ref(false)
 const error = ref<string | null>(null)
 
 const statusOptions = [
@@ -177,7 +195,9 @@ async function handleSubmit() {
       // own doc comment on the same limitation), so this mirrors the
       // partial-failure handling every other composed write here already
       // accepts.
+      let provisionError: string | null = null
       if (deviceId.value) {
+        let equipmentCreated = false
         try {
           await createServiceEquipment({
             serviceId: service.id,
@@ -185,11 +205,40 @@ async function handleSubmit() {
             role: 'ONU',
             description: '',
           })
+          equipmentCreated = true
         } catch {
           // Intentionally swallowed -- see the comment above.
         }
+
+        // Only worth running the real provisioning workflow once the
+        // Device is actually tied to this Service -- see this
+        // component's own doc comment on why a failure here is reported
+        // rather than swallowed like the createServiceEquipment failure
+        // above.
+        if (equipmentCreated) {
+          provisioning.value = true
+          try {
+            // runWorkflow only throws if the instance never reaches a
+            // terminal status within its polling window (see that
+            // function's own doc comment) -- a clean Failed/Cancelled
+            // result resolves normally, so it has to be checked
+            // explicitly here rather than assumed to always throw on
+            // failure.
+            const instance = await runWorkflow(service.id, 'provision-service')
+            if (instance.status !== 'Succeeded') {
+              provisionError = instance.errorMessage ?? 'The service could not be provisioned onto the device.'
+            }
+          } catch (provisionErr) {
+            provisionError =
+              provisionErr instanceof ApiError || provisionErr instanceof Error
+                ? provisionErr.message
+                : 'The service could not be provisioned onto the device.'
+          } finally {
+            provisioning.value = false
+          }
+        }
       }
-      emit('created', service)
+      emit('created', service, provisionError)
     }
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : `The service could not be ${props.service ? 'saved' : 'created'}.`
@@ -235,7 +284,7 @@ async function handleSubmit() {
           variant="primary"
           :disabled="submitting"
         >
-          {{ submitting ? 'Saving…' : service ? 'Save Changes' : 'Add Service' }}
+          {{ provisioning ? 'Provisioning…' : submitting ? 'Saving…' : service ? 'Save Changes' : 'Add Service' }}
         </BaseButton>
       </div>
     </form>

@@ -144,6 +144,7 @@ async function load(id: string) {
   activeServiceDeviceIds.value = new Set()
   services.value = []
   serviceLabelsById.value = new Map()
+  serviceProvisionWarning.value = null
   timeline.value = []
   equipmentLocations.value = []
   oltsById.value = new Map()
@@ -416,18 +417,31 @@ const addServiceDisabledReason = computed<string | null>(() => {
 
 const showServiceForm = ref(false)
 const serviceFormLocationId = ref('')
+const serviceProvisionWarning = ref<string | null>(null)
 
 function openServiceForm() {
   serviceFormLocationId.value = locations.value[0]?.id ?? ''
+  serviceProvisionWarning.value = null
   showServiceForm.value = true
 }
 
-async function handleServiceCreated(service: Service) {
+/**
+ * `provisionError` comes from ServiceFormDialog.vue actually running the
+ * real provision-service workflow against the ONU as part of creating
+ * the Service (see that component's own doc comment) -- non-null means
+ * the Service and its ServiceEquipment link were created successfully,
+ * but the OLT was never actually configured (most commonly a missing
+ * AccessAttachment for the Device). Surfaced as a dismissible warning
+ * here rather than swallowed, since silently leaving the ONU
+ * unconfigured is exactly what this feature exists to prevent.
+ */
+async function handleServiceCreated(service: Service, provisionError: string | null) {
   showServiceForm.value = false
   services.value = [...services.value, service]
   const labels = await resolveServiceLabels([service])
   serviceLabelsById.value = new Map(serviceLabelsById.value).set(service.id, labels.get(service.id) ?? service.id)
   await refreshActiveServiceDeviceIds() // the device this Service just claimed drops out of eligibleServiceDevices
+  serviceProvisionWarning.value = provisionError
 }
 
 const serviceDeleteTarget = ref<Service | null>(null)
@@ -741,6 +755,16 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         @created="handleServiceCreated"
       />
 
+      <div v-if="serviceProvisionWarning" class="service-provision-warning" role="alert">
+        <p>
+          The service was created, but could not be applied to the device: "{{ serviceProvisionWarning }}". This
+          most often means the device has no access attachment recorded yet (which OLT interface it is physically
+          plugged into) -- set that up on the Network workspace, then open the service below to try provisioning
+          again.
+        </p>
+        <BaseButton variant="ghost" size="sm" @click="serviceProvisionWarning = null">Dismiss</BaseButton>
+      </div>
+
       <ConfirmationDialog
         :open="serviceDeleteTarget !== null"
         title="Remove Service"
@@ -869,6 +893,23 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
   padding-bottom: var(--space-1);
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+}
+
+.service-provision-warning {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  background-color: var(--color-error-bg);
+  border-radius: var(--radius-sm);
+}
+
+.service-provision-warning p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
 }
 
 .no-relationship {
