@@ -14,28 +14,35 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 )
 
-// fakeDeviceGetter is an in-memory deviceGetter, mirroring
-// internal/serviceequipment/service's own fakeDeviceStore: Get defaults
-// to a Device with DeviceStatusUnused (the real-world default for any
-// Device this test file didn't pre-register) when none was explicitly
-// seeded for that ID.
-type fakeDeviceGetter struct {
-	byID map[uuid.UUID]inventory.Device
+// fakeDeviceStore is an in-memory deviceGetter/deviceUpdater, mirroring
+// internal/serviceequipment/service's own fakeDeviceStore exactly: Get
+// defaults to a Device with DeviceStatusUnused (the real-world default
+// for any Device this test file didn't pre-register) when none was
+// explicitly seeded for that ID.
+type fakeDeviceStore struct {
+	byID        map[uuid.UUID]inventory.Device
+	updateCalls []inventory.Device
 }
 
-func newFakeDeviceGetter(devices ...inventory.Device) *fakeDeviceGetter {
-	f := &fakeDeviceGetter{byID: make(map[uuid.UUID]inventory.Device)}
+func newFakeDeviceStore(devices ...inventory.Device) *fakeDeviceStore {
+	f := &fakeDeviceStore{byID: make(map[uuid.UUID]inventory.Device)}
 	for _, d := range devices {
 		f.byID[d.ID] = d
 	}
 	return f
 }
 
-func (f *fakeDeviceGetter) Get(_ context.Context, id uuid.UUID) (inventory.Device, error) {
+func (f *fakeDeviceStore) Get(_ context.Context, id uuid.UUID) (inventory.Device, error) {
 	d, ok := f.byID[id]
 	if !ok {
 		d = inventory.Device{Metadata: inventory.Metadata{ID: id}, Status: inventory.DeviceStatusUnused}
 	}
+	return d, nil
+}
+
+func (f *fakeDeviceStore) Update(_ context.Context, d inventory.Device) (inventory.Device, error) {
+	f.updateCalls = append(f.updateCalls, d)
+	f.byID[d.ID] = d
 	return d, nil
 }
 
@@ -126,7 +133,7 @@ func validCustomerDevice() customerdevice.CustomerDevice {
 
 func TestCustomerDeviceServiceCreateSucceeds(t *testing.T) {
 	repo := newFakeCustomerDeviceRepository()
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	created, err := svc.Create(context.Background(), validCustomerDevice())
 	if err != nil {
@@ -142,7 +149,7 @@ func TestCustomerDeviceServiceCreateSucceeds(t *testing.T) {
 
 func TestCustomerDeviceServiceCreateRejectsInvalidRecordWithoutPersisting(t *testing.T) {
 	repo := newFakeCustomerDeviceRepository()
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	_, err := svc.Create(context.Background(), customerdevice.CustomerDevice{}) // no CustomerID, DeviceID
 
@@ -160,7 +167,7 @@ func TestCustomerDeviceServiceCreateRejectsSecondActiveAssignmentForSameDevice(t
 	existing.ID = uuid.New()
 	existing.DeviceID = deviceID
 	repo := newFakeCustomerDeviceRepository(existing)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	second := validCustomerDevice()
 	second.DeviceID = deviceID // same device, still active
@@ -183,7 +190,7 @@ func TestCustomerDeviceServiceCreateAllowsHistoricalReattachment(t *testing.T) {
 	historical.DeviceID = deviceID
 	historical.DetachedAt = &detachedAt // no longer active
 	repo := newFakeCustomerDeviceRepository(historical)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	replacement := validCustomerDevice()
 	replacement.DeviceID = deviceID
@@ -199,12 +206,12 @@ func TestCustomerDeviceServiceCreateAllowsHistoricalReattachment(t *testing.T) {
 
 func TestCustomerDeviceServiceCreateRejectsRetiredDevice(t *testing.T) {
 	deviceID := uuid.New()
-	devices := newFakeDeviceGetter(inventory.Device{
+	devices := newFakeDeviceStore(inventory.Device{
 		Metadata: inventory.Metadata{ID: deviceID},
 		Status:   inventory.DeviceStatusRetired,
 	})
 	repo := newFakeCustomerDeviceRepository()
-	svc := service.NewCustomerDeviceService(repo, devices, newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
 
 	cd := validCustomerDevice()
 	cd.DeviceID = deviceID
@@ -223,7 +230,7 @@ func TestCustomerDeviceServiceUpdateSucceeds(t *testing.T) {
 	existing := validCustomerDevice()
 	existing.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(existing)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	toUpdate := existing
 	toUpdate.Description = "Updated description"
@@ -247,7 +254,7 @@ func TestCustomerDeviceServiceUpdateDetachSucceedsWithoutActiveService(t *testin
 	existing := validCustomerDevice()
 	existing.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(existing)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	now := time.Now()
 	toDetach := existing
@@ -278,7 +285,7 @@ func TestCustomerDeviceServiceUpdateDetachBlockedByActiveService(t *testing.T) {
 		ID: uuid.New(), ServiceID: uuid.New(), DeviceID: deviceID, Role: serviceequipment.EquipmentRoleONU,
 	}
 
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), equipment)
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), equipment)
 
 	now := time.Now()
 	toDetach := existing
@@ -317,7 +324,7 @@ func TestCustomerDeviceServiceUpdateOfAlreadyDetachedRecordDoesNotCheckService(t
 		ID: uuid.New(), ServiceID: uuid.New(), DeviceID: deviceID, Role: serviceequipment.EquipmentRoleONU,
 	}
 
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), equipment)
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), equipment)
 
 	toUpdate := existing
 	toUpdate.Description = "editing history, not detaching anything new"
@@ -336,7 +343,7 @@ func TestCustomerDeviceServiceUpdateRejectsReassigningDeviceWithExistingActiveAs
 	toReassign := validCustomerDevice()
 	toReassign.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(busy, toReassign)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	toReassign.DeviceID = busyDeviceID // now targets a device that's already actively attached
 
@@ -351,7 +358,7 @@ func TestCustomerDeviceServiceUpdateRejectsInvalidRecordWithoutPersisting(t *tes
 	existing := validCustomerDevice()
 	existing.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(existing)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	invalid := existing
 	invalid.DeviceID = uuid.Nil
@@ -368,7 +375,7 @@ func TestCustomerDeviceServiceUpdateRejectsInvalidRecordWithoutPersisting(t *tes
 
 func TestCustomerDeviceServiceGetPropagatesNotFound(t *testing.T) {
 	repo := newFakeCustomerDeviceRepository()
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	_, err := svc.Get(context.Background(), uuid.New())
 
@@ -383,7 +390,7 @@ func TestCustomerDeviceServiceListDelegatesToRepository(t *testing.T) {
 	b := validCustomerDevice()
 	b.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(a, b)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceGetter(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
 
 	records, err := svc.List(context.Background())
 	if err != nil {
@@ -391,5 +398,134 @@ func TestCustomerDeviceServiceListDelegatesToRepository(t *testing.T) {
 	}
 	if len(records) != 2 {
 		t.Fatalf("len(List()) = %d, want 2", len(records))
+	}
+}
+
+// TestCustomerDeviceServiceCreateMarksDeviceActive proves Create's
+// Device-status side effect: a newly created active attachment flips its
+// Device from Unused (the fakeDeviceStore default) to Active -- the
+// behavior this domain exists for (see the package's own doc comment on
+// why attaching a Device to a Customer marks it Active).
+func TestCustomerDeviceServiceCreateMarksDeviceActive(t *testing.T) {
+	deviceID := uuid.New()
+	repo := newFakeCustomerDeviceRepository()
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusUnused})
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+
+	cd := validCustomerDevice()
+	cd.DeviceID = deviceID
+
+	if _, err := svc.Create(context.Background(), cd); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if len(devices.updateCalls) != 1 {
+		t.Fatalf("device Update calls = %d, want 1", len(devices.updateCalls))
+	}
+	if devices.updateCalls[0].Status != inventory.DeviceStatusActive {
+		t.Errorf("device Status = %q, want %q", devices.updateCalls[0].Status, inventory.DeviceStatusActive)
+	}
+}
+
+// TestCustomerDeviceServiceCreateOfHistoricalRecordDoesNotTouchDevice
+// proves the Active side effect only fires for a record that is itself
+// active on creation, mirroring
+// internal/serviceequipment/service's own
+// TestServiceEquipmentServiceCreateOfHistoricalRecordDoesNotTouchDevice.
+func TestCustomerDeviceServiceCreateOfHistoricalRecordDoesNotTouchDevice(t *testing.T) {
+	deviceID := uuid.New()
+	repo := newFakeCustomerDeviceRepository()
+	devices := newFakeDeviceStore()
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+
+	detachedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	cd := validCustomerDevice()
+	cd.DeviceID = deviceID
+	cd.DetachedAt = &detachedAt
+
+	if _, err := svc.Create(context.Background(), cd); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if len(devices.updateCalls) != 0 {
+		t.Errorf("device Update calls = %d, want 0 (record was never active)", len(devices.updateCalls))
+	}
+}
+
+// TestCustomerDeviceServiceUpdateMarksDeviceUnusedOnDetach proves
+// Update's Device-status side effect: a write that transitions a
+// previously-active attachment to detached flips its Device back to
+// Unused.
+func TestCustomerDeviceServiceUpdateMarksDeviceUnusedOnDetach(t *testing.T) {
+	deviceID := uuid.New()
+	existing := validCustomerDevice()
+	existing.ID = uuid.New()
+	existing.DeviceID = deviceID
+	repo := newFakeCustomerDeviceRepository(existing)
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+
+	now := time.Now()
+	toDetach := existing
+	toDetach.DetachedAt = &now
+
+	if _, err := svc.Update(context.Background(), toDetach); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+	if len(devices.updateCalls) != 1 {
+		t.Fatalf("device Update calls = %d, want 1", len(devices.updateCalls))
+	}
+	if devices.updateCalls[0].Status != inventory.DeviceStatusUnused {
+		t.Errorf("device Status = %q, want %q", devices.updateCalls[0].Status, inventory.DeviceStatusUnused)
+	}
+}
+
+// TestCustomerDeviceServiceUpdateOfAlreadyDetachedRecordDoesNotTouchDevice
+// proves the Unused side effect only fires on the active-to-detached
+// transition itself, not on every subsequent edit to an already-detached
+// record.
+func TestCustomerDeviceServiceUpdateOfAlreadyDetachedRecordDoesNotTouchDevice(t *testing.T) {
+	deviceID := uuid.New()
+	detachedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	existing := validCustomerDevice()
+	existing.ID = uuid.New()
+	existing.DeviceID = deviceID
+	existing.DetachedAt = &detachedAt
+	repo := newFakeCustomerDeviceRepository(existing)
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+
+	toUpdate := existing
+	toUpdate.Description = "editing history, not detaching anything new"
+
+	if _, err := svc.Update(context.Background(), toUpdate); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+	if len(devices.updateCalls) != 0 {
+		t.Errorf("device Update calls = %d, want 0 (record was already detached before this edit)", len(devices.updateCalls))
+	}
+}
+
+// TestCustomerDeviceServiceMarkDeviceUnusedNeverUnretires mirrors
+// internal/serviceequipment/service's own test of the same name: a
+// Retired Device must never be silently pulled back to Unused just
+// because a CustomerDevice attachment for it is also being detached
+// here.
+func TestCustomerDeviceServiceMarkDeviceUnusedNeverUnretires(t *testing.T) {
+	deviceID := uuid.New()
+	existing := validCustomerDevice()
+	existing.ID = uuid.New()
+	existing.DeviceID = deviceID
+	repo := newFakeCustomerDeviceRepository(existing)
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusRetired})
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+
+	now := time.Now()
+	toDetach := existing
+	toDetach.DetachedAt = &now
+
+	if _, err := svc.Update(context.Background(), toDetach); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+	if len(devices.updateCalls) != 0 {
+		t.Errorf("device Update calls = %d, want 0 (a Retired device must never be un-retired)", len(devices.updateCalls))
 	}
 }

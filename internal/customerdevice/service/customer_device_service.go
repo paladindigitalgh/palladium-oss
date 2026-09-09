@@ -19,6 +19,20 @@
 //     (e.g. a Location with active Services cannot be removed) rather
 //     than silently tearing down a live Service assignment as a side
 //     effect of a Customer-level action.
+//
+// Create/Update also carry a Device-status side effect, the same shape
+// ServiceEquipmentService.Create/Update already established one domain
+// over: attaching a Device to a Customer marks it
+// inventory.DeviceStatusActive (a Device means "in use" by being
+// attached to something real, and being physically at a Customer's
+// premises already qualifies — it does not need a Service on top of
+// that), and detaching it marks it Unused again, unless
+// internal/serviceequipment/service.ServiceEquipmentService's own mirror
+// check finds the Device still fulfilling an active Service (impossible
+// here in practice, since Update's own detach-blocking rule above
+// already prevents that combination, but the symmetry is deliberate: two
+// independent sources of "this Device is Active" must each be able to
+// answer "is the other one still true" before ever reverting to Unused).
 package service
 
 import (
@@ -42,11 +56,20 @@ type deviceGetter interface {
 	Get(ctx context.Context, id uuid.UUID) (inventory.Device, error)
 }
 
+// deviceUpdater is deviceGetter's write-side counterpart, satisfied by
+// the real *inventoryservice.DeviceService so its Validate() logic runs
+// on this write like every other caller's — mirrors
+// internal/serviceequipment/service.ServiceEquipmentService's own
+// deviceGetter/deviceUpdater split exactly.
+type deviceUpdater interface {
+	Update(ctx context.Context, d inventory.Device) (inventory.Device, error)
+}
+
 // activeServiceEquipmentGetter is the seam CustomerDeviceService depends
 // on instead of the full
 // serviceequipment.ServiceEquipmentRepository/ServiceEquipmentService —
-// used only to answer "does this Device currently fulfill an active
-// Service," the read Delete's blocking rule needs.
+// used both by Update's detach-blocking rule and by markDeviceUnused's
+// own "is this Device still fulfilling a Service" check.
 type activeServiceEquipmentGetter interface {
 	GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error)
 }
@@ -55,6 +78,7 @@ type activeServiceEquipmentGetter interface {
 type CustomerDeviceService struct {
 	customerDevices customerdevice.CustomerDeviceRepository
 	devices         deviceGetter
+	devicesSvc      deviceUpdater
 	equipment       activeServiceEquipmentGetter
 }
 
@@ -62,9 +86,10 @@ type CustomerDeviceService struct {
 func NewCustomerDeviceService(
 	customerDevices customerdevice.CustomerDeviceRepository,
 	devices deviceGetter,
+	devicesSvc deviceUpdater,
 	equipment activeServiceEquipmentGetter,
 ) *CustomerDeviceService {
-	return &CustomerDeviceService{customerDevices: customerDevices, devices: devices, equipment: equipment}
+	return &CustomerDeviceService{customerDevices: customerDevices, devices: devices, devicesSvc: devicesSvc, equipment: equipment}
 }
 
 // Get retrieves a CustomerDevice record by ID.
@@ -101,7 +126,16 @@ func (s *CustomerDeviceService) Create(ctx context.Context, cd customerdevice.Cu
 			return customerdevice.CustomerDevice{}, err
 		}
 	}
-	return s.customerDevices.Create(ctx, cd)
+	created, err := s.customerDevices.Create(ctx, cd)
+	if err != nil {
+		return customerdevice.CustomerDevice{}, err
+	}
+	if created.Active() {
+		if err := s.markDeviceActive(ctx, created.DeviceID); err != nil {
+			return created, err
+		}
+	}
+	return created, nil
 }
 
 // Update validates cd, enforces the active-assignment-uniqueness rule,
@@ -146,7 +180,17 @@ func (s *CustomerDeviceService) Update(ctx context.Context, cd customerdevice.Cu
 		}
 	}
 
-	return s.customerDevices.Update(ctx, cd)
+	updated, err := s.customerDevices.Update(ctx, cd)
+	if err != nil {
+		return customerdevice.CustomerDevice{}, err
+	}
+
+	if before.Active() && !updated.Active() {
+		if err := s.markDeviceUnused(ctx, updated.DeviceID); err != nil {
+			return updated, err
+		}
+	}
+	return updated, nil
 }
 
 // ensureNoActiveAssignment implements "a Device may be attached to at
@@ -206,4 +250,51 @@ func (s *CustomerDeviceService) ensureNoActiveServiceEquipment(ctx context.Conte
 	}
 	return apperror.Conflict(fmt.Sprintf(
 		"device %s still fulfills an active service — remove it from the service before detaching", deviceID))
+}
+
+// markDeviceActive transitions deviceID's Device to
+// inventory.DeviceStatusActive, once a new active CustomerDevice
+// attachment for it has already been persisted. Mirrors
+// internal/serviceequipment/service.ServiceEquipmentService.markDeviceActive
+// exactly, including always writing Active even over a Retired Device —
+// unreachable in practice here since ensureDeviceNotRetired already
+// blocks attaching one, but kept symmetric with that method rather than
+// asserting a precondition this method does not itself need to rely on.
+//
+// A no-op if the Device is already Active, avoiding a pointless write.
+func (s *CustomerDeviceService) markDeviceActive(ctx context.Context, deviceID uuid.UUID) error {
+	device, err := s.devices.Get(ctx, deviceID)
+	if err != nil {
+		return err
+	}
+	if device.Status == inventory.DeviceStatusActive {
+		return nil
+	}
+	device.Status = inventory.DeviceStatusActive
+	_, err = s.devicesSvc.Update(ctx, device)
+	return err
+}
+
+// markDeviceUnused transitions deviceID's Device to
+// inventory.DeviceStatusUnused, once its active CustomerDevice
+// attachment has already been marked detached. A no-op if the Device is
+// already Unused or Retired, mirroring
+// ServiceEquipmentService.markDeviceUnused's own guard.
+//
+// Unlike that method, this one does not need to check for an active
+// ServiceEquipment record before reverting to Unused: Update's own
+// detach-blocking rule (see ensureNoActiveServiceEquipment, checked
+// earlier in the same call) already guarantees this call is only
+// reached when no active Service exists for deviceID.
+func (s *CustomerDeviceService) markDeviceUnused(ctx context.Context, deviceID uuid.UUID) error {
+	device, err := s.devices.Get(ctx, deviceID)
+	if err != nil {
+		return err
+	}
+	if device.Status == inventory.DeviceStatusUnused || device.Status == inventory.DeviceStatusRetired {
+		return nil
+	}
+	device.Status = inventory.DeviceStatusUnused
+	_, err = s.devicesSvc.Update(ctx, device)
+	return err
 }

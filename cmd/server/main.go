@@ -293,6 +293,21 @@ func run() error {
 	serviceSvc := serviceservice.NewServiceService(serviceRepo)
 	serviceHandler := servicehttpapi.NewServiceHandler(serviceSvc)
 
+	// Service Equipment and Customer Device each need the other's
+	// repository (not service — see below), so both repositories are
+	// built first, before either service: ServiceEquipmentService's own
+	// markDeviceUnused must check "is this Device still attached to a
+	// Customer" before reverting it to Unused, and
+	// CustomerDeviceService's Update must check "does this Device still
+	// fulfill an active Service" before allowing a detach — two
+	// independent sources of Device-status truth, each needing a read
+	// into the other's domain. Repository, not service, on both sides:
+	// the specific read each needs (GetActiveByDeviceID) is a
+	// repository-level query with no business logic of its own, never
+	// exposed on either service directly.
+	serviceEquipmentRepo := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
+	customerDeviceRepo := customerdevicepostgres.NewCustomerDeviceRepository(pool, clock.New(), id.New())
+
 	// Service Equipment follows the exact same repository -> service ->
 	// handler chain as every domain above, one package over
 	// (internal/serviceequipment instead of internal/service). Its two
@@ -301,9 +316,10 @@ func run() error {
 	// fresh, for the Device-status side effect
 	// ServiceEquipmentService.Create/Update now carry: attaching/
 	// detaching a Device flips it Active/Unused (see that service's own
-	// doc comment).
-	serviceEquipmentRepo := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
-	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo, deviceService, deviceService)
+	// doc comment) — unless customerDeviceRepo still shows it attached
+	// to a Customer directly, in which case losing its Service leaves it
+	// Active, not Unused.
+	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo, deviceService, deviceService, customerDeviceRepo)
 	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
 
 	// Customer Device follows the exact same repository -> service ->
@@ -312,15 +328,7 @@ func run() error {
 	// two foreign keys are Customer and inventory.Device, the latter
 	// reusing deviceService for the same "run the real business-rule
 	// check, not the raw repository" reason serviceEquipmentSvc does.
-	// serviceEquipmentRepo (the repository, not serviceEquipmentSvc) is
-	// reused for CustomerDeviceService's own detach-blocking check ("a
-	// Device still fulfilling an active Service cannot be detached from
-	// its Customer" — see that service's own doc comment): the read it
-	// needs, GetActiveByDeviceID, is a repository-level query with no
-	// business logic of its own, never exposed on ServiceEquipmentService
-	// itself.
-	customerDeviceRepo := customerdevicepostgres.NewCustomerDeviceRepository(pool, clock.New(), id.New())
-	customerDeviceSvc := customerdeviceservice.NewCustomerDeviceService(customerDeviceRepo, deviceService, serviceEquipmentRepo)
+	customerDeviceSvc := customerdeviceservice.NewCustomerDeviceService(customerDeviceRepo, deviceService, deviceService, serviceEquipmentRepo)
 	customerDeviceHandler := customerdevicehttpapi.NewCustomerDeviceHandler(customerDeviceSvc)
 
 	// Event has no service layer: there is no business logic beyond

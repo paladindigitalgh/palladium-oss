@@ -10,22 +10,30 @@ import "strings"
 // Palladium's Device Collection View is scoped to CPE — customer-premises
 // equipment out in homes and businesses, not shelf/rack inventory — so this
 // tracks only what actually varies for that kind of device: whether it is
-// currently serving a Customer. Unused is the default for any Device that
-// exists in Palladium but is not attached to a Customer's Service — new
-// (never yet assigned), or previously assigned and detached. Active means
-// exactly one thing: it is currently attached to an active
-// serviceequipment.ServiceEquipment record. Retired means it has been fully
-// pulled out of service (see
+// currently in use, by a Customer or a Service. Unused is the default for
+// any Device that exists in Palladium but is attached to neither — new
+// (never yet assigned), or previously assigned and detached from both.
+// Active means at least one of two things is true: it is attached to a
+// Customer directly (see internal/customerdevice — a real install can
+// precede activation), or it is fulfilling an active
+// serviceequipment.ServiceEquipment record (or both at once, the common
+// case once a Service exists). Retired means it has been fully pulled out
+// of service (see
 // internal/provisioning/kontron/service.DeauthorizationService), the
 // terminal state.
 //
 // Active and Unused are set automatically, not chosen by an operator on
-// creation (see internal/serviceequipment/service.ServiceEquipmentService's
-// Create/Update, which flips a Device to Active when it gains an active
-// ServiceEquipment record and back to Unused when that record's RemovedAt is
-// set) — a person can still correct it by hand through Edit Device, but the
-// New Device form no longer offers Status as a choice at all, defaulting
-// every new Device to Unused (see frontend DeviceFormDialog.vue).
+// creation — both internal/customerdevice/service.CustomerDeviceService and
+// internal/serviceequipment/service.ServiceEquipmentService's Create/Update
+// flip a Device to Active when it gains their respective kind of active
+// attachment, and back to Unused when that attachment ends, but only once
+// the *other* kind of attachment is confirmed gone too (each service checks
+// the other's repository before reverting to Unused, so losing a Service
+// while still attached to a Customer, or vice versa, correctly leaves the
+// Device Active) — a person can still correct it by hand through Edit
+// Device, but the New Device form no longer offers Status as a choice at
+// all, defaulting every new Device to Unused (see frontend
+// DeviceFormDialog.vue).
 type DeviceStatus string
 
 // The defined DeviceStatus values. There is no "unknown"/zero-value status:

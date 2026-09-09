@@ -28,6 +28,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/customerdevice"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
@@ -47,6 +48,15 @@ type deviceUpdater interface {
 	Update(ctx context.Context, d inventory.Device) (inventory.Device, error)
 }
 
+// activeCustomerDeviceGetter is the seam ServiceEquipmentService depends
+// on instead of the full customerdevice.CustomerDeviceRepository — used
+// only by markDeviceUnused, to answer "is this Device still attached to
+// a Customer" before reverting it to Unused (see that method's own doc
+// comment).
+type activeCustomerDeviceGetter interface {
+	GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (customerdevice.CustomerDevice, error)
+}
+
 // ServiceEquipmentService is the Service Equipment domain's business
 // logic.
 //
@@ -55,16 +65,27 @@ type deviceUpdater interface {
 // deviceUpdater — not clock.Clock, for the same reason
 // internal/service/service.ServiceService does not: timestamps are
 // already the repository's responsibility, and this service has no
-// business rule that needs to reason about "now".
+// business rule that needs to reason about "now". customerDevices was
+// added alongside internal/customerdevice: a Device's Status now also
+// reflects whether it is attached to a Customer directly (see that
+// package's own doc comment on why that coupling exists at all), so
+// losing its active ServiceEquipment record must not silently mark it
+// Unused if it is still sitting at a Customer's premises.
 type ServiceEquipmentService struct {
-	equipment  serviceequipment.ServiceEquipmentRepository
-	devices    deviceGetter
-	devicesSvc deviceUpdater
+	equipment       serviceequipment.ServiceEquipmentRepository
+	devices         deviceGetter
+	devicesSvc      deviceUpdater
+	customerDevices activeCustomerDeviceGetter
 }
 
 // NewServiceEquipmentService builds a ServiceEquipmentService.
-func NewServiceEquipmentService(equipment serviceequipment.ServiceEquipmentRepository, devices deviceGetter, devicesSvc deviceUpdater) *ServiceEquipmentService {
-	return &ServiceEquipmentService{equipment: equipment, devices: devices, devicesSvc: devicesSvc}
+func NewServiceEquipmentService(
+	equipment serviceequipment.ServiceEquipmentRepository,
+	devices deviceGetter,
+	devicesSvc deviceUpdater,
+	customerDevices activeCustomerDeviceGetter,
+) *ServiceEquipmentService {
+	return &ServiceEquipmentService{equipment: equipment, devices: devices, devicesSvc: devicesSvc, customerDevices: customerDevices}
 }
 
 // Get retrieves a ServiceEquipment record by ID.
@@ -265,6 +286,13 @@ func (s *ServiceEquipmentService) markDeviceActive(ctx context.Context, deviceID
 // service's own doc comment) must never be silently un-retired just
 // because an old, already-superseded ServiceEquipment record for it
 // happened to be edited into removed here too.
+//
+// Also a no-op if deviceID still has an active customerdevice.CustomerDevice
+// attachment: losing a Service is not the same as leaving the Customer's
+// premises (see internal/customerdevice's own doc comment) — a Device
+// physically still sitting there, simply not fulfilling any Service at
+// the moment, is not "Unused" by this package's own definition of that
+// word.
 func (s *ServiceEquipmentService) markDeviceUnused(ctx context.Context, deviceID uuid.UUID) error {
 	device, err := s.devices.Get(ctx, deviceID)
 	if err != nil {
@@ -273,7 +301,32 @@ func (s *ServiceEquipmentService) markDeviceUnused(ctx context.Context, deviceID
 	if device.Status == inventory.DeviceStatusUnused || device.Status == inventory.DeviceStatusRetired {
 		return nil
 	}
+	stillAttachedToCustomer, err := s.hasActiveCustomerAttachment(ctx, deviceID)
+	if err != nil {
+		return err
+	}
+	if stillAttachedToCustomer {
+		return nil
+	}
 	device.Status = inventory.DeviceStatusUnused
 	_, err = s.devicesSvc.Update(ctx, device)
 	return err
+}
+
+// hasActiveCustomerAttachment reports whether deviceID currently has an
+// active customerdevice.CustomerDevice record. apperror.KindNotFound
+// from GetActiveByDeviceID means exactly what it says: no active
+// attachment, not an error — any other error is propagated as-is rather
+// than swallowed, the same reasoning
+// internal/customerdevice/service.CustomerDeviceService.ensureNoActiveServiceEquipment
+// gives for its own, symmetric check.
+func (s *ServiceEquipmentService) hasActiveCustomerAttachment(ctx context.Context, deviceID uuid.UUID) (bool, error) {
+	_, err := s.customerDevices.GetActiveByDeviceID(ctx, deviceID)
+	if err != nil {
+		if apperror.Is(err, apperror.KindNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
