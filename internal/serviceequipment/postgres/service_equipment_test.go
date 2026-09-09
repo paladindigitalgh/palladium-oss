@@ -706,25 +706,6 @@ func TestServiceRepositoryDeleteBlockedByExistingServiceEquipment(t *testing.T) 
 	assertConflict(t, err)
 }
 
-// TestDeviceRepositoryDeleteBlockedByExistingServiceEquipment is
-// TestServiceRepositoryDeleteBlockedByExistingServiceEquipment's
-// counterpart for the other foreign key.
-func TestDeviceRepositoryDeleteBlockedByExistingServiceEquipment(t *testing.T) {
-	q, ctx := newTestQuerier(t)
-	s := createTestService(t, ctx, q)
-	d := createTestDevice(t, ctx, q)
-	equipmentRepo := postgres.NewServiceEquipmentRepository(q, clock.New(), id.New())
-	if _, err := equipmentRepo.Create(ctx, testServiceEquipment(s.ID, d.ID)); err != nil {
-		t.Fatalf("Create() = %v", err)
-	}
-
-	deviceRepo := inventorypostgres.NewDeviceRepository(q, clock.New(), id.New())
-
-	err := deviceRepo.Delete(ctx, d.ID)
-
-	assertConflict(t, err)
-}
-
 func assertNotFound(t *testing.T, err error) {
 	t.Helper()
 

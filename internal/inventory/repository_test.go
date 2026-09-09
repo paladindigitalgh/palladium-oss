@@ -87,7 +87,6 @@ func (stubDeviceRepository) Create(_ context.Context, d inventory.Device) (inven
 func (stubDeviceRepository) Update(_ context.Context, d inventory.Device) (inventory.Device, error) {
 	return d, nil
 }
-func (stubDeviceRepository) Delete(context.Context, uuid.UUID) error { return nil }
 
 var (
 	_ inventory.SiteRepository     = (*stubSiteRepository)(nil)
