@@ -36,6 +36,7 @@ import {
 import { getOLTById } from '@/services/olts/oltRepository'
 import { getDeviceById } from '@/services/devices/deviceRepository'
 import { listActiveCustomerDevicesByCustomerId, detachCustomerDevice } from '@/services/customerDevices/customerDeviceRepository'
+import { listServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { Contact } from '@/types/contact'
@@ -87,6 +88,7 @@ const contacts = ref<Contact[]>([])
 const locations = ref<Location[]>([])
 const customerDevices = ref<CustomerDevice[]>([])
 const devicesById = ref<Map<string, Device>>(new Map())
+const activeServiceDeviceIds = ref<Set<string>>(new Set())
 const services = ref<Service[]>([])
 const serviceLabelsById = ref<Map<string, string>>(new Map())
 const timeline = ref<TimelineEvent[]>([])
@@ -98,11 +100,10 @@ const notFound = ref(false)
 
 /**
  * Re-resolves the full Device record for every currently-attached
- * CustomerDevice, refreshing devicesById -- called on initial load and
- * again after any action that can change a Device's Status out from
- * under this view (creating a Service flips the chosen Device to Active
- * server-side; see ServiceFormDialog.vue), so eligibleServiceDevices
- * below never offers a Device that is secretly already in use.
+ * CustomerDevice, refreshing devicesById -- purely for display (name,
+ * manufacturer/model, serial, Status) in the Devices section and the
+ * Device picker's option labels. Called on initial load and again after
+ * attaching a Device.
  */
 async function refreshAttachedDevices() {
   const attachedDevices = await Promise.all(customerDevices.value.map((cd) => getDeviceById(cd.deviceId)))
@@ -114,6 +115,24 @@ async function refreshAttachedDevices() {
   devicesById.value = byDeviceId
 }
 
+/**
+ * Re-resolves which Devices currently fulfill an active
+ * serviceequipment.ServiceEquipment record, refreshing
+ * activeServiceDeviceIds -- what eligibleServiceDevices below actually
+ * gates on. Deliberately not derived from Device.Status: since
+ * internal/customerdevice/service.CustomerDeviceService started marking
+ * a Device Active purely from being attached to a Customer (see
+ * project memory on that fix), Status alone can no longer answer "does
+ * this Device already have a Service" -- a Device attached here and
+ * nothing else is Active too, and should still be offered. Called on
+ * initial load and again after creating a Service, which is the one
+ * action that can add a Device to this set out from under this view.
+ */
+async function refreshActiveServiceDeviceIds() {
+  const equipment = await listServiceEquipment()
+  activeServiceDeviceIds.value = new Set(equipment.filter((e) => e.removedAt === null).map((e) => e.deviceId))
+}
+
 async function load(id: string) {
   loading.value = true
   notFound.value = false
@@ -122,6 +141,7 @@ async function load(id: string) {
   locations.value = []
   customerDevices.value = []
   devicesById.value = new Map()
+  activeServiceDeviceIds.value = new Set()
   services.value = []
   serviceLabelsById.value = new Map()
   timeline.value = []
@@ -144,6 +164,7 @@ async function load(id: string) {
       listEvents('customer', id),
       listCustomerEquipmentLocations(id),
       listActiveCustomerDevicesByCustomerId(id),
+      refreshActiveServiceDeviceIds(),
     ])
   contacts.value = customerContacts
   locations.value = customerLocations
@@ -358,18 +379,38 @@ async function confirmDetachDevice() {
 
 /**
  * The devices ServiceFormDialog's create mode may pick from: attached to
- * this customer, and Unused -- a Device's Status only ever means
- * "currently serving a Customer" by way of an active ServiceEquipment
- * record (see types/device.ts), so an attached Device already Active is
- * already tied to a different Service and cannot take on another (the
+ * this customer, and not already fulfilling another active Service (the
  * same uniqueness rule internal/serviceequipment/service enforces
- * server-side). This is also what "Add Service" gates on below.
+ * server-side -- see activeServiceDeviceIds/refreshActiveServiceDeviceIds
+ * above for why this is not simply "Device.Status === 'Unused'": Status
+ * is Active for any attached Device now, service or no service, so it
+ * can no longer answer this question by itself). This is also what "Add
+ * Service" gates on below.
  */
 const eligibleServiceDevices = computed(() =>
   customerDevices.value
+    .filter((cd) => !activeServiceDeviceIds.value.has(cd.deviceId))
     .map((cd) => devicesById.value.get(cd.deviceId))
-    .filter((device): device is Device => !!device && device.status === 'Unused'),
+    .filter((device): device is Device => !!device),
 )
+
+/**
+ * Why "Add Service" is disabled, or null when it isn't -- shared by the
+ * button's own disabled-reason (a title tooltip plus a visually-hidden
+ * span, see BaseButton.vue's own doc comment) and a small always-visible
+ * hint rendered next to the button in the template, since a hover-only
+ * tooltip on a disabled (and therefore unfocusable) button is easy to
+ * miss entirely.
+ */
+const addServiceDisabledReason = computed<string | null>(() => {
+  if (locations.value.length === 0) return 'Add a location first'
+  if (eligibleServiceDevices.value.length === 0) {
+    return customerDevices.value.length === 0
+      ? 'Attach a device first'
+      : 'All attached devices already have a service'
+  }
+  return null
+})
 
 // --- Add/Remove Service ---
 
@@ -386,7 +427,7 @@ async function handleServiceCreated(service: Service) {
   services.value = [...services.value, service]
   const labels = await resolveServiceLabels([service])
   serviceLabelsById.value = new Map(serviceLabelsById.value).set(service.id, labels.get(service.id) ?? service.id)
-  await refreshAttachedDevices() // the device this Service just claimed is now Active, not Unused
+  await refreshActiveServiceDeviceIds() // the device this Service just claimed drops out of eligibleServiceDevices
 }
 
 const serviceDeleteTarget = ref<Service | null>(null)
@@ -683,20 +724,13 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         <BaseButton
           variant="secondary"
           size="sm"
-          :disabled="locations.length === 0 || eligibleServiceDevices.length === 0"
-          :disabled-reason="
-            locations.length === 0
-              ? 'Add a location first'
-              : eligibleServiceDevices.length === 0
-                ? customerDevices.length === 0
-                  ? 'Attach a device first'
-                  : 'All attached devices already have a service'
-                : undefined
-          "
+          :disabled="addServiceDisabledReason !== null"
+          :disabled-reason="addServiceDisabledReason ?? undefined"
           @click="openServiceForm"
         >
           Add Service
         </BaseButton>
+        <span v-if="addServiceDisabledReason" class="section-toolbar__hint">{{ addServiceDisabledReason }}</span>
       </div>
 
       <ServiceFormDialog
@@ -829,6 +863,12 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
   align-items: flex-end;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+.section-toolbar__hint {
+  padding-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 .no-relationship {
