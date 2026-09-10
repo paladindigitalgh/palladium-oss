@@ -10,6 +10,8 @@ export interface DeviceManufacturer {
   id: string
   name: string
   description: string
+  /** At most one DeviceManufacturer has this true system-wide -- New Device's Manufacturer picker pre-selects it, still fully overridable. */
+  isDefault: boolean
   createdAt: string
   updatedAt: string
 }

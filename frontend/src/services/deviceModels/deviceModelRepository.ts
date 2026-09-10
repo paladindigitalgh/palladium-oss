@@ -14,6 +14,7 @@ interface DeviceModelDto {
   manufacturer_id: string
   name: string
   description: string
+  is_default: boolean
   created_at: string
   updated_at: string
 }
@@ -24,6 +25,7 @@ function fromDto(dto: DeviceModelDto): DeviceModel {
     manufacturerId: dto.manufacturer_id,
     name: dto.name,
     description: dto.description,
+    isDefault: dto.is_default,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   }
@@ -60,4 +62,22 @@ export async function createDeviceModel(input: CreateDeviceModelInput): Promise<
  */
 export async function deleteDeviceModel(id: string): Promise<void> {
   await apiFetch<void>(`/device-models/${id}`, { method: 'DELETE' })
+}
+
+/**
+ * Sets or clears isDefault on the DeviceModel identified by id (PUT
+ * /device-models/{id}/default -- a dedicated endpoint, not the general
+ * update one; see internal/devicemodel/httpapi's own doc comment).
+ * Setting isDefault true also clears it on whichever other DeviceModel
+ * under the same ManufacturerID previously held it, server-side, in one
+ * atomic statement -- the caller never needs a second call to "unset the
+ * old one" first. Scoped per manufacturer, not system-wide (see
+ * DeviceModel.isDefault's own doc comment).
+ */
+export async function setDeviceModelDefault(id: string, isDefault: boolean): Promise<DeviceModel> {
+  const dto = await apiFetch<DeviceModelDto>(`/device-models/${id}/default`, {
+    method: 'PUT',
+    body: { is_default: isDefault },
+  })
+  return fromDto(dto)
 }

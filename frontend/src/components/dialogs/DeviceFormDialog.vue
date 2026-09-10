@@ -42,7 +42,11 @@ import type { BlacklistedONU } from '@/types/onuDiagnostics'
  * Device stopped carrying these as free-text strings directly. The
  * Manufacturer picker itself is a UI-only concept for narrowing the
  * Model list; only manufacturerId is used to filter modelOptions, and
- * only modelId (as deviceModelId) is ever sent to the backend.
+ * only modelId (as deviceModelId) is ever sent to the backend. In create
+ * mode both pickers start pre-selected from whichever catalog entries
+ * Administration's Hardware page has marked default, if any (see
+ * reset()'s own doc comment) -- still fully overridable per-Device, this
+ * only changes what the form starts on.
  *
  * Create mode also folds in what used to be the separate "Discover ONU"
  * dialog: the Serial Number field can be filled either by typing it or by
@@ -136,10 +140,28 @@ watch(manufacturerId, () => {
   }
 })
 
+// The catalog entries an Administration operator has marked default
+// (DeviceManufacturer.IsDefault / DeviceModel.IsDefault -- see those
+// types' own doc comments), if any. reset() pre-selects from these
+// instead of leaving the pickers blank -- still fully overridable, this
+// only changes what the form starts on, the same "no picker to click
+// through when there is only one real choice" reasoning this component's
+// own doc comment already gives for the exactly-one-eligible-device
+// case elsewhere in this codebase (CustomerDetailView.vue's
+// ServiceFormDialog). Read fresh off manufacturers.value/models.value
+// rather than cached, so a default set after this dialog last opened is
+// always honored.
+function defaultManufacturerId(): string {
+  return manufacturers.value.find((m) => m.isDefault)?.id ?? ''
+}
+function defaultModelId(forManufacturerId: string): string {
+  return models.value.find((m) => m.manufacturerId === forManufacturerId && m.isDefault)?.id ?? ''
+}
+
 function reset() {
   name.value = ''
-  manufacturerId.value = ''
-  modelId.value = ''
+  manufacturerId.value = defaultManufacturerId()
+  modelId.value = defaultModelId(manufacturerId.value)
   serialNumber.value = ''
   assetTag.value = ''
   status.value = 'Unused'

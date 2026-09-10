@@ -41,7 +41,7 @@ func NewDeviceManufacturerRepository(db database.Querier, clock clock.Clock, ids
 // error if none exists.
 func (r *DeviceManufacturerRepository) Get(ctx context.Context, manufacturerID uuid.UUID) (devicemanufacturer.DeviceManufacturer, error) {
 	const query = `
-		SELECT id, name, description, created_at, updated_at
+		SELECT id, name, description, is_default, created_at, updated_at
 		FROM device_manufacturers
 		WHERE id = $1
 	`
@@ -61,7 +61,7 @@ func (r *DeviceManufacturerRepository) Get(ctx context.Context, manufacturerID u
 // migration).
 func (r *DeviceManufacturerRepository) List(ctx context.Context) ([]devicemanufacturer.DeviceManufacturer, error) {
 	const query = `
-		SELECT id, name, description, created_at, updated_at
+		SELECT id, name, description, is_default, created_at, updated_at
 		FROM device_manufacturers
 		ORDER BY name
 	`
@@ -91,12 +91,15 @@ func (r *DeviceManufacturerRepository) List(ctx context.Context) ([]devicemanufa
 //
 // The repository assigns ID, CreatedAt, and UpdatedAt itself — any
 // values already set on the input DeviceManufacturer for those fields
-// are ignored.
+// are ignored. IsDefault is likewise ignored and always inserted false:
+// becoming the default is exclusively SetDefault's job (see that
+// method's own doc comment on why), never a side effect of creating a
+// new entry.
 func (r *DeviceManufacturerRepository) Create(ctx context.Context, m devicemanufacturer.DeviceManufacturer) (devicemanufacturer.DeviceManufacturer, error) {
 	const query = `
-		INSERT INTO device_manufacturers (id, name, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $4)
-		RETURNING id, name, description, created_at, updated_at
+		INSERT INTO device_manufacturers (id, name, description, is_default, created_at, updated_at)
+		VALUES ($1, $2, $3, false, $4, $4)
+		RETURNING id, name, description, is_default, created_at, updated_at
 	`
 
 	now := r.clock.Now()
@@ -114,13 +117,17 @@ func (r *DeviceManufacturerRepository) Create(ctx context.Context, m devicemanuf
 // CreatedAt cannot be altered through this method: the UPDATE statement
 // below never assigns that column, and the RETURNING clause reports its
 // true stored value regardless of what the input DeviceManufacturer
-// contained.
+// contained. is_default is the same story, deliberately: this statement
+// never assigns that column either, so an ordinary name/description edit
+// can never accidentally clear (or silently set) the current default —
+// only SetDefault touches is_default. m.IsDefault is therefore ignored
+// entirely; the RETURNING clause still reports the real stored value.
 func (r *DeviceManufacturerRepository) Update(ctx context.Context, m devicemanufacturer.DeviceManufacturer) (devicemanufacturer.DeviceManufacturer, error) {
 	const query = `
 		UPDATE device_manufacturers
 		SET name = $1, description = $2, updated_at = $3
 		WHERE id = $4
-		RETURNING id, name, description, created_at, updated_at
+		RETURNING id, name, description, is_default, created_at, updated_at
 	`
 
 	updated, err := scanDeviceManufacturer(r.db.QueryRow(ctx, query, m.Name, m.Description, r.clock.Now(), m.ID))
@@ -151,6 +158,46 @@ func (r *DeviceManufacturerRepository) Delete(ctx context.Context, manufacturerI
 	return nil
 }
 
+// SetDefault sets or clears is_default on the DeviceManufacturer
+// identified by id, or returns an apperror.KindNotFound error if it does
+// not exist.
+//
+// Setting isDefault true is a single unconditional UPDATE across every
+// row, not just id's: is_default = (id = $1) evaluates per row from each
+// row's own pre-statement state, so this both sets id's own is_default
+// true and clears everyone else's in one atomic statement — there is no
+// separate "unset the previous default" step for a caller to forget, and
+// no window where two rows are briefly both true. Setting isDefault
+// false only ever touches id, leaving every other row (there can be at
+// most one other true row anyway) alone.
+func (r *DeviceManufacturerRepository) SetDefault(ctx context.Context, id uuid.UUID, isDefault bool) error {
+	if isDefault {
+		const query = `UPDATE device_manufacturers SET is_default = (id = $1), updated_at = now()`
+		if _, err := r.db.Exec(ctx, query, id); err != nil {
+			return translateError("set device manufacturer default", err)
+		}
+		// The statement above always "succeeds" even for an id matching no
+		// row at all -- every row's is_default just evaluates false, and
+		// RowsAffected reports every row in the table regardless of
+		// whether id itself existed. Confirm existence explicitly rather
+		// than trust that count.
+		if _, err := r.Get(ctx, id); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	const query = `UPDATE device_manufacturers SET is_default = false, updated_at = now() WHERE id = $1`
+	tag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return translateError("set device manufacturer default", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return deviceManufacturerNotFound(id)
+	}
+	return nil
+}
+
 func deviceManufacturerNotFound(id uuid.UUID) error {
 	return apperror.NotFound(fmt.Sprintf("device manufacturer %s not found", id))
 }
@@ -164,6 +211,6 @@ type rowScanner interface {
 
 func scanDeviceManufacturer(row rowScanner) (devicemanufacturer.DeviceManufacturer, error) {
 	var m devicemanufacturer.DeviceManufacturer
-	err := row.Scan(&m.ID, &m.Name, &m.Description, &m.CreatedAt, &m.UpdatedAt)
+	err := row.Scan(&m.ID, &m.Name, &m.Description, &m.IsDefault, &m.CreatedAt, &m.UpdatedAt)
 	return m, err
 }

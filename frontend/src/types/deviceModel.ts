@@ -12,6 +12,8 @@ export interface DeviceModel {
   manufacturerId: string
   name: string
   description: string
+  /** At most one DeviceModel per manufacturerId has this true -- New Device's Model picker pre-selects it once that Manufacturer is chosen, still fully overridable. */
+  isDefault: boolean
   createdAt: string
   updatedAt: string
 }

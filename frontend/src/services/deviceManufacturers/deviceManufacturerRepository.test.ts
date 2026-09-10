@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
-import { listDeviceManufacturers, createDeviceManufacturer, deleteDeviceManufacturer } from './deviceManufacturerRepository'
+import {
+  listDeviceManufacturers,
+  createDeviceManufacturer,
+  deleteDeviceManufacturer,
+  setDeviceManufacturerDefault,
+} from './deviceManufacturerRepository'
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 
@@ -14,6 +19,7 @@ function deviceManufacturerDto(overrides: Partial<Record<string, unknown>> = {})
     id: 'mfr1',
     name: 'Nokia',
     description: '',
+    is_default: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -63,5 +69,30 @@ describe('deleteDeviceManufacturer', () => {
     apiFetch.mockRejectedValue(new ApiError('violates a foreign key relationship', 'conflict', 409))
 
     await expect(deleteDeviceManufacturer('mfr1')).rejects.toThrow('violates a foreign key relationship')
+  })
+})
+
+describe('setDeviceManufacturerDefault', () => {
+  it('PUTs to the dedicated /default endpoint and maps the returned DTO', async () => {
+    apiFetch.mockResolvedValue(deviceManufacturerDto({ id: 'mfr1', is_default: true }))
+
+    const result = await setDeviceManufacturerDefault('mfr1', true)
+
+    expect(apiFetch).toHaveBeenCalledWith('/device-manufacturers/mfr1/default', {
+      method: 'PUT',
+      body: { is_default: true },
+    })
+    expect(result.isDefault).toBe(true)
+  })
+
+  it('sends false to clear the default', async () => {
+    apiFetch.mockResolvedValue(deviceManufacturerDto({ id: 'mfr1', is_default: false }))
+
+    await setDeviceManufacturerDefault('mfr1', false)
+
+    expect(apiFetch).toHaveBeenCalledWith('/device-manufacturers/mfr1/default', {
+      method: 'PUT',
+      body: { is_default: false },
+    })
   })
 })

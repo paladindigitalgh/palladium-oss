@@ -24,6 +24,7 @@ type deviceManufacturerService interface {
 	Create(ctx context.Context, m devicemanufacturer.DeviceManufacturer) (devicemanufacturer.DeviceManufacturer, error)
 	Update(ctx context.Context, m devicemanufacturer.DeviceManufacturer) (devicemanufacturer.DeviceManufacturer, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	SetDefault(ctx context.Context, id uuid.UUID, isDefault bool) error
 }
 
 // DeviceManufacturerHandler serves the Device Manufacturer REST
@@ -33,6 +34,7 @@ type deviceManufacturerService interface {
 //	GET    /api/v1/device-manufacturers
 //	GET    /api/v1/device-manufacturers/{id}
 //	PUT    /api/v1/device-manufacturers/{id}
+//	PUT    /api/v1/device-manufacturers/{id}/default
 //	DELETE /api/v1/device-manufacturers/{id}
 //
 // It depends only on deviceManufacturerService — never a repository
@@ -108,6 +110,34 @@ func (h *DeviceManufacturerHandler) Update(w http.ResponseWriter, r *http.Reques
 	}
 
 	updated, err := h.manufacturers.Update(r.Context(), req.toDeviceManufacturer(id))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, newDeviceManufacturerResponse(updated))
+}
+
+// SetDefault handles PUT /api/v1/device-manufacturers/{id}/default.
+func (h *DeviceManufacturerHandler) SetDefault(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	var req setDeviceManufacturerDefaultRequest
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	if err := h.manufacturers.SetDefault(r.Context(), id, req.IsDefault); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	updated, err := h.manufacturers.Get(r.Context(), id)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

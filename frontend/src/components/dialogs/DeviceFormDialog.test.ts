@@ -319,6 +319,41 @@ describe('Manufacturer / Model cascading picker', () => {
     expect((selectByLabel('Model').element as HTMLSelectElement).value).toBe('')
   })
 
+  it('pre-selects the default Manufacturer and its default Model in create mode, still overridable', async () => {
+    listDeviceManufacturers.mockResolvedValue([
+      existingManufacturer({ id: 'mfr-nokia', name: 'Nokia' }),
+      existingManufacturer({ id: 'mfr-calix', name: 'Calix', isDefault: true }),
+    ])
+    listDeviceModels.mockResolvedValue([
+      existingModel({ id: 'model-nokia', manufacturerId: 'mfr-nokia', name: 'G-010G' }),
+      existingModel({ id: 'model-calix-a', manufacturerId: 'mfr-calix', name: '716GE' }),
+      existingModel({ id: 'model-calix-b', manufacturerId: 'mfr-calix', name: '844E', isDefault: true }),
+    ])
+    const wrapper = mount(DeviceFormDialog, { props: { open: false } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    expect((selectByLabel('Manufacturer').element as HTMLSelectElement).value).toBe('mfr-calix')
+    expect((selectByLabel('Model').element as HTMLSelectElement).value).toBe('model-calix-b')
+
+    // Still fully overridable -- picking a different Manufacturer clears
+    // the auto-filled Model rather than leaving a mismatched selection.
+    await selectByLabel('Manufacturer').setValue('mfr-nokia')
+    await nextTick()
+    expect((selectByLabel('Model').element as HTMLSelectElement).value).toBe('')
+  })
+
+  it('leaves the pickers blank when no Manufacturer is marked default', async () => {
+    listDeviceManufacturers.mockResolvedValue([existingManufacturer({ id: 'mfr-nokia', name: 'Nokia' })])
+    listDeviceModels.mockResolvedValue([existingModel({ id: 'model-nokia', manufacturerId: 'mfr-nokia' })])
+    const wrapper = mount(DeviceFormDialog, { props: { open: false } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    expect((selectByLabel('Manufacturer').element as HTMLSelectElement).value).toBe('')
+    expect((selectByLabel('Model').element as HTMLSelectElement).value).toBe('')
+  })
+
   it('disables submit until a Model is chosen', async () => {
     mount(DeviceFormDialog, { props: { open: true } })
     await settle()

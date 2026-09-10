@@ -59,3 +59,12 @@ func (s *DeviceManufacturerService) Update(ctx context.Context, m devicemanufact
 func (s *DeviceManufacturerService) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.manufacturers.Delete(ctx, id)
 }
+
+// SetDefault sets or clears the DeviceManufacturer identified by id as
+// the one New Device's Manufacturer picker pre-selects (see
+// DeviceManufacturer.IsDefault's own doc comment). No further validation
+// applies beyond id actually existing -- true or false, this is always a
+// legal state for any DeviceManufacturer.
+func (s *DeviceManufacturerService) SetDefault(ctx context.Context, id uuid.UUID, isDefault bool) error {
+	return s.manufacturers.SetDefault(ctx, id, isDefault)
+}

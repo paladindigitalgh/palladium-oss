@@ -24,6 +24,7 @@ type deviceModelService interface {
 	Create(ctx context.Context, m devicemodel.DeviceModel) (devicemodel.DeviceModel, error)
 	Update(ctx context.Context, m devicemodel.DeviceModel) (devicemodel.DeviceModel, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	SetDefault(ctx context.Context, id uuid.UUID, isDefault bool) error
 }
 
 // DeviceModelHandler serves the Device Model REST endpoints:
@@ -32,6 +33,7 @@ type deviceModelService interface {
 //	GET    /api/v1/device-models
 //	GET    /api/v1/device-models/{id}
 //	PUT    /api/v1/device-models/{id}
+//	PUT    /api/v1/device-models/{id}/default
 //	DELETE /api/v1/device-models/{id}
 //
 // It depends only on deviceModelService — never a repository directly —
@@ -107,6 +109,34 @@ func (h *DeviceModelHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated, err := h.models.Update(r.Context(), req.toDeviceModel(id))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, newDeviceModelResponse(updated))
+}
+
+// SetDefault handles PUT /api/v1/device-models/{id}/default.
+func (h *DeviceModelHandler) SetDefault(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	var req setDeviceModelDefaultRequest
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	if err := h.models.SetDefault(r.Context(), id, req.IsDefault); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	updated, err := h.models.Get(r.Context(), id)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

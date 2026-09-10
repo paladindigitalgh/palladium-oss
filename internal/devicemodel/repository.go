@@ -23,10 +23,20 @@ import (
 // Nothing in this package implements it — no SQL, no migrations — so the
 // domain has zero dependency on any storage technology. A concrete
 // implementation (internal/devicemodel/postgres) satisfies it.
+//
+// SetDefault is deliberately separate from Update: Update's UPDATE
+// statement never touches the is_default column at all (see the postgres
+// implementation), so an ordinary name/description/manufacturer edit can
+// never accidentally clear the current default. Setting isDefault true
+// also clears it on every other DeviceModel sharing id's ManufacturerID
+// in the same statement — there is no separate "clear the old one" call
+// a caller must remember — and setting it false only ever affects id
+// itself.
 type DeviceModelRepository interface {
 	Get(ctx context.Context, id uuid.UUID) (DeviceModel, error)
 	List(ctx context.Context) ([]DeviceModel, error)
 	Create(ctx context.Context, m DeviceModel) (DeviceModel, error)
 	Update(ctx context.Context, m DeviceModel) (DeviceModel, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	SetDefault(ctx context.Context, id uuid.UUID, isDefault bool) error
 }

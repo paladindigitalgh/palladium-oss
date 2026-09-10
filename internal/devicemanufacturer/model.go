@@ -32,10 +32,22 @@ import (
 
 // DeviceManufacturer is a catalog entry naming one manufacturer of
 // Device hardware.
+//
+// IsDefault marks the one DeviceManufacturer (at most) New Device's
+// Manufacturer picker pre-selects (frontend DeviceFormDialog.vue) --
+// still fully overridable per-Device, this only changes what the form
+// starts on. It is never set through Create or the general Update (see
+// this domain's own repository/service doc comments): only
+// DeviceManufacturerRepository.SetDefault touches this field, which also
+// clears it on whichever other DeviceManufacturer previously held it, so
+// at most one is ever true (see database/migrations/00042's partial
+// unique index for the same invariant enforced at the storage layer
+// too).
 type DeviceManufacturer struct {
 	ID          uuid.UUID
 	Name        string
 	Description string
+	IsDefault   bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

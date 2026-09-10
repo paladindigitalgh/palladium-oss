@@ -57,3 +57,12 @@ func (s *DeviceModelService) Update(ctx context.Context, m devicemodel.DeviceMod
 func (s *DeviceModelService) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.models.Delete(ctx, id)
 }
+
+// SetDefault sets or clears the DeviceModel identified by id as the one
+// New Device's Model picker pre-selects once that Model's own
+// Manufacturer is chosen (see DeviceModel.IsDefault's own doc comment).
+// No further validation applies beyond id actually existing -- true or
+// false, this is always a legal state for any DeviceModel.
+func (s *DeviceModelService) SetDefault(ctx context.Context, id uuid.UUID, isDefault bool) error {
+	return s.models.SetDefault(ctx, id, isDefault)
+}

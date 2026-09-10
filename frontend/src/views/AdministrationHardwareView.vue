@@ -9,8 +9,12 @@ import OLTModelFormDialog from '@/components/dialogs/OLTModelFormDialog.vue'
 import DeviceManufacturerFormDialog from '@/components/dialogs/DeviceManufacturerFormDialog.vue'
 import DeviceModelFormDialog from '@/components/dialogs/DeviceModelFormDialog.vue'
 import { listOLTModels, deleteOLTModel } from '@/services/oltModels/oltModelRepository'
-import { listDeviceManufacturers, deleteDeviceManufacturer } from '@/services/deviceManufacturers/deviceManufacturerRepository'
-import { listDeviceModels, deleteDeviceModel } from '@/services/deviceModels/deviceModelRepository'
+import {
+  listDeviceManufacturers,
+  deleteDeviceManufacturer,
+  setDeviceManufacturerDefault,
+} from '@/services/deviceManufacturers/deviceManufacturerRepository'
+import { listDeviceModels, deleteDeviceModel, setDeviceModelDefault } from '@/services/deviceModels/deviceModelRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { OLTModel } from '@/types/oltModel'
 import type { DeviceManufacturer } from '@/types/deviceManufacturer'
@@ -119,6 +123,7 @@ async function loadManufacturers() {
 onMounted(loadManufacturers)
 
 const manufacturerColumns: SimpleTableColumn[] = [
+  { key: 'default', label: 'Default' },
   { key: 'name', label: 'Name' },
   { key: 'description', label: 'Description' },
   { key: 'actions', label: '' },
@@ -150,6 +155,34 @@ async function handleManufacturerDelete(manufacturer: DeviceManufacturer) {
   }
 }
 
+const manufacturerDefaultError = ref<string | null>(null)
+const manufacturerDefaultPending = ref<string | null>(null)
+
+/**
+ * Checking a Manufacturer's Default box makes it the one New Device's
+ * Manufacturer picker pre-selects (frontend DeviceFormDialog.vue), and
+ * clears whichever other Manufacturer previously held it -- unchecking
+ * just clears this one. The backend's PUT .../default already enforces
+ * "at most one" atomically (see setDeviceManufacturerDefault's own doc
+ * comment); this mirrors that locally rather than reloading the whole
+ * list from the server on every toggle.
+ */
+async function handleManufacturerSetDefault(manufacturer: DeviceManufacturer, isDefault: boolean) {
+  manufacturerDefaultError.value = null
+  manufacturerDefaultPending.value = manufacturer.id
+  try {
+    await setDeviceManufacturerDefault(manufacturer.id, isDefault)
+    manufacturers.value = manufacturers.value.map((m) => {
+      if (isDefault) return { ...m, isDefault: m.id === manufacturer.id }
+      return m.id === manufacturer.id ? { ...m, isDefault: false } : m
+    })
+  } catch {
+    manufacturerDefaultError.value = 'Default could not be updated for this device manufacturer.'
+  } finally {
+    manufacturerDefaultPending.value = null
+  }
+}
+
 // --- Device Models ---
 
 const deviceModels = ref<DeviceModel[]>([])
@@ -176,6 +209,7 @@ function manufacturerName(manufacturerId: string): string {
 }
 
 const deviceModelColumns: SimpleTableColumn[] = [
+  { key: 'default', label: 'Default' },
   { key: 'manufacturer', label: 'Manufacturer' },
   { key: 'name', label: 'Name' },
   { key: 'description', label: 'Description' },
@@ -205,6 +239,35 @@ async function handleDeviceModelDelete(model: DeviceModel) {
         : 'This device model could not be deleted.'
   } finally {
     deviceModelDeletePending.value = null
+  }
+}
+
+const deviceModelDefaultError = ref<string | null>(null)
+const deviceModelDefaultPending = ref<string | null>(null)
+
+/**
+ * Checking a Model's Default box makes it the one New Device's Model
+ * picker pre-selects once that Model's own Manufacturer is chosen
+ * (frontend DeviceFormDialog.vue), and clears whichever other Model
+ * under the same Manufacturer previously held it -- scoped per
+ * Manufacturer, not system-wide (see DeviceModel.isDefault's own doc
+ * comment), so a Kontron default and an Iskratel default coexist.
+ * Unchecking just clears this one Model.
+ */
+async function handleDeviceModelSetDefault(model: DeviceModel, isDefault: boolean) {
+  deviceModelDefaultError.value = null
+  deviceModelDefaultPending.value = model.id
+  try {
+    await setDeviceModelDefault(model.id, isDefault)
+    deviceModels.value = deviceModels.value.map((m) => {
+      if (m.manufacturerId !== model.manufacturerId) return m
+      if (isDefault) return { ...m, isDefault: m.id === model.id }
+      return m.id === model.id ? { ...m, isDefault: false } : m
+    })
+  } catch {
+    deviceModelDefaultError.value = 'Default could not be updated for this device model.'
+  } finally {
+    deviceModelDefaultPending.value = null
   }
 }
 </script>
@@ -275,6 +338,7 @@ async function handleDeviceModelDelete(model: DeviceModel) {
       <DeviceManufacturerFormDialog :open="showManufacturerForm" @close="showManufacturerForm = false" @created="handleManufacturerCreated" />
 
       <p v-if="manufacturerDeleteError" class="hardware-error" role="alert">{{ manufacturerDeleteError }}</p>
+      <p v-if="manufacturerDefaultError" class="hardware-error" role="alert">{{ manufacturerDefaultError }}</p>
 
       <BaseCard>
         <div v-if="manufacturersLoading" class="page-status">
@@ -294,6 +358,16 @@ async function handleDeviceModelDelete(model: DeviceModel) {
           empty-icon="settings"
           empty-title="No device manufacturers yet"
         >
+          <template #cell-default="{ row }">
+            <input
+              type="checkbox"
+              class="hardware-default-checkbox"
+              :checked="row.isDefault"
+              :disabled="manufacturerDefaultPending === row.id"
+              :aria-label="`Make ${row.name} the default Manufacturer for New Device`"
+              @change="handleManufacturerSetDefault(row, ($event.target as HTMLInputElement).checked)"
+            />
+          </template>
           <template #cell-name="{ row }">{{ row.name }}</template>
           <template #cell-description="{ row }">{{ row.description || '—' }}</template>
           <template #cell-actions="{ row }">
@@ -325,6 +399,7 @@ async function handleDeviceModelDelete(model: DeviceModel) {
       <DeviceModelFormDialog :open="showDeviceModelForm" @close="showDeviceModelForm = false" @created="handleDeviceModelCreated" />
 
       <p v-if="deviceModelDeleteError" class="hardware-error" role="alert">{{ deviceModelDeleteError }}</p>
+      <p v-if="deviceModelDefaultError" class="hardware-error" role="alert">{{ deviceModelDefaultError }}</p>
 
       <BaseCard>
         <div v-if="deviceModelsLoading" class="page-status">
@@ -344,6 +419,16 @@ async function handleDeviceModelDelete(model: DeviceModel) {
           empty-icon="settings"
           empty-title="No device models yet"
         >
+          <template #cell-default="{ row }">
+            <input
+              type="checkbox"
+              class="hardware-default-checkbox"
+              :checked="row.isDefault"
+              :disabled="deviceModelDefaultPending === row.id"
+              :aria-label="`Make ${row.name} the default Model for ${manufacturerName(row.manufacturerId)} in New Device`"
+              @change="handleDeviceModelSetDefault(row, ($event.target as HTMLInputElement).checked)"
+            />
+          </template>
           <template #cell-manufacturer="{ row }">{{ manufacturerName(row.manufacturerId) }}</template>
           <template #cell-name="{ row }">{{ row.name }}</template>
           <template #cell-description="{ row }">{{ row.description || '—' }}</template>
@@ -403,5 +488,16 @@ async function handleDeviceModelDelete(model: DeviceModel) {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--color-error);
+}
+
+.hardware-default-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-brand);
+  cursor: pointer;
+}
+
+.hardware-default-checkbox:disabled {
+  cursor: default;
 }
 </style>

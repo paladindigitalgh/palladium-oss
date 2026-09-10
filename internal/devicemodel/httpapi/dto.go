@@ -37,6 +37,16 @@ func (req deviceModelRequest) toDeviceModel(id uuid.UUID) devicemodel.DeviceMode
 	}
 }
 
+// setDeviceModelDefaultRequest is the JSON body for PUT
+// /api/v1/device-models/{id}/default -- deliberately its own tiny
+// request type rather than reusing deviceModelRequest, since setting the
+// default is a distinct action from an ordinary edit (see
+// DeviceModelRepository.SetDefault's own doc comment on why they stay
+// separate all the way down).
+type setDeviceModelDefaultRequest struct {
+	IsDefault bool `json:"is_default"`
+}
+
 // deviceModelResponse is the JSON representation of a DeviceModel
 // returned to clients. Decoupling the wire format from
 // devicemodel.DeviceModel's Go field layout means a change to how the
@@ -47,6 +57,7 @@ type deviceModelResponse struct {
 	ManufacturerID uuid.UUID `json:"manufacturer_id"`
 	Name           string    `json:"name"`
 	Description    string    `json:"description"`
+	IsDefault      bool      `json:"is_default"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -57,6 +68,7 @@ func newDeviceModelResponse(m devicemodel.DeviceModel) deviceModelResponse {
 		ManufacturerID: m.ManufacturerID,
 		Name:           m.Name,
 		Description:    m.Description,
+		IsDefault:      m.IsDefault,
 		CreatedAt:      m.CreatedAt,
 		UpdatedAt:      m.UpdatedAt,
 	}
