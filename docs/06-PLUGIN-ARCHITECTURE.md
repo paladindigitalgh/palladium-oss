@@ -2,7 +2,7 @@
 document: 06-PLUGIN-ARCHITECTURE
 status: Draft
 title: Plugin Architecture
-version: 1.2-draft
+version: 1.4-draft
 ---
 
 # Plugin Architecture
@@ -67,14 +67,31 @@ dispatch:
     over its own HTTP routes (`internal/diagnostics/kontron/httpapi`)
     rather than through the Capability Model in section 7 below.
 -   `internal/provisioning/kontron/service.AuthorizationService`
-    ("Discover ONU" -- authorizing a physically-detected ONU:
-    `configure` / `interface` / `onu serial-number` / `service-profile`
-    / `exit` / `exit` / `save config`) and
-    `DeauthorizationService` ("Deauthorize ONU" -- the mirror image,
-    removing an ONU's base authorization and retiring its Device) are
-    each triggered from a DeviceID a caller already has in hand, not a
-    Service lifecycle transition, so neither goes through the Plugin
-    interface either -- both guarded by `authz.CanRunProvisioning`.
+    (`AuthorizeONU`: `configure` / `interface` / `onu serial-number` /
+    `service-profile` / `exit` / `exit` / `save config`) is no longer
+    triggered as its own standalone "Discover ONU" step (2026-09-09,
+    corrected below) -- `AuthorizeAndCreateDeviceService` composes it
+    with Device creation and a new `internal/onuauthorization` record in
+    one action, called from New Device itself (Device Workspace) the
+    moment an operator picks a serial number from the OLT's blacklist
+    scan instead of typing one by hand, so a caller here has an OLT ID
+    and port in hand, not a DeviceID -- the Device does not exist yet
+    when authorization runs.
+-   `DeauthorizationService` (`DeauthorizeONU` -- the mirror image,
+    removing an ONU's base authorization and retiring its Device; the
+    real command sequence includes `no service-profile <profile>`
+    immediately before `no onu serial-number`, added 2026-09-09 after a
+    real re-authorization failure traced to that missing step) is
+    renamed "Remove Device" in the UI (2026-09-09, from "Deauthorize
+    ONU" -- same backend behavior, same `DeauthorizeONU` name
+    underneath) and is triggered from a DeviceID a caller already has in
+    hand, so it still does not go through the Plugin interface -- guarded
+    by `authz.CanRunProvisioning`. It resolves which OLT/interface to act
+    on from the Device's Service Equipment record when one exists, or
+    its `internal/onuauthorization.OnuAuthorization` record as a
+    fallback when it does not (docs/03-DOMAIN-MODEL.md section 7) -- the
+    same DeviceID-in-hand shape as before, just able to answer "where is
+    this ONU" from either source now.
 -   `ServiceProfileService.Remove` is also called directly (not through
     the Plugin/workflow path) by `internal/customer/removal.RemovalService`
     ("Remove Customer"), to tear down real OLT state as part of that
@@ -83,8 +100,8 @@ dispatch:
 
 These were built this way because each need was narrow and specific
 (ONU status for the Customer Workspace, bringing a newly-detected ONU
-into service, tearing down one ONU's authorization from a Device Detail
-page, cascading a Customer removal) rather than a generic Service
+into service, tearing down one ONU's authorization from a Device
+Workspace, cascading a Customer removal) rather than a generic Service
 lifecycle transition needing multi-vendor Capability dispatch. Treat the
 rest of this document as where the plugin system is headed for the
 *Service lifecycle* capabilities the real Kontron Plugin now covers --
@@ -93,6 +110,16 @@ Kontron-specific action in this codebase, several of which are
 deliberately standalone REST by design and are expected to stay that
 way (see internal/provisioning/kontron/service.DeauthorizationService
 and AuthorizationService's own doc comments).
+
+Also unlike every other action on this list, `provision-service` --
+one of the real Service lifecycle Capabilities this Plugin already
+handles -- is no longer only triggered manually from the Service
+Workspace's own "Provision Service" button (docs/05-WORKFLOW-ENGINE.md).
+Since 2026-09-09, the Customer Workspace's "Add Service" also runs it
+automatically, immediately after creating the Service and its Service
+Equipment link, so provisioning a real ONU no longer needs a second,
+separate manual step -- see docs/09-WORKSPACE-SPECIFICATIONS.md section
+8.
 
 ------------------------------------------------------------------------
 
@@ -543,6 +570,7 @@ manufacturers or protocols.
   1.1 Draft   2026-09-04   Updated the Implementation Status note: a real Kontron SSH diagnostics integration now exists (`internal/diagnostics/kontron`), but outside the `Plugin` interface -- documented as a candidate first real Plugin rather than evidence the Capability Model is load-bearing
   1.2 Draft   2026-09-08   Documented the network-wide ONU blacklist scan added to `internal/diagnostics/kontron`, and the new write-capable `internal/provisioning/kontron` (ONU authorization) -- Palladium's first real vendor config-change command, still outside `internal/plugin`, guarded by its own RBAC capability
   1.3 Draft   2026-09-08   Corrected the Implementation Status note: `internal/provisioning/kontron/plugin` now exists and is registered -- Palladium's first real (non-simulated) `Plugin`, handling ProvisionService/ResumeService/SuspendService/DisconnectService for real over SSH. Documented that ONU authorization/deauthorization ("Discover ONU"/"Deauthorize ONU") and Remove Customer's OLT teardown call the same underlying Kontron service layer directly and are still, by design, standalone REST rather than Capability Model dispatch
+  1.4 Draft   2026-09-09   Corrected the Implementation Status note: "Discover ONU" no longer exists as its own step -- `AuthorizeAndCreateDeviceService` now composes `AuthorizationService.AuthorizeONU` with Device creation and a new `internal/onuauthorization` record, triggered inline from New Device. "Deauthorize ONU" is renamed "Remove Device" in the UI (same `DeauthorizeONU` behavior underneath) and documented `internal/onuauthorization`'s fallback role for resolving OLT/interface when no Service Equipment record exists yet; documented the real `no service-profile <profile>` command-sequence fix and that `provision-service` now also runs automatically from the Customer Workspace's Add Service, not only the Service Workspace's manual button
 
 ------------------------------------------------------------------------
 

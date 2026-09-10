@@ -1,7 +1,7 @@
 ---
 title: Implementation Plan
 document: 10-IMPLEMENTATION-PLAN
-version: 2.0
+version: 2.1
 status: Current
 ---
 
@@ -35,7 +35,7 @@ Where an earlier draft of this document proposed a technology, folder, or proces
 | Password hashing | `golang.org/x/crypto` |
 | Logging | stdlib `log/slog` (see `internal/log`) |
 
-Notably absent, and deliberately so: no message queue, no cache layer, no metrics/tracing library. Workflow execution is synchronous (see `05-WORKFLOW-ENGINE.md`'s implementation-status note) and nothing in the current system yet needs a queue or a cache — CLAUDE.md's "avoid unnecessary abstractions" applies to infrastructure, not just code. OpenTelemetry and structured metrics are real future needs (see `TASKS.md`'s Production phase) but are not adopted ahead of that need.
+Notably absent, and deliberately so: no message queue, no cache layer, no metrics/tracing library. Workflow execution is asynchronous but still in-process — a single background goroutine (`internal/workflow/worker.Worker`) polls for Pending instances on a fixed interval rather than a real message queue (see `05-WORKFLOW-ENGINE.md`'s implementation-status note) — and nothing in the current system yet needs a queue or a cache — CLAUDE.md's "avoid unnecessary abstractions" applies to infrastructure, not just code. OpenTelemetry and structured metrics are real future needs (see `TASKS.md`'s Production phase) but are not adopted ahead of that need.
 
 ## 2. Frontend Stack
 
@@ -188,6 +188,7 @@ Other Makefile targets: `make build` (builds all four `cmd/` binaries into `bin/
 |---------|------|-------------|
 | 1.0 Draft | 2026-07-29 | Initial implementation roadmap |
 | 2.0 | 2026-09-03 | Full rewrite to describe the actual stack, structure, and patterns in use, after the original draft's proposed stack/structure/roadmap diverged from what was actually built |
+| 2.1 | 2026-09-09 | Corrected a factual error: workflow execution is asynchronous (a polling background worker), not synchronous, matching what `05-WORKFLOW-ENGINE.md` already documented |
 
 ---
 

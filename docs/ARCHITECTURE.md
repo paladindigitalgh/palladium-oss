@@ -354,6 +354,15 @@ Disposed
 
 Palladium should preserve the history of every transition.
 
+Note (2026-09-09): this eight-step example predates Device's actual
+scope. `inventory.Device` (docs/03-DOMAIN-MODEL.md, section 6) is
+scoped to CPE, not shelf/rack procurement, and its real lifecycle is the
+flat three-value Unused → Active → Retired set described there — a
+Device is never permanently deleted, so there is no "Disposed" beyond
+Retired. Treat the illustration above as historical intent for a
+broader inventory concept this OSS never built, not a description of
+the real `DeviceStatus` type.
+
 ---
 
 # Customer Philosophy
@@ -362,7 +371,12 @@ Customers own services.
 
 Services consume resources.
 
-Resources never belong directly to customers.
+Resources never belong directly to customers -- with one deliberate,
+narrow exception documented 2026-09-09: `internal/customerdevice` lets a
+Device be placed at a Customer's premises before, or independent of,
+any Service existing for it (a real install can precede activation by
+days). See docs/03-DOMAIN-MODEL.md section 26 and CLAUDE.md's Core
+Philosophy for the full reasoning and scope of that exception.
 
 ---
 

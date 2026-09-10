@@ -2,7 +2,7 @@
 document: 03-DOMAIN-MODEL
 status: Draft
 title: Domain Model
-version: 1.2-draft
+version: 1.4-draft
 ---
 
 # Domain Model
@@ -133,9 +133,15 @@ Responsibilities include:
 
 A Customer **owns Services**.
 
-Customers do **not** directly own network equipment.
-
-Equipment is associated through services.
+Customers do **not** directly own network equipment. Equipment is
+associated through services — with one deliberate, narrow exception: see
+section 26 (Customer Device), added 2026-09-09 to model a Device
+physically placed at a Customer's premises before, or entirely without,
+an active Service (a real install can precede activation by days). That
+exception never grows into a general "Customer owns Devices" model — it
+is a placement record, not an ownership one, and a Device attached this
+way still carries no Service, billing, or provisioning meaning until a
+real Service Equipment link exists for it.
 
 ------------------------------------------------------------------------
 
@@ -203,10 +209,26 @@ A Device is responsible for maintaining:
 -   Physical location (optional — a Device may exist unracked)
 -   Current assignment
 
-Devices exist independently of customers.
+Devices exist independently of customers, with the one narrow exception
+of a Customer Device placement (section 26).
 
 A Device sitting in a warehouse, not yet racked or assigned, is still a
 Device.
+
+Operational status (2026-09-09, revised) is a flat, three-value set —
+Unused, Active, Retired — not the longer procurement-style progression
+this document originally described (see section 16's Device row for the
+correction). Active means "currently in use," which as of the Customer
+Device addition (section 26) can now come from either of two
+independent sources: an active Customer Device placement, or an active
+Service Equipment assignment (section 7) — a Device stays Active as long
+as *either* is true, and only drops to Unused once *both* are gone.
+Retired is terminal and reached only by fully deauthorizing a Device
+from its OLT (see docs/06-PLUGIN-ARCHITECTURE.md); nothing ever
+un-retires a Device automatically. A Device is never permanently
+deleted — there is no delete action for it at all, by design (see
+section 17's corresponding invariant); "removing" a Device from service
+always means transitioning its status, never erasing the row.
 
 ------------------------------------------------------------------------
 
@@ -250,6 +272,18 @@ operator is deliberately cycling through — it is blocked by an active
 Access Attachment (foreign-key `RESTRICT`) until that attachment is
 removed first, and the frontend only offers it as a distinct "Remove"
 action, never a replacement for the soft path.
+
+Removing a Device from its OLT ("Remove Device" on the Device Workspace
+— see docs/06-PLUGIN-ARCHITECTURE.md) needs to resolve which OLT and
+interface a Device is authorized on, which normally comes from its
+Service Equipment record's Access Attachment. A Device authorized
+directly (picked from the OLT's blacklist scan while creating it, before
+any Service exists for it at all) has no Service Equipment record yet to
+resolve that from — `internal/onuauthorization`'s `OnuAuthorization`
+record is the fallback: a lean, OLT-scoped record of exactly which
+interface a Device was authorized on, written the moment authorization
+succeeds and consulted only when no Service Equipment record exists to
+answer the question instead.
 
 ------------------------------------------------------------------------
 
@@ -298,6 +332,11 @@ Service Equipment → references exactly one Device
 Device → optionally belongs to one Site (indirectly, via Rack → Room →
 Building → Site — a Device may also exist unracked, belonging to no
 Site yet)
+
+Customer → optionally has one or more Devices placed at its premises
+directly (Customer Device, section 26), independent of any Service —
+the one deliberate exception to this document's general rule that
+equipment is only ever associated through Services (see section 4)
 
 This structure separates business relationships from physical
 infrastructure, allowing equipment to be reassigned without altering
@@ -527,9 +566,17 @@ triggers, and each maps to exactly one status change.
 
 ## Device
 
-Ordered → Received → In Stock → Installed → Maintenance → Retired →
-Disposed. Same caveat as Service: this is the expected real-world
-progression of a physical unit, not a code-enforced sequence.
+Unused → Active → Retired (revised 2026-09-09; superseded the original
+seven-value procurement progression this row described — Ordered →
+Received → In Stock → Installed → Maintenance → Retired → Disposed —
+which never matched how Device is actually scoped: CPE out in customer
+homes and businesses, not shelf/rack inventory, so "on order" /
+"received" / "in maintenance" never had real meaning here). Active is
+set automatically from two independent sources — an active Customer
+Device placement (section 26) or an active Service Equipment assignment
+(section 7) — not chosen by an operator; see section 6's own note on
+the two-source rule. Retired is one-way and reached only by fully
+deauthorizing a Device from its OLT.
 
 ## Workflow Instance
 
@@ -562,6 +609,20 @@ The following rules must always remain true.
 -   A Device may exist without being assigned.
 -   A Device may have only one active Service Equipment assignment at a
     time.
+-   A Device may have only one active Customer Device placement at a
+    time (section 26) — the same one-active-record-per-device rule as
+    Service Equipment, applied to the Customer-placement side.
+-   A Device with an active Service Equipment assignment cannot be
+    detached from its Customer Device placement until that assignment
+    is removed first (section 26) — detaching never cascades a removal
+    onto the Service side.
+-   A Device is never permanently deleted, by design — there is no
+    delete action for it at all (2026-09-09; superseded the original
+    hard-delete action once offered on the Device Workspace). Removing
+    a Device from service always means transitioning its status
+    (Retired), never erasing the row — the identical "always preserve
+    history" reasoning Service Equipment's own soft-removal already
+    follows below.
 -   Service Equipment assignments are removed (soft) by default, keeping
     historical records queryable; a real delete exists only for
     disposable test/demo data and is blocked while an active Access
@@ -783,6 +844,67 @@ Philosophy already draws between Customers and Resources.
 
 ------------------------------------------------------------------------
 
+# 26. Customer Device
+
+A Customer Device records that a physical Device is placed at a
+Customer's premises — installed, sitting there, plugged in — regardless
+of whether any Service has been set up to use it yet.
+
+This entity exists because real installs do not always line up with
+service activation: a technician can rack an ONT in a customer's home
+days before the account goes live, and Palladium needs somewhere to
+record "this Device is now at this Customer's address" the moment that
+happens, not only once a Service Equipment link exists to imply it.
+
+`internal/customerdevice` is the one deliberate, narrow exception to
+this document's stated rule (section 4) that Customers do not directly
+own network equipment, and to CLAUDE.md's Core Philosophy ("never couple
+inventory directly to customers"). It is scoped as tightly as Service
+Equipment already is one domain over (section 7) — a placement record
+with a start and end, never a field on Device itself, and never
+anything `internal/inventory` (Device's own package) knows about — not a
+general "Customer owns Devices" model. A Device placed this way still
+carries no billing, provisioning, or service meaning on its own; that
+only ever comes from a real Service Equipment assignment.
+
+## Responsibilities
+
+A Customer Device records:
+
+-   Owning Customer
+-   Placed Device
+-   Description (optional — e.g. "living room," "basement network
+    closet")
+-   Attached date
+-   Detached date
+
+Only one active (not-yet-detached) placement should exist for a given
+Device at a time — the same rule Service Equipment already enforces for
+its own assignments, applied one domain up.
+
+## Interaction with Device Status
+
+Placing a Device at a Customer marks it Active (section 6); detaching it
+marks it Unused again — but only once no active Service Equipment
+assignment also exists for that Device. A Device still fulfilling a live
+Service cannot be detached from its Customer at all: the write is
+rejected outright (see section 17's corresponding invariant), the same
+fail-loud, never-cascade choice this codebase makes throughout rather
+than silently tearing down a live Service assignment as a side effect of
+a Customer-level action.
+
+## Interaction with Customer Removal
+
+Removing a Customer (section 4's cascade) does not currently detach that
+Customer's active Device placements — a known, documented gap as of
+2026-09-09, not a decision. A Device can end up still recorded as
+placed at an Archived Customer until someone detaches it by hand. Fixing
+this means extending the removal cascade (`internal/customer/removal`)
+to also detach active Customer Device records, mirroring what it already
+does for Service Equipment and Access Attachment.
+
+------------------------------------------------------------------------
+
 # Closing Statement
 
 The Domain Model defines the language of Palladium.
@@ -803,6 +925,7 @@ understandable, extensible, and maintainable as it grows.
   1.1 Draft   2026-09-04   Corrected section 7 and the section 17 invariant: Service Equipment removal is soft by default, but a real hard delete now exists for disposable test/demo data (blocked by an active Access Attachment)
   1.2 Draft   2026-09-05   Added sections 20-24 (Product Catalog, Product, Service Profile, Provider, Provisioning Profile), documenting four real, already-implemented domains this document had never covered; corrected two stale "section 5" citations elsewhere that meant to point at Product
   1.3 Draft   2026-09-07   Added section 25 (User & Role) and a User row in section 16 (Entity Lifecycles), documenting the already-implemented `internal/auth` domain; added the corresponding section 17 invariant (Users are never deleted)
+  1.4 Draft   2026-09-09   Added section 26 (Customer Device), documenting `internal/customerdevice` -- the one deliberate exception to section 4's "Customers do not directly own network equipment" rule, letting a Device be placed at a Customer's premises before any Service exists. Corrected section 6 and the section 16 Device row: Device status is a flat Unused/Active/Retired set (not the original seven-value procurement progression, which never matched Device's actual CPE-only scope), Active now derives from either a Service Equipment assignment or a Customer Device placement, and a Device is never permanently deleted (removed the corresponding stale hard-delete assumption). Added section 7 coverage of `internal/onuauthorization`'s fallback OLT-resolution role, and new section 17 invariants for Customer Device's own one-active-placement rule and its detach-blocked-while-in-service rule
 
 ------------------------------------------------------------------------
 

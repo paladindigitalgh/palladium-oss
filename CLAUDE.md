@@ -38,6 +38,16 @@ Resources exist independently of Customers.
 
 Never couple inventory directly to customers.
 
+The one deliberate, narrow exception: `internal/customerdevice` records
+that a Device is physically placed at a Customer's premises before, or
+independent of, any Service existing for it — see
+docs/03-DOMAIN-MODEL.md section 26 for the full reasoning. It is a
+placement record with a start and end, never a field on Device itself;
+it carries no billing, provisioning, or service meaning on its own. Do
+not treat this as license to couple inventory to customers anywhere
+else — if a similar need comes up again, point at this exception and its
+narrow scope rather than inventing a second one.
+
 ---
 
 # Architecture

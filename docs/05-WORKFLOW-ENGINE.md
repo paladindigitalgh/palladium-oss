@@ -2,7 +2,7 @@
 document: 05-WORKFLOW-ENGINE
 status: Draft
 title: Workflow Engine
-version: 1.0-draft
+version: 1.1-draft
 ---
 
 # Workflow Engine
@@ -44,8 +44,16 @@ today (see `internal/workflow/`) is a deliberately minimal slice of it:
     it, rather than leaving it alongside the worker, was the point). A
     client now polls `GET .../{id}` for a terminal status, the same way
     `frontend/src/services/workflow/workflowRepository.ts`'s
-    `runWorkflow` does. There is still no real-time progress streaming,
-    and the poll loop is a single goroutine with no row locking -- see
+    `runWorkflow` does. "Terminal" includes Failed and Cancelled, not
+    only Succeeded -- `runWorkflow` itself only *throws* if the instance
+    never reaches any terminal status within its polling window (a
+    timeout); a clean Failed result resolves normally, so every caller
+    must check the returned status explicitly rather than assume a
+    rejected promise is the only failure shape (a real bug found and
+    fixed 2026-09-09 in two call sites that had assumed otherwise -- see
+    docs/09-WORKSPACE-SPECIFICATIONS.md section 8 and 9). There is still
+    no real-time progress streaming, and the poll loop is a single
+    goroutine with no row locking -- see
     `internal/workflow/postgres.Repository.NextPending`'s doc comment for
     the concurrency limitation that imposes on ever running more than one
     worker at a time.
@@ -53,7 +61,12 @@ today (see `internal/workflow/`) is a deliberately minimal slice of it:
     triggered -- there is no automatic backoff.
 -   Six Definitions exist today: `provision-service`,
     `reprovision-service`, `suspend-service`, `resume-service`,
-    `disconnect-service`, `synchronize-service`.
+    `disconnect-service`, `synchronize-service`. `provision-service` has
+    two real callers as of 2026-09-09: the Service Workspace's manual
+    "Provision Service" button, and the Customer Workspace's "Add
+    Service," which now runs it automatically as part of creating a
+    Service (see docs/09-WORKSPACE-SPECIFICATIONS.md section 8) rather
+    than requiring a separate manual step afterward.
 
 Treat the rest of this document as where the engine is headed, not a
 description of `internal/workflow/` as it stands.
@@ -526,6 +539,7 @@ repeatable.
   Version     Date         Description
   ----------- ------------ ---------------
   1.0 Draft   2026-07-29   Initial draft
+  1.1 Draft   2026-09-09   Clarified the Implementation Status note: `runWorkflow` resolves normally (does not throw) for a workflow that reaches a clean Failed/Cancelled terminal status, only throwing on a genuine polling timeout -- documented as a real bug two call sites had gotten wrong. Documented that `provision-service` now has a second real caller, the Customer Workspace's Add Service, which runs it automatically as part of creating a Service
 
 ------------------------------------------------------------------------
 

@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.10-draft
+version: 1.14-draft
 ---
 
 # Workspace Specifications
@@ -478,27 +478,57 @@ resolved on demand, the same as Locations, not a header field.
 ## Primary Actions
 
 -   Edit Customer
--   Delete Customer
+-   Remove Customer (archives the Customer and cascades its Locations,
+    Services, and equipment to their own terminal states -- never a
+    hard delete; see docs/03-DOMAIN-MODEL.md section 4 and
+    `internal/customer/removal`)
 -   Add Contact
 -   Add Location
+-   Attach Device (2026-09-09 -- see the Devices section below)
 -   Add Service
 
 Provisioning and suspending a service, and every other workflow-driven
 action, live on the **Service** Workspace (section 9), not here -- a
 Customer can have several Services, each independently provisioned,
-suspended, or resumed.
+suspended, or resumed. Add Service is the one exception: since
+2026-09-09 it also runs the real provision-service Workflow itself as
+part of creating the Service (see this section's own Services bullet
+below), rather than leaving that as a separate manual step on the
+Service Workspace.
 
 ## Sections
 
 -   Summary (status, customer type, created date, description)
 -   Contacts -- every Contact on the account, with Add/Edit/Remove
 -   Locations -- every Location on the account, with Add/Edit/Remove
+-   Devices (added 2026-09-09) -- every Device placed at this Customer's
+    premises directly, independent of any Service
+    (`internal/customerdevice` -- docs/03-DOMAIN-MODEL.md section 26,
+    the one deliberate exception to "equipment is associated through
+    Services"), with Attach/Detach. Detach is blocked with an inline
+    error while the Device still fulfills an active Service -- remove it
+    from the Service first. Each row links to the Device Workspace.
 -   Services -- every Service across every Location, with Add/Remove;
     opens the Service Workspace. Since a Service record itself carries
     no name (see section 9's Header), each row shows the resolved
     "<Product name>" (or "<Provider> > <Product>" once a second
     Provider exists) in place of the raw id -- see
     frontend/src/services/services/serviceLabels.ts's own doc comment.
+    Add Service (revised 2026-09-09) is disabled until the Customer has
+    at least one attached Device not already fulfilling a different
+    Service, with an always-visible hint (not just a hover tooltip --
+    hovering a disabled, unfocusable button is easy to never discover)
+    naming why; the Product picker in that dialog uses the same
+    Provider-prefixed label convention just described; there is no
+    Status field (a new Service always starts Active) and no separate
+    "Assign Equipment" step afterward -- creating the Service, tying it
+    to the chosen Device (Service Equipment), and running the real
+    provision-service Workflow against it are all one action. If the
+    Workflow fails -- most commonly because the Device has no Access
+    Attachment yet recorded (section 11 below) -- the Service and its
+    Service Equipment link still exist (nothing here rolls back), and a
+    dismissible banner names the real error and points at the Network
+    workspace and the Service Workspace's own Provision action to retry.
 -   ONU Diagnostics -- one block per equipment location the customer's
     Services resolve to (Customer → Location → Service → Service
     Equipment → Access Attachment → Access Interface → OLT, see
@@ -512,14 +542,15 @@ suspended, or resumed.
 -   Timeline -- the Customer's real audit trail (docs/02-DESIGN-PRINCIPLES.md
     principle 10), sourced from the Event domain
 
-Equipment and workflow history belong to a Service, not a Customer
-directly (docs/03-DOMAIN-MODEL.md: a Customer owns Services through
-Locations, and equipment is associated through Services) -- see those
-sections on the Service Workspace instead. ONU Diagnostics is the one
-exception: it reads live from the OLT rather than from Palladium's own
-records, and an operator checking on a customer's connectivity wants it
-on the Customer Workspace, not one hop down on each Service. There is no
-Notes feature in Version 1.
+Workflow history still belongs to a Service, not a Customer directly --
+see the Service Workspace instead. Equipment is the one part of that
+rule with its own documented exception: a Device can now be attached to
+a Customer directly, independent of any Service (the Devices section
+above; docs/03-DOMAIN-MODEL.md section 26). ONU Diagnostics is a
+separate exception again: it reads live from the OLT rather than from
+Palladium's own records, and an operator checking on a customer's
+connectivity wants it on the Customer Workspace, not one hop down on
+each Service. There is no Notes feature in Version 1.
 
 ## Navigation
 
@@ -565,7 +596,8 @@ does not, and richer service detail beyond the Product name shown here
 ## Primary Actions
 
 -   Edit Service
--   Delete Service
+-   Remove Service (hard delete; blocked while equipment or workflow
+    history still references the Service)
 -   One dynamic primary action, following the Service's current status:
     **Provision Service** (Pending), **Suspend Service** (Active), or
     **Resume Service** (Suspended). Each runs the matching Workflow
@@ -575,6 +607,19 @@ does not, and richer service detail beyond the Product name shown here
 
 There is no speed-profile change, diagnostics, or configuration-view
 action in Version 1.
+
+Known gap (2026-09-09): a Service created via the Customer Workspace's
+Add Service (section 8) starts Active, not Pending -- Add Service
+already attempts real provisioning itself as part of creation (section
+8), so by the time this Workspace can show it, "Provision Service"
+would be the wrong label for what actually still needs to happen if
+that attempt failed. This dynamic action's Pending-only condition was
+never revisited for that case, so a Service whose automatic provisioning
+attempt failed shows **Suspend Service** here, not a way to retry
+provisioning. The Workflow History section below still records the real
+Failed instance and its error either way; retrying it today means
+re-running provision-service directly (`POST /workflow-instances/`),
+not through this button.
 
 ## Sections
 
@@ -603,9 +648,25 @@ monitoring platform").
 ## Purpose
 
 The Device Workspace provides a complete inventory view of an individual
-physical Device: what it is, where it sits in the Rack hierarchy
-(docs/03-DOMAIN-MODEL.md), its lifecycle status, and which Service, if
-any, it currently fulfills.
+physical Device: what it is, its lifecycle status, and which Customer
+and/or Service, if any, it currently fulfills.
+
+Device Collection is scoped to CPE (2026-09-08 -- customer-premises
+equipment out in homes and businesses, not shelf/rack inventory
+management): New Device no longer asks for Rack, Asset Tag, or Status at
+all, defaulting every new Device to Unused (docs/03-DOMAIN-MODEL.md,
+section 6). Edit Device still exposes Rack and Asset Tag for the
+existing Site → Building → Room → Rack hierarchy (docs/03-DOMAIN-MODEL.md,
+section 8) -- that capability was not removed, only taken out of the
+default creation path.
+
+New Device's Serial Number field can also be pointed at the OLT's
+blacklist scan (a physically-detected, not-yet-authorized ONU) instead
+of typed by hand -- picking one authorizes it on the real OLT and
+creates the Device in the same action
+(`internal/provisioning/kontron/service.AuthorizeAndCreateDeviceService`),
+replacing what used to be a separate "Discover ONU" flow entirely (see
+docs/06-PLUGIN-ARCHITECTURE.md).
 
 Device is deliberately generic -- there is no type/subtype field, no
 "OLT" or "ONU" or "Router" distinction (docs/03-DOMAIN-MODEL.md, section
@@ -621,14 +682,20 @@ Display:
 
 -   Device name
 -   Manufacturer and model, as the subtitle
--   Status (Ordered, Received, In Stock, Installed, Maintenance,
-    Retired, or Disposed -- docs/03-DOMAIN-MODEL.md, section 16)
+-   Status (Unused, Active, or Retired -- revised 2026-09-09,
+    docs/03-DOMAIN-MODEL.md section 16. Active now derives from either
+    an active Customer Device placement or an active Service Equipment
+    assignment)
 -   Serial number, and asset tag when set, as metadata
 
 ## Primary Actions
 
 -   Edit Device
--   Delete Device
+-   Remove Device (renamed 2026-09-09 from "Deauthorize ONU" -- same
+    behavior: removes the Device from its real OLT, unassigns it from
+    its current Service, and marks it Retired. There is no delete
+    action at all -- a Device's row, and its history, are never erased;
+    see docs/03-DOMAIN-MODEL.md section 17)
 
 ## Sections
 
@@ -641,7 +708,12 @@ Display:
     domain
 
 There are no Interfaces, Configuration, Performance, Alarms, or Running
-Workflows sections -- see this section's Purpose note above.
+Workflows sections -- see this section's Purpose note above. There is
+also no direct display here of which Customer a Device is placed at
+(section 26 of the domain model) -- that relationship is resolved on
+demand from the Customer Workspace's Devices section, not embedded on
+this one, the same "resolved on demand, never embedded" pattern this
+document applies to every other cross-entity link.
 
 ------------------------------------------------------------------------
 
@@ -1286,6 +1358,7 @@ understanding, investigating, and acting on the network.
   1.11 Draft  2026-09-06   Documented the Users panel on the Administration Workspace (section 16): platform login identities (internal/auth), Administrator-only, with Deactivate/Reactivate standing in for Delete
   1.12 Draft  2026-09-07   Restructured Administration (section 16) from one page of stacked panels into a landing hub plus two dedicated pages, at the user's explicit request: /administration/providers (each Provider now an independently expandable section with its own nested Plans) and /administration/users; documented BaseDisclosure.vue as the reason SectionCard/DetailWorkspace was not reused for the Providers page
   1.13 Draft  2026-09-07   Replaced the /administration landing hub (same day, user's further request) with a sidebar-native dropdown -- AppSidebar.vue's Administration item now expands in place via NAV_ITEMS' `children`; /administration is a bare redirect and AdministrationView.vue no longer exists
+  1.14 Draft  2026-09-09   Corrected the Device Workspace (section 10): status is now Unused/Active/Retired (not the stale seven-value list), New Device no longer asks for Rack/Asset Tag/Status and can authorize a blacklisted ONU inline instead of a separate "Discover ONU" flow, and "Delete Device" no longer exists -- replaced by "Remove Device" (renamed from "Deauthorize ONU"), with no delete action at all. Corrected the Customer Workspace (section 8): "Delete Customer" corrected to "Remove Customer"; documented the new Devices section (Attach/Detach, `internal/customerdevice`) and that Add Service is now gated on an eligible Device, has no Status field, defaults Active, and runs the real provision-service Workflow as part of creating the Service, surfacing failures as a dismissible banner. Corrected the Service Workspace (section 9): "Delete Service" corrected to "Remove Service"; documented the known gap where a Service created via Add Service that starts Active skips this Workspace's Pending-only "Provision Service" button entirely if its automatic provisioning attempt failed
 
 ------------------------------------------------------------------------
 
