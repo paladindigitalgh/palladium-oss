@@ -210,6 +210,40 @@ func TestPONPortRepositoryGetNotFound(t *testing.T) {
 	assertNotFound(t, err)
 }
 
+func TestPONPortRepositoryGetByOLTIDAndPortNumber(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	o := createTestOLT(t, ctx, q)
+	repo := postgres.NewPONPortRepository(q, clock.New(), id.New())
+
+	created, err := repo.Create(ctx, testPONPort(o.ID, 3))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	got, err := repo.GetByOLTIDAndPortNumber(ctx, o.ID, 3)
+	if err != nil {
+		t.Fatalf("GetByOLTIDAndPortNumber() = %v", err)
+	}
+	if got.ID != created.ID {
+		t.Errorf("GetByOLTIDAndPortNumber() = %+v, want ID %v", got, created.ID)
+	}
+}
+
+func TestPONPortRepositoryGetByOLTIDAndPortNumberNotFound(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	o := createTestOLT(t, ctx, q)
+	repo := postgres.NewPONPortRepository(q, clock.New(), id.New())
+
+	// No PONPort was ever created on this OLT/port pair -- both a
+	// nonexistent OLTID and a real OLT with no matching PortNumber must
+	// return apperror.KindNotFound.
+	_, err := repo.GetByOLTIDAndPortNumber(ctx, uuid.New(), 1)
+	assertNotFound(t, err)
+
+	_, err = repo.GetByOLTIDAndPortNumber(ctx, o.ID, 99)
+	assertNotFound(t, err)
+}
+
 func TestPONPortRepositoryList(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	o := createTestOLT(t, ctx, q)

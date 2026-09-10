@@ -2,7 +2,7 @@
 document: 06-PLUGIN-ARCHITECTURE
 status: Draft
 title: Plugin Architecture
-version: 1.4-draft
+version: 1.5-draft
 ---
 
 # Plugin Architecture
@@ -76,7 +76,15 @@ dispatch:
     moment an operator picks a serial number from the OLT's blacklist
     scan instead of typing one by hand, so a caller here has an OLT ID
     and port in hand, not a DeviceID -- the Device does not exist yet
-    when authorization runs.
+    when authorization runs. Since 2026-09-10, once the
+    `OnuAuthorization` record is saved it also parses the interface the
+    OLT assigned (`kontron.ParsePortNumber`, e.g. `xgs/1/3` -> port `1`)
+    and finds-or-creates the matching `internal/ponport.PONPort` and
+    `internal/accessinterface.AccessInterface` -- the vendor-specific
+    half of closing the Access Attachment gap (docs/03-DOMAIN-MODEL.md
+    section 7); the vendor-agnostic half lives in
+    `internal/serviceequipment/service`, consuming what this step
+    creates without ever parsing a Kontron interface string itself.
 -   `DeauthorizationService` (`DeauthorizeONU` -- the mirror image,
     removing an ONU's base authorization and retiring its Device; the
     real command sequence includes `no service-profile <profile>`
@@ -571,6 +579,7 @@ manufacturers or protocols.
   1.2 Draft   2026-09-08   Documented the network-wide ONU blacklist scan added to `internal/diagnostics/kontron`, and the new write-capable `internal/provisioning/kontron` (ONU authorization) -- Palladium's first real vendor config-change command, still outside `internal/plugin`, guarded by its own RBAC capability
   1.3 Draft   2026-09-08   Corrected the Implementation Status note: `internal/provisioning/kontron/plugin` now exists and is registered -- Palladium's first real (non-simulated) `Plugin`, handling ProvisionService/ResumeService/SuspendService/DisconnectService for real over SSH. Documented that ONU authorization/deauthorization ("Discover ONU"/"Deauthorize ONU") and Remove Customer's OLT teardown call the same underlying Kontron service layer directly and are still, by design, standalone REST rather than Capability Model dispatch
   1.4 Draft   2026-09-09   Corrected the Implementation Status note: "Discover ONU" no longer exists as its own step -- `AuthorizeAndCreateDeviceService` now composes `AuthorizationService.AuthorizeONU` with Device creation and a new `internal/onuauthorization` record, triggered inline from New Device. "Deauthorize ONU" is renamed "Remove Device" in the UI (same `DeauthorizeONU` behavior underneath) and documented `internal/onuauthorization`'s fallback role for resolving OLT/interface when no Service Equipment record exists yet; documented the real `no service-profile <profile>` command-sequence fix and that `provision-service` now also runs automatically from the Customer Workspace's Add Service, not only the Service Workspace's manual button
+  1.5 Draft   2026-09-10   Documented `AuthorizeAndCreateDeviceService`'s new find-or-create PON Port/Access Interface step -- the vendor-specific half of closing the Access Attachment gap flagged in 09-WORKSPACE-SPECIFICATIONS.md's 1.14 docs-sync pass; see docs/03-DOMAIN-MODEL.md section 7 for the full mechanism, including the vendor-agnostic half in `internal/serviceequipment/service`
 
 ------------------------------------------------------------------------
 

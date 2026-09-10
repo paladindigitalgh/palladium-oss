@@ -1,6 +1,7 @@
 package kontron
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -43,4 +44,33 @@ func NextFreeIndex(entries []diagnosticskontron.ONUSummaryEntry, port string) in
 			return i
 		}
 	}
+}
+
+// ParsePortNumber extracts a PON port's number from a fully-assigned
+// Kontron interface string of the form "<prefix>/<port>/<index>" (e.g.
+// "xgs/1/1" -> 1) -- the exact inverse of how AuthorizeONU builds one
+// (port + "/" + index, see that method's own implementation). Used to
+// resolve which internal/ponport.PONPort a freshly authorized ONU's
+// interface belongs to, so internal/provisioning/kontron/service can
+// keep the Access Network topology (internal/ponport,
+// internal/accessinterface) in sync with what it already knows from a
+// real OLT authorization, without an operator ever having to enter that
+// topology by hand for a Device authorized this way.
+//
+// Returns an error for anything that does not parse as exactly three
+// "/"-separated segments with a positive integer in the middle one --
+// deliberately strict, unlike NextFreeIndex's lenient "silently ignore
+// what does not parse" stance above: that function is scanning read-only
+// diagnostic data for a best-effort hint, while this one is about to
+// create real inventory records and must not guess.
+func ParsePortNumber(iface string) (int, error) {
+	parts := strings.Split(iface, "/")
+	if len(parts) != 3 {
+		return 0, fmt.Errorf("kontron: interface %q does not have the expected <prefix>/<port>/<index> shape", iface)
+	}
+	port, err := strconv.Atoi(parts[1])
+	if err != nil || port <= 0 {
+		return 0, fmt.Errorf("kontron: interface %q does not have a valid port number", iface)
+	}
+	return port, nil
 }

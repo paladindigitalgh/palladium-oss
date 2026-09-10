@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.14-draft
+version: 1.15-draft
 ---
 
 # Workspace Specifications
@@ -523,12 +523,21 @@ Service Workspace.
     Status field (a new Service always starts Active) and no separate
     "Assign Equipment" step afterward -- creating the Service, tying it
     to the chosen Device (Service Equipment), and running the real
-    provision-service Workflow against it are all one action. If the
-    Workflow fails -- most commonly because the Device has no Access
-    Attachment yet recorded (section 11 below) -- the Service and its
-    Service Equipment link still exist (nothing here rolls back), and a
-    dismissible banner names the real error and points at the Network
-    workspace and the Service Workspace's own Provision action to retry.
+    provision-service Workflow against it are all one action. Creating
+    the Service Equipment record also auto-syncs an Access Attachment
+    (since 2026-09-10, `ServiceEquipmentService.syncAccessAttachment` --
+    docs/03-DOMAIN-MODEL.md section 7) when the Device has a known
+    `OnuAuthorization` and a matching Access Interface already exists, so
+    an operator building the Access Network topology by hand (section 11
+    below) is now only needed for a Device that was never authorized
+    through Palladium's own OLT blacklist flow. If the Workflow still
+    fails, the Service and its Service Equipment link exist regardless
+    (nothing here rolls back), and a dismissible banner names the real
+    error and points at the Network workspace (for a Device with no
+    recorded Access Attachment at all) and the Service Workspace's own
+    Provision action to retry once the underlying problem -- often an
+    OLT-side configuration issue such as a missing service profile, not a
+    Palladium-side gap -- is resolved.
 -   ONU Diagnostics -- one block per equipment location the customer's
     Services resolve to (Customer → Location → Service → Service
     Equipment → Access Attachment → Access Interface → OLT, see
@@ -1359,6 +1368,7 @@ understanding, investigating, and acting on the network.
   1.12 Draft  2026-09-07   Restructured Administration (section 16) from one page of stacked panels into a landing hub plus two dedicated pages, at the user's explicit request: /administration/providers (each Provider now an independently expandable section with its own nested Plans) and /administration/users; documented BaseDisclosure.vue as the reason SectionCard/DetailWorkspace was not reused for the Providers page
   1.13 Draft  2026-09-07   Replaced the /administration landing hub (same day, user's further request) with a sidebar-native dropdown -- AppSidebar.vue's Administration item now expands in place via NAV_ITEMS' `children`; /administration is a bare redirect and AdministrationView.vue no longer exists
   1.14 Draft  2026-09-09   Corrected the Device Workspace (section 10): status is now Unused/Active/Retired (not the stale seven-value list), New Device no longer asks for Rack/Asset Tag/Status and can authorize a blacklisted ONU inline instead of a separate "Discover ONU" flow, and "Delete Device" no longer exists -- replaced by "Remove Device" (renamed from "Deauthorize ONU"), with no delete action at all. Corrected the Customer Workspace (section 8): "Delete Customer" corrected to "Remove Customer"; documented the new Devices section (Attach/Detach, `internal/customerdevice`) and that Add Service is now gated on an eligible Device, has no Status field, defaults Active, and runs the real provision-service Workflow as part of creating the Service, surfacing failures as a dismissible banner. Corrected the Service Workspace (section 9): "Delete Service" corrected to "Remove Service"; documented the known gap where a Service created via Add Service that starts Active skips this Workspace's Pending-only "Provision Service" button entirely if its automatic provisioning attempt failed
+  1.15 Draft  2026-09-10   Corrected the Customer Workspace's Add Service description (section 8): a provisioning failure is no longer most commonly a missing Access Attachment -- creating the Service Equipment record now auto-syncs one (docs/03-DOMAIN-MODEL.md section 7) whenever the Device has a known OnuAuthorization and matching Access Interface, so the Network workspace is only still needed by hand for a Device never authorized through Palladium's own OLT blacklist flow; a remaining failure is now usually a real OLT-side configuration problem
 
 ------------------------------------------------------------------------
 

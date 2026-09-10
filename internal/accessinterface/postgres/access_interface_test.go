@@ -274,6 +274,45 @@ func TestAccessInterfaceRepositoryGetNotFound(t *testing.T) {
 	assertNotFound(t, err)
 }
 
+func TestAccessInterfaceRepositoryGetByOLTIDAndName(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	p := createTestPONPort(t, ctx, q)
+	repo := postgres.NewAccessInterfaceRepository(q, clock.New(), id.New())
+
+	created, err := repo.Create(ctx, testAccessInterface(p.ID, "xgs/1/1"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	got, err := repo.GetByOLTIDAndName(ctx, p.OLTID, "xgs/1/1")
+	if err != nil {
+		t.Fatalf("GetByOLTIDAndName() = %v", err)
+	}
+	if got.ID != created.ID {
+		t.Errorf("GetByOLTIDAndName() = %+v, want ID %v", got, created.ID)
+	}
+}
+
+func TestAccessInterfaceRepositoryGetByOLTIDAndNameNotFound(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	p := createTestPONPort(t, ctx, q)
+	repo := postgres.NewAccessInterfaceRepository(q, clock.New(), id.New())
+
+	if _, err := repo.Create(ctx, testAccessInterface(p.ID, "xgs/1/1")); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	// A nonexistent OLTID, and a real OLT with no matching interface
+	// Name, must both return apperror.KindNotFound -- including the
+	// second, which proves the join through pon_ports is actually
+	// scoping by OLTID and not just matching on Name alone.
+	_, err := repo.GetByOLTIDAndName(ctx, uuid.New(), "xgs/1/1")
+	assertNotFound(t, err)
+
+	_, err = repo.GetByOLTIDAndName(ctx, p.OLTID, "xgs/9/9")
+	assertNotFound(t, err)
+}
+
 func TestAccessInterfaceRepositoryList(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	p := createTestPONPort(t, ctx, q)

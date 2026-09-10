@@ -77,6 +77,20 @@ func (f *fakeAccessInterfaceRepository) Delete(_ context.Context, id uuid.UUID) 
 	return nil
 }
 
+// GetByOLTIDAndName ignores oltID: this fake has no PONPort/OLT records
+// to join through, so it matches on Name alone — sufficient for
+// AccessInterfaceService's pure delegation, which is all this test file
+// covers (see internal/accessinterface/postgres/access_interface_test.go
+// for the real join-through-pon_ports behavior against PostgreSQL).
+func (f *fakeAccessInterfaceRepository) GetByOLTIDAndName(_ context.Context, _ uuid.UUID, name string) (accessinterface.AccessInterface, error) {
+	for _, a := range f.byID {
+		if a.Name == name {
+			return a, nil
+		}
+	}
+	return accessinterface.AccessInterface{}, apperror.NotFound("access interface not found")
+}
+
 var _ accessinterface.AccessInterfaceRepository = (*fakeAccessInterfaceRepository)(nil)
 
 func validAccessInterface() accessinterface.AccessInterface {

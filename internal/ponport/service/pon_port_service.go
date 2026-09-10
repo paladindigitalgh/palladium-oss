@@ -38,6 +38,11 @@ func (s *PONPortService) Get(ctx context.Context, id uuid.UUID) (ponport.PONPort
 	return s.ports.Get(ctx, id)
 }
 
+// GetByOLTIDAndPortNumber retrieves the PONPort for oltID/portNumber.
+func (s *PONPortService) GetByOLTIDAndPortNumber(ctx context.Context, oltID uuid.UUID, portNumber int) (ponport.PONPort, error) {
+	return s.ports.GetByOLTIDAndPortNumber(ctx, oltID, portNumber)
+}
+
 // List returns every PONPort.
 func (s *PONPortService) List(ctx context.Context) ([]ponport.PONPort, error) {
 	return s.ports.List(ctx)

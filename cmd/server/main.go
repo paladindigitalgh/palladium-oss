@@ -308,19 +308,15 @@ func run() error {
 	serviceEquipmentRepo := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
 	customerDeviceRepo := customerdevicepostgres.NewCustomerDeviceRepository(pool, clock.New(), id.New())
 
-	// Service Equipment follows the exact same repository -> service ->
-	// handler chain as every domain above, one package over
-	// (internal/serviceequipment instead of internal/service). Its two
-	// foreign keys are Service and inventory.Device — deviceService
-	// (built above, alongside deviceHandler) is reused rather than built
-	// fresh, for the Device-status side effect
-	// ServiceEquipmentService.Create/Update now carry: attaching/
-	// detaching a Device flips it Active/Unused (see that service's own
-	// doc comment) — unless customerDeviceRepo still shows it attached
-	// to a Customer directly, in which case losing its Service leaves it
-	// Active, not Unused.
-	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(serviceEquipmentRepo, deviceService, deviceService, customerDeviceRepo)
-	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
+	// Service Equipment's own service and handler are built much further
+	// below (see the comment beside serviceEquipmentSvc's construction),
+	// not here alongside its repository: ServiceEquipmentService now also
+	// depends on onuAuthorizationSvc, accessInterfaceSvc, and
+	// accessAttachmentSvc, none of which exist yet at this point in
+	// construction. serviceEquipmentRepo itself is still built here,
+	// though, since workflowEngine, customerDeviceSvc, and
+	// customerResolver below all need the repository (not the service)
+	// well before that point.
 
 	// Customer Device follows the exact same repository -> service ->
 	// handler chain as Service Equipment, one domain up
@@ -489,12 +485,32 @@ func run() error {
 	// has been authorized directly on an OLT, independent of any Service
 	// assignment — see that package's own doc comment for the gap this
 	// closes. Built here, alongside deviceRepo/deviceService above, since
-	// both of this milestone's Kontron write-command services below need
-	// it: AuthorizeAndCreateDeviceService to persist the record,
+	// this milestone's Kontron write-command services below need it
+	// (AuthorizeAndCreateDeviceService to persist the record,
 	// DeauthorizationService to resolve it when a Device has no
-	// ServiceEquipment.
+	// ServiceEquipment), and so does serviceEquipmentSvc just below, to
+	// look an existing record up again.
 	onuAuthorizationRepo := onuauthorizationpostgres.NewOnuAuthorizationRepository(pool, clock.New(), id.New())
 	onuAuthorizationSvc := onuauthorizationservice.NewOnuAuthorizationService(onuAuthorizationRepo)
+
+	// Service Equipment's service and handler are built here, not
+	// alongside serviceEquipmentRepo above, because
+	// ServiceEquipmentService now depends on accessInterfaceSvc,
+	// accessAttachmentSvc, and onuAuthorizationSvc (all built above) for
+	// its own Access Attachment auto-sync side effect — see that
+	// service's syncAccessAttachment doc comment for the full reasoning.
+	// Its two foreign keys are still Service and inventory.Device —
+	// deviceService (built above, alongside deviceHandler) is reused
+	// rather than built fresh, for the Device-status side effect
+	// ServiceEquipmentService.Create/Update also carry: attaching/
+	// detaching a Device flips it Active/Unused (see that service's own
+	// doc comment) — unless customerDeviceRepo still shows it attached to
+	// a Customer directly, in which case losing its Service leaves it
+	// Active, not Unused.
+	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(
+		serviceEquipmentRepo, deviceService, deviceService, customerDeviceRepo,
+		onuAuthorizationSvc, accessInterfaceSvc, accessAttachmentSvc)
+	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
 
 	// Kontron ONU authorization (internal/provisioning/kontron) is this
 	// codebase's first real vendor-specific *write* command surface —
@@ -511,9 +527,12 @@ func run() error {
 	// (the OLT-side command) with deviceService and onuAuthorizationSvc
 	// (both built above) rather than building any of them fresh — see
 	// that service's own doc comment for why this exists as a single
-	// action instead of two independently-forgettable ones.
+	// action instead of two independently-forgettable ones. ponPortSvc and
+	// accessInterfaceSvc (also both built above) back this service's own
+	// Access Network topology sync — see its syncAccessTopology doc
+	// comment.
 	provisioningKontronAuthorizeAndCreateDeviceSvc := provisioningkontronservice.NewAuthorizeAndCreateDeviceService(
-		provisioningKontronSvc, deviceService, onuAuthorizationSvc, clock.New())
+		provisioningKontronSvc, deviceService, onuAuthorizationSvc, ponPortSvc, accessInterfaceSvc, clock.New())
 	provisioningKontronAuthorizeAndCreateDeviceHandler := provisioningkontronhttpapi.NewAuthorizeAndCreateDeviceHandler(provisioningKontronAuthorizeAndCreateDeviceSvc)
 
 	// Access Topology (internal/accesstopology) resolves where a

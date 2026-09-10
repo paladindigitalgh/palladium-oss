@@ -42,6 +42,11 @@ func (s *AccessInterfaceService) Get(ctx context.Context, id uuid.UUID) (accessi
 	return s.interfaces.Get(ctx, id)
 }
 
+// GetByOLTIDAndName retrieves the AccessInterface named name on oltID.
+func (s *AccessInterfaceService) GetByOLTIDAndName(ctx context.Context, oltID uuid.UUID, name string) (accessinterface.AccessInterface, error) {
+	return s.interfaces.GetByOLTIDAndName(ctx, oltID, name)
+}
+
 // List returns every AccessInterface.
 func (s *AccessInterfaceService) List(ctx context.Context) ([]accessinterface.AccessInterface, error) {
 	return s.interfaces.List(ctx)

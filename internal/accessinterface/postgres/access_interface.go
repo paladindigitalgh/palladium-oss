@@ -153,6 +153,34 @@ func (r *AccessInterfaceRepository) Delete(ctx context.Context, interfaceID uuid
 	return nil
 }
 
+// GetByOLTIDAndName returns the AccessInterface named name on oltID
+// (joining through pon_ports, since an AccessInterface only ever names
+// its PONPortID, not an OLTID directly), or an apperror.KindNotFound
+// error if none exists. There is no unique constraint on
+// (pon_port_id, name) in the schema — the same service-layer-enforced-
+// uniqueness convention this codebase uses throughout — so this returns
+// whichever matching row Postgres finds first if more than one somehow
+// exists.
+func (r *AccessInterfaceRepository) GetByOLTIDAndName(ctx context.Context, oltID uuid.UUID, name string) (accessinterface.AccessInterface, error) {
+	const query = `
+		SELECT ai.id, ai.pon_port_id, ai.technology, ai.name, ai.status, ai.description, ai.created_at, ai.updated_at
+		FROM access_interfaces ai
+		JOIN pon_ports pp ON pp.id = ai.pon_port_id
+		WHERE pp.olt_id = $1 AND ai.name = $2
+		LIMIT 1
+	`
+
+	a, err := scanAccessInterface(r.db.QueryRow(ctx, query, oltID, name))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return accessinterface.AccessInterface{}, apperror.NotFound(
+				fmt.Sprintf("no access interface %q on olt %s", name, oltID))
+		}
+		return accessinterface.AccessInterface{}, translateError("get access interface by olt and name", err)
+	}
+	return a, nil
+}
+
 func accessInterfaceNotFound(id uuid.UUID) error {
 	return apperror.NotFound(fmt.Sprintf("access interface %s not found", id))
 }

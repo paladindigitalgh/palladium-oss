@@ -28,8 +28,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/accessattachment"
+	"github.com/paladindigitalgh/palladium-oss/internal/accessinterface"
 	"github.com/paladindigitalgh/palladium-oss/internal/customerdevice"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
+	"github.com/paladindigitalgh/palladium-oss/internal/onuauthorization"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 )
@@ -57,6 +60,37 @@ type activeCustomerDeviceGetter interface {
 	GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (customerdevice.CustomerDevice, error)
 }
 
+// activeOnuAuthorizationGetter is the seam ServiceEquipmentService depends
+// on instead of the full onuauthorization.Repository — used only by
+// syncAccessAttachment, to answer "does this Device have a known,
+// vendor-authorized position on the access network" (see that method's
+// own doc comment).
+type activeOnuAuthorizationGetter interface {
+	GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (onuauthorization.OnuAuthorization, error)
+}
+
+// accessInterfaceGetter is the seam ServiceEquipmentService depends on
+// instead of the full accessinterface.AccessInterfaceRepository — used
+// only by syncAccessAttachment, to resolve an OnuAuthorization's raw
+// OLTID/Interface pair to the AccessInterface record it corresponds to,
+// if Palladium already has one on file. This is a pure lookup by ID and
+// string, with no Kontron-specific (or any other vendor-specific)
+// parsing: that already happened once, in
+// internal/provisioning/kontron/service, when the OnuAuthorization
+// record itself was created — see that package's own doc comment.
+type accessInterfaceGetter interface {
+	GetByOLTIDAndName(ctx context.Context, oltID uuid.UUID, name string) (accessinterface.AccessInterface, error)
+}
+
+// accessAttachmentCreator is the seam ServiceEquipmentService depends on
+// instead of the full accessattachment.AccessAttachmentRepository,
+// satisfied by the real *accessattachmentservice.AccessAttachmentService
+// so its own active-attachment-uniqueness validation runs on this write
+// like every other caller's.
+type accessAttachmentCreator interface {
+	Create(ctx context.Context, a accessattachment.AccessAttachment) (accessattachment.AccessAttachment, error)
+}
+
 // ServiceEquipmentService is the Service Equipment domain's business
 // logic.
 //
@@ -71,11 +105,23 @@ type activeCustomerDeviceGetter interface {
 // package's own doc comment on why that coupling exists at all), so
 // losing its active ServiceEquipment record must not silently mark it
 // Unused if it is still sitting at a Customer's premises.
+//
+// onuAuthorizations, accessInterfaces, and accessAttachments back a
+// second side effect Create now carries, alongside markDeviceActive: see
+// syncAccessAttachment's own doc comment for why this exists — closing
+// the gap where a Device authorized directly on an OLT (bypassing the
+// plain New Device form) could be attached to a Service without
+// Palladium ever recording where on the access network it actually
+// sits, leaving real provisioning with nowhere to send its config short
+// of an operator building the Access Network topology by hand.
 type ServiceEquipmentService struct {
-	equipment       serviceequipment.ServiceEquipmentRepository
-	devices         deviceGetter
-	devicesSvc      deviceUpdater
-	customerDevices activeCustomerDeviceGetter
+	equipment         serviceequipment.ServiceEquipmentRepository
+	devices           deviceGetter
+	devicesSvc        deviceUpdater
+	customerDevices   activeCustomerDeviceGetter
+	onuAuthorizations activeOnuAuthorizationGetter
+	accessInterfaces  accessInterfaceGetter
+	accessAttachments accessAttachmentCreator
 }
 
 // NewServiceEquipmentService builds a ServiceEquipmentService.
@@ -84,8 +130,19 @@ func NewServiceEquipmentService(
 	devices deviceGetter,
 	devicesSvc deviceUpdater,
 	customerDevices activeCustomerDeviceGetter,
+	onuAuthorizations activeOnuAuthorizationGetter,
+	accessInterfaces accessInterfaceGetter,
+	accessAttachments accessAttachmentCreator,
 ) *ServiceEquipmentService {
-	return &ServiceEquipmentService{equipment: equipment, devices: devices, devicesSvc: devicesSvc, customerDevices: customerDevices}
+	return &ServiceEquipmentService{
+		equipment:         equipment,
+		devices:           devices,
+		devicesSvc:        devicesSvc,
+		customerDevices:   customerDevices,
+		onuAuthorizations: onuAuthorizations,
+		accessInterfaces:  accessInterfaces,
+		accessAttachments: accessAttachments,
+	}
 }
 
 // Get retrieves a ServiceEquipment record by ID.
@@ -120,10 +177,11 @@ func (s *ServiceEquipmentService) List(ctx context.Context) ([]serviceequipment.
 //
 // There is no cross-repository transaction in this codebase (see
 // internal/provisioning/kontron/service.DeauthorizationService's own doc
-// comment on the same limitation): if markDeviceActive fails after the
-// ServiceEquipment record has already been created, Create returns that
-// error, but the record already exists — a caller seeing this error must
-// reconcile the Device's status manually.
+// comment on the same limitation): if markDeviceActive or
+// syncAccessAttachment fails after the ServiceEquipment record has
+// already been created, Create returns that error, but the record
+// already exists — a caller seeing this error must reconcile the
+// Device's status, or its Access Attachment, manually.
 func (s *ServiceEquipmentService) Create(ctx context.Context, e serviceequipment.ServiceEquipment) (serviceequipment.ServiceEquipment, error) {
 	if err := e.Validate(); err != nil {
 		return serviceequipment.ServiceEquipment{}, err
@@ -139,6 +197,9 @@ func (s *ServiceEquipmentService) Create(ctx context.Context, e serviceequipment
 	}
 	if created.Active() {
 		if err := s.markDeviceActive(ctx, created.DeviceID); err != nil {
+			return created, err
+		}
+		if err := s.syncAccessAttachment(ctx, created); err != nil {
 			return created, err
 		}
 	}
@@ -310,6 +371,66 @@ func (s *ServiceEquipmentService) markDeviceUnused(ctx context.Context, deviceID
 	}
 	device.Status = inventory.DeviceStatusUnused
 	_, err = s.devicesSvc.Update(ctx, device)
+	return err
+}
+
+// syncAccessAttachment closes the Access Attachment gap for a Device
+// that was authorized directly on an OLT through
+// internal/provisioning/kontron/service.AuthorizeAndCreateDeviceService
+// (the OLT blacklist "authorize this ONU" flow, not the plain New Device
+// form): that path already knows exactly which OLT and interface the
+// Device is sitting on — recorded as an onuauthorization.OnuAuthorization
+// — and already ensures a matching internal/ponport.PONPort and
+// internal/accessinterface.AccessInterface exist for it (see that
+// service's own doc comment). Until now, nothing ever created the last
+// link, an internal/accessattachment.AccessAttachment connecting the new
+// ServiceEquipment to that AccessInterface, so real provisioning
+// (internal/accesstopology.Resolver.Locate, which walks
+// ServiceEquipment -> AccessAttachment -> AccessInterface -> PONPort to
+// find where to send config) had nowhere to look unless an operator
+// built that link by hand in the Network workspace first. This is the
+// one place a ServiceEquipment gains that attachment automatically.
+//
+// Both lookups are pure vendor-agnostic reads — a device ID, then an
+// OLT ID and a plain interface string — with no parsing of any
+// vendor-specific interface format: that already happened once, in the
+// plugin that created the OnuAuthorization record in the first place
+// (see accessInterfaceGetter's own doc comment). Keeping it that way
+// here is what lets this method serve every future plugin's
+// OnuAuthorization records identically, not just Kontron's.
+//
+// A no-op, not an error, if either lookup comes back
+// apperror.KindNotFound: most Devices have no OnuAuthorization at all
+// (they were never authorized this way), and even one that does may not
+// yet have a matching AccessInterface (e.g. the plugin that created it
+// predates this feature, or intentionally left topology sync to a
+// future step). Either way, this must never block Create — it preserves
+// the existing manual fallback path (building the Access Attachment by
+// hand in the Network workspace) for every Device Palladium does not yet
+// have a known network position for. Any other error is propagated as-
+// is rather than swallowed, the same reasoning ensureNoActiveAssignment
+// and hasActiveCustomerAttachment give for their own, symmetric checks.
+func (s *ServiceEquipmentService) syncAccessAttachment(ctx context.Context, e serviceequipment.ServiceEquipment) error {
+	auth, err := s.onuAuthorizations.GetActiveByDeviceID(ctx, e.DeviceID)
+	if err != nil {
+		if apperror.Is(err, apperror.KindNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	iface, err := s.accessInterfaces.GetByOLTIDAndName(ctx, auth.OLTID, auth.Interface)
+	if err != nil {
+		if apperror.Is(err, apperror.KindNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	_, err = s.accessAttachments.Create(ctx, accessattachment.AccessAttachment{
+		AccessInterfaceID:  iface.ID,
+		ServiceEquipmentID: e.ID,
+	})
 	return err
 }
 

@@ -31,6 +31,9 @@ func (stubAccessInterfaceRepository) Update(_ context.Context, a accessinterface
 	return a, nil
 }
 func (stubAccessInterfaceRepository) Delete(context.Context, uuid.UUID) error { return nil }
+func (stubAccessInterfaceRepository) GetByOLTIDAndName(context.Context, uuid.UUID, string) (accessinterface.AccessInterface, error) {
+	return accessinterface.AccessInterface{}, nil
+}
 
 var _ accessinterface.AccessInterfaceRepository = (*stubAccessInterfaceRepository)(nil)
 

@@ -757,10 +757,11 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
 
       <div v-if="serviceProvisionWarning" class="service-provision-warning" role="alert">
         <p>
-          The service was created, but could not be applied to the device: "{{ serviceProvisionWarning }}". This
-          most often means the device has no access attachment recorded yet (which OLT interface it is physically
-          plugged into) -- set that up on the Network workspace, then open the service below to try provisioning
-          again.
+          The service was created, but could not be applied to the device: "{{ serviceProvisionWarning }}". If the
+          device was never authorized through Palladium (so it has no recorded Access Attachment -- which OLT
+          interface it is physically plugged into), set that up on the Network workspace first. Otherwise this is
+          usually an OLT-side configuration problem (e.g. a missing service profile) -- open the service below to
+          try provisioning again once that is resolved.
         </p>
         <BaseButton variant="ghost" size="sm" @click="serviceProvisionWarning = null">Dismiss</BaseButton>
       </div>

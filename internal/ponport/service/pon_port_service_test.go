@@ -76,6 +76,15 @@ func (f *fakePONPortRepository) Delete(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (f *fakePONPortRepository) GetByOLTIDAndPortNumber(_ context.Context, oltID uuid.UUID, portNumber int) (ponport.PONPort, error) {
+	for _, p := range f.byID {
+		if p.OLTID == oltID && p.PortNumber == portNumber {
+			return p, nil
+		}
+	}
+	return ponport.PONPort{}, apperror.NotFound("pon port not found")
+}
+
 var _ ponport.PONPortRepository = (*fakePONPortRepository)(nil)
 
 func validPONPort() ponport.PONPort {

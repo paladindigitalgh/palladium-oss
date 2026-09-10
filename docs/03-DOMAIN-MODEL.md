@@ -2,7 +2,7 @@
 document: 03-DOMAIN-MODEL
 status: Draft
 title: Domain Model
-version: 1.4-draft
+version: 1.5-draft
 ---
 
 # Domain Model
@@ -284,6 +284,40 @@ record is the fallback: a lean, OLT-scoped record of exactly which
 interface a Device was authorized on, written the moment authorization
 succeeds and consulted only when no Service Equipment record exists to
 answer the question instead.
+
+Since 2026-09-10, creating a Service Equipment record also auto-syncs an
+Access Attachment for it, closing what was previously a manual gap: an
+operator authorizing a Device directly from an OLT's blacklist scan (the
+same flow the `OnuAuthorization` paragraph above describes) used to have
+to separately build a PON Port, Access Interface, and Access Attachment
+by hand in the Network workspace before that Device could ever be
+provisioned through a Service — real provisioning
+(`internal/accesstopology.Resolver.Locate`) has nowhere to send config
+without one. This is now two cooperating steps, split along the same
+vendor/core boundary this document's Design Philosophy (section 2)
+requires everywhere else:
+
+-   **Vendor-specific half** (`internal/provisioning/kontron/service`):
+    once `AuthorizeAndCreateDeviceService` records the `OnuAuthorization`
+    for a freshly authorized Device, it also finds-or-creates the PON
+    Port and Access Interface for the interface the OLT actually
+    assigned — parsing that Kontron-shaped interface string (e.g.
+    `xgs/1/3`) stays confined to this plugin package, never leaking into
+    a vendor-agnostic one.
+-   **Vendor-agnostic half** (`internal/serviceequipment/service`):
+    `ServiceEquipmentService.Create`'s `syncAccessAttachment` step looks
+    up the new Service Equipment's Device by `OnuAuthorization`, then by
+    Access Interface (a plain ID/string lookup, no vendor-specific
+    parsing at all), and if both are found, creates the Access
+    Attachment linking them. Either lookup missing is a silent no-op,
+    not an error — most Devices have no `OnuAuthorization` at all, and
+    this must never block Add Service — which preserves the manual
+    Network-workspace fallback for any Device Palladium does not have a
+    known network position for (one never authorized through this
+    OLT-blacklist flow, for instance).
+
+An operator using Palladium's own "authorize this ONU" flow end-to-end
+now never has to touch the Network workspace by hand for that Device.
 
 ------------------------------------------------------------------------
 
@@ -926,6 +960,7 @@ understandable, extensible, and maintainable as it grows.
   1.2 Draft   2026-09-05   Added sections 20-24 (Product Catalog, Product, Service Profile, Provider, Provisioning Profile), documenting four real, already-implemented domains this document had never covered; corrected two stale "section 5" citations elsewhere that meant to point at Product
   1.3 Draft   2026-09-07   Added section 25 (User & Role) and a User row in section 16 (Entity Lifecycles), documenting the already-implemented `internal/auth` domain; added the corresponding section 17 invariant (Users are never deleted)
   1.4 Draft   2026-09-09   Added section 26 (Customer Device), documenting `internal/customerdevice` -- the one deliberate exception to section 4's "Customers do not directly own network equipment" rule, letting a Device be placed at a Customer's premises before any Service exists. Corrected section 6 and the section 16 Device row: Device status is a flat Unused/Active/Retired set (not the original seven-value procurement progression, which never matched Device's actual CPE-only scope), Active now derives from either a Service Equipment assignment or a Customer Device placement, and a Device is never permanently deleted (removed the corresponding stale hard-delete assumption). Added section 7 coverage of `internal/onuauthorization`'s fallback OLT-resolution role, and new section 17 invariants for Customer Device's own one-active-placement rule and its detach-blocked-while-in-service rule
+  1.5 Draft   2026-09-10   Added section 7 coverage of the new Access Attachment auto-sync: authorizing a Device via the OLT blacklist flow now also finds-or-creates its PON Port/Access Interface (`internal/provisioning/kontron/service`), and creating its Service Equipment record auto-creates the matching Access Attachment (`ServiceEquipmentService.syncAccessAttachment`) when both are on file -- closing the gap flagged in 1.4's docs-sync pass where this was manual-only
 
 ------------------------------------------------------------------------
 

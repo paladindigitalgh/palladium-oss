@@ -149,6 +149,32 @@ func (r *PONPortRepository) Delete(ctx context.Context, portID uuid.UUID) error 
 	return nil
 }
 
+// GetByOLTIDAndPortNumber returns the PONPort for oltID/portNumber, or
+// an apperror.KindNotFound error if none exists. There is no unique
+// constraint on (olt_id, port_number) in the schema — the same
+// service-layer-enforced-uniqueness convention this codebase uses
+// throughout (see e.g. database/migrations/00014_serviceequipment_service_equipment.sql's
+// own comment on the identical choice) — so this returns whichever
+// matching row Postgres finds first if more than one somehow exists.
+func (r *PONPortRepository) GetByOLTIDAndPortNumber(ctx context.Context, oltID uuid.UUID, portNumber int) (ponport.PONPort, error) {
+	const query = `
+		SELECT id, olt_id, port_number, description, created_at, updated_at
+		FROM pon_ports
+		WHERE olt_id = $1 AND port_number = $2
+		LIMIT 1
+	`
+
+	p, err := scanPONPort(r.db.QueryRow(ctx, query, oltID, portNumber))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ponport.PONPort{}, apperror.NotFound(
+				fmt.Sprintf("no pon port %d on olt %s", portNumber, oltID))
+		}
+		return ponport.PONPort{}, translateError("get pon port by olt and port number", err)
+	}
+	return p, nil
+}
+
 func ponPortNotFound(id uuid.UUID) error {
 	return apperror.NotFound(fmt.Sprintf("pon port %s not found", id))
 }

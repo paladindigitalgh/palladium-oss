@@ -28,6 +28,9 @@ func (stubPONPortRepository) Update(_ context.Context, p ponport.PONPort) (ponpo
 	return p, nil
 }
 func (stubPONPortRepository) Delete(context.Context, uuid.UUID) error { return nil }
+func (stubPONPortRepository) GetByOLTIDAndPortNumber(context.Context, uuid.UUID, int) (ponport.PONPort, error) {
+	return ponport.PONPort{}, nil
+}
 
 var _ ponport.PONPortRepository = (*stubPONPortRepository)(nil)
 

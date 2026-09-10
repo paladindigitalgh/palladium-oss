@@ -166,6 +166,10 @@ func (f *fakePONPortRepository) Update(context.Context, ponport.PONPort) (ponpor
 	panic("not used by OLTService")
 }
 
+func (f *fakePONPortRepository) GetByOLTIDAndPortNumber(context.Context, uuid.UUID, int) (ponport.PONPort, error) {
+	panic("not used by OLTService")
+}
+
 // Delete removes id from created, simulating a real delete, unless id
 // matches failDeleteID — simulating the RESTRICT conflict a PON port
 // with a real AccessInterface attached would return.

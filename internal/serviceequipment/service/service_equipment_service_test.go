@@ -7,8 +7,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/accessattachment"
+	"github.com/paladindigitalgh/palladium-oss/internal/accessinterface"
 	"github.com/paladindigitalgh/palladium-oss/internal/customerdevice"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
+	"github.com/paladindigitalgh/palladium-oss/internal/onuauthorization"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/service"
@@ -32,6 +35,70 @@ func (f *fakeCustomerDeviceGetter) GetActiveByDeviceID(_ context.Context, device
 		return customerdevice.CustomerDevice{}, apperror.NotFound("no active customer device attachment for device")
 	}
 	return cd, nil
+}
+
+// fakeOnuAuthorizationGetter is an in-memory activeOnuAuthorizationGetter.
+// Defaults to "no active authorization" for any deviceID not explicitly
+// seeded, the common case for most tests in this file, which are not
+// about the syncAccessAttachment interaction at all — mirroring
+// fakeCustomerDeviceGetter's own default above.
+type fakeOnuAuthorizationGetter struct {
+	activeByDeviceID map[uuid.UUID]onuauthorization.OnuAuthorization
+}
+
+func newFakeOnuAuthorizationGetter() *fakeOnuAuthorizationGetter {
+	return &fakeOnuAuthorizationGetter{activeByDeviceID: make(map[uuid.UUID]onuauthorization.OnuAuthorization)}
+}
+
+func (f *fakeOnuAuthorizationGetter) GetActiveByDeviceID(_ context.Context, deviceID uuid.UUID) (onuauthorization.OnuAuthorization, error) {
+	auth, ok := f.activeByDeviceID[deviceID]
+	if !ok {
+		return onuauthorization.OnuAuthorization{}, apperror.NotFound("no active onu authorization for device")
+	}
+	return auth, nil
+}
+
+// fakeAccessInterfaceGetter is an in-memory accessInterfaceGetter.
+// Defaults to "no matching interface" for any oltID/name pair not
+// explicitly seeded, mirroring fakeOnuAuthorizationGetter's own default
+// above.
+type fakeAccessInterfaceGetter struct {
+	byName map[string]accessinterface.AccessInterface
+}
+
+func newFakeAccessInterfaceGetter() *fakeAccessInterfaceGetter {
+	return &fakeAccessInterfaceGetter{byName: make(map[string]accessinterface.AccessInterface)}
+}
+
+func (f *fakeAccessInterfaceGetter) GetByOLTIDAndName(_ context.Context, _ uuid.UUID, name string) (accessinterface.AccessInterface, error) {
+	a, ok := f.byName[name]
+	if !ok {
+		return accessinterface.AccessInterface{}, apperror.NotFound("no access interface with that name")
+	}
+	return a, nil
+}
+
+// fakeAccessAttachmentCreator is an in-memory accessAttachmentCreator. It
+// tracks whether Create was actually invoked, which is what lets
+// TestServiceEquipmentServiceCreateSyncsAccessAttachment prove
+// syncAccessAttachment ran, and every other test in this file (which
+// never seeds an OnuAuthorization) prove it did not.
+type fakeAccessAttachmentCreator struct {
+	createCalled bool
+	gotCreate    accessattachment.AccessAttachment
+	err          error
+}
+
+func (f *fakeAccessAttachmentCreator) Create(_ context.Context, a accessattachment.AccessAttachment) (accessattachment.AccessAttachment, error) {
+	f.createCalled = true
+	f.gotCreate = a
+	if f.err != nil {
+		return accessattachment.AccessAttachment{}, f.err
+	}
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	return a, nil
 }
 
 // fakeDeviceStore is an in-memory deviceGetter/deviceUpdater, mirroring
@@ -182,7 +249,7 @@ func validServiceEquipment() serviceequipment.ServiceEquipment {
 func TestServiceEquipmentServiceCreateSucceeds(t *testing.T) {
 	repo := newFakeServiceEquipmentRepository()
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	created, err := svc.Create(context.Background(), validServiceEquipment())
 	if err != nil {
@@ -199,7 +266,7 @@ func TestServiceEquipmentServiceCreateSucceeds(t *testing.T) {
 func TestServiceEquipmentServiceCreateRejectsInvalidServiceEquipmentWithoutPersisting(t *testing.T) {
 	repo := newFakeServiceEquipmentRepository()
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	_, err := svc.Create(context.Background(), serviceequipment.ServiceEquipment{}) // no ServiceID, DeviceID, Role
 
@@ -221,7 +288,7 @@ func TestServiceEquipmentServiceCreateRejectsSecondActiveAssignmentForSameDevice
 	existing.DeviceID = deviceID
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	second := validServiceEquipment()
 	second.DeviceID = deviceID // same device, still active (no RemovedAt)
@@ -249,7 +316,7 @@ func TestServiceEquipmentServiceCreateAllowsHistoricalReassignment(t *testing.T)
 	historical.RemovedAt = &removedAt // no longer active
 	repo := newFakeServiceEquipmentRepository(historical)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	replacement := validServiceEquipment()
 	replacement.DeviceID = deviceID // same device, but the old assignment is history
@@ -279,7 +346,7 @@ func TestServiceEquipmentServiceCreateAllowsCreatingAlreadyHistoricalRecord(t *t
 	active.DeviceID = deviceID
 	repo := newFakeServiceEquipmentRepository(active)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	removedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	backfilled := validServiceEquipment()
@@ -296,7 +363,7 @@ func TestServiceEquipmentServiceUpdateSucceeds(t *testing.T) {
 	existing.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	toUpdate := existing
 	toUpdate.Description = "Updated description"
@@ -321,7 +388,7 @@ func TestServiceEquipmentServiceUpdateAllowsUpdatingTheActiveRecordItself(t *tes
 	existing.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	toUpdate := existing
 	toUpdate.Role = serviceequipment.EquipmentRoleRouter // still active, same DeviceID, same ID
@@ -345,7 +412,7 @@ func TestServiceEquipmentServiceUpdateRejectsReassigningDeviceWithExistingActive
 	toReassign.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(busy, toReassign)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	toReassign.DeviceID = busyDeviceID // now targets a device that's already actively assigned
 
@@ -361,7 +428,7 @@ func TestServiceEquipmentServiceUpdateRejectsInvalidServiceEquipmentWithoutPersi
 	existing.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	invalid := existing
 	invalid.Role = "" // invalid
@@ -379,7 +446,7 @@ func TestServiceEquipmentServiceUpdateRejectsInvalidServiceEquipmentWithoutPersi
 func TestServiceEquipmentServiceGetPropagatesNotFound(t *testing.T) {
 	repo := newFakeServiceEquipmentRepository()
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	_, err := svc.Get(context.Background(), uuid.New())
 
@@ -395,7 +462,7 @@ func TestServiceEquipmentServiceListDelegatesToRepository(t *testing.T) {
 	b.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(a, b)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	equipment, err := svc.List(context.Background())
 	if err != nil {
@@ -411,7 +478,7 @@ func TestServiceEquipmentServiceDeleteSucceeds(t *testing.T) {
 	existing.ID = uuid.New()
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	if err := svc.Delete(context.Background(), existing.ID); err != nil {
 		t.Fatalf("Delete() = %v", err)
@@ -437,7 +504,7 @@ func TestServiceEquipmentServiceDeleteMarksDeviceUnused(t *testing.T) {
 	existing.DeviceID = deviceID
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	if err := svc.Delete(context.Background(), existing.ID); err != nil {
 		t.Fatalf("Delete() = %v", err)
@@ -463,7 +530,7 @@ func TestServiceEquipmentServiceDeleteOfAlreadyRemovedRecordDoesNotTouchDevice(t
 	existing.RemovedAt = &removedAt
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	if err := svc.Delete(context.Background(), existing.ID); err != nil {
 		t.Fatalf("Delete() = %v", err)
@@ -476,7 +543,7 @@ func TestServiceEquipmentServiceDeleteOfAlreadyRemovedRecordDoesNotTouchDevice(t
 func TestServiceEquipmentServiceDeletePropagatesNotFound(t *testing.T) {
 	repo := newFakeServiceEquipmentRepository()
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	err := svc.Delete(context.Background(), uuid.New())
 
@@ -492,7 +559,7 @@ func TestServiceEquipmentServiceCreateMarksDeviceActive(t *testing.T) {
 	deviceID := uuid.New()
 	repo := newFakeServiceEquipmentRepository()
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusUnused})
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	e := validServiceEquipment()
 	e.DeviceID = deviceID
@@ -508,6 +575,101 @@ func TestServiceEquipmentServiceCreateMarksDeviceActive(t *testing.T) {
 	}
 }
 
+// TestServiceEquipmentServiceCreateSyncsAccessAttachment proves
+// syncAccessAttachment's happy path: a Device with a known
+// OnuAuthorization whose OLT/interface already has a matching
+// AccessInterface on file gets an AccessAttachment created
+// automatically, with no operator ever building it by hand in the
+// Network workspace.
+func TestServiceEquipmentServiceCreateSyncsAccessAttachment(t *testing.T) {
+	deviceID := uuid.New()
+	oltID := uuid.New()
+	ifaceID := uuid.New()
+	repo := newFakeServiceEquipmentRepository()
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusUnused})
+
+	onuAuthorizations := newFakeOnuAuthorizationGetter()
+	onuAuthorizations.activeByDeviceID[deviceID] = onuauthorization.OnuAuthorization{
+		DeviceID: deviceID, OLTID: oltID, Interface: "xgs/1/1",
+	}
+	accessInterfaces := newFakeAccessInterfaceGetter()
+	accessInterfaces.byName["xgs/1/1"] = accessinterface.AccessInterface{ID: ifaceID, Name: "xgs/1/1"}
+	attachments := &fakeAccessAttachmentCreator{}
+
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), onuAuthorizations, accessInterfaces, attachments)
+
+	e := validServiceEquipment()
+	e.DeviceID = deviceID
+
+	created, err := svc.Create(context.Background(), e)
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if !attachments.createCalled {
+		t.Fatal("AccessAttachment Create was never called")
+	}
+	if attachments.gotCreate.AccessInterfaceID != ifaceID {
+		t.Errorf("AccessAttachment.AccessInterfaceID = %v, want %v", attachments.gotCreate.AccessInterfaceID, ifaceID)
+	}
+	if attachments.gotCreate.ServiceEquipmentID != created.ID {
+		t.Errorf("AccessAttachment.ServiceEquipmentID = %v, want %v", attachments.gotCreate.ServiceEquipmentID, created.ID)
+	}
+}
+
+// TestServiceEquipmentServiceCreateSkipsAccessAttachmentWithoutOnuAuthorization
+// proves syncAccessAttachment's no-op path: a Device with no
+// OnuAuthorization on file (the common case — most Devices were never
+// authorized directly on an OLT) must not block Create, and must never
+// call AccessAttachment Create at all.
+func TestServiceEquipmentServiceCreateSkipsAccessAttachmentWithoutOnuAuthorization(t *testing.T) {
+	deviceID := uuid.New()
+	repo := newFakeServiceEquipmentRepository()
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusUnused})
+	attachments := &fakeAccessAttachmentCreator{}
+
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), attachments)
+
+	e := validServiceEquipment()
+	e.DeviceID = deviceID
+
+	if _, err := svc.Create(context.Background(), e); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if attachments.createCalled {
+		t.Error("AccessAttachment Create was called despite no OnuAuthorization existing for this device")
+	}
+}
+
+// TestServiceEquipmentServiceCreateSkipsAccessAttachmentWithoutMatchingAccessInterface
+// proves syncAccessAttachment's other no-op path: a Device with an
+// OnuAuthorization but no matching AccessInterface on file (e.g. the
+// plugin that authorized it predates this feature) must not block
+// Create either — this is exactly the manual-fallback case an operator
+// can still resolve by hand in the Network workspace.
+func TestServiceEquipmentServiceCreateSkipsAccessAttachmentWithoutMatchingAccessInterface(t *testing.T) {
+	deviceID := uuid.New()
+	repo := newFakeServiceEquipmentRepository()
+	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusUnused})
+
+	onuAuthorizations := newFakeOnuAuthorizationGetter()
+	onuAuthorizations.activeByDeviceID[deviceID] = onuauthorization.OnuAuthorization{
+		DeviceID: deviceID, OLTID: uuid.New(), Interface: "xgs/1/1",
+	}
+	attachments := &fakeAccessAttachmentCreator{}
+
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), onuAuthorizations, newFakeAccessInterfaceGetter(), attachments)
+
+	e := validServiceEquipment()
+	e.DeviceID = deviceID
+
+	if _, err := svc.Create(context.Background(), e); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if attachments.createCalled {
+		t.Error("AccessAttachment Create was called despite no matching AccessInterface existing")
+	}
+}
+
 // TestServiceEquipmentServiceCreateOfHistoricalRecordDoesNotTouchDevice
 // proves the Active side effect only fires for a record that is itself
 // active on creation — see Create's own doc comment.
@@ -515,7 +677,7 @@ func TestServiceEquipmentServiceCreateOfHistoricalRecordDoesNotTouchDevice(t *te
 	deviceID := uuid.New()
 	repo := newFakeServiceEquipmentRepository()
 	devices := newFakeDeviceStore()
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	removedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	e := validServiceEquipment()
@@ -541,7 +703,7 @@ func TestServiceEquipmentServiceUpdateMarksDeviceUnusedOnRemoval(t *testing.T) {
 	existing.DeviceID = deviceID
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	now := time.Now()
 	toRemove := existing
@@ -574,7 +736,7 @@ func TestServiceEquipmentServiceUpdateOfAlreadyRemovedRecordDoesNotTouchDevice(t
 	existing.RemovedAt = &removedAt
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	toUpdate := existing
 	toUpdate.Description = "editing history, not removing anything new"
@@ -599,7 +761,7 @@ func TestServiceEquipmentServiceMarkDeviceUnusedNeverUnretires(t *testing.T) {
 	existing.DeviceID = deviceID
 	repo := newFakeServiceEquipmentRepository(existing)
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusRetired})
-	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter())
+	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	now := time.Now()
 	toRemove := existing
@@ -632,7 +794,7 @@ func TestServiceEquipmentServiceMarkDeviceUnusedStaysActiveWhileAttachedToCustom
 		ID: uuid.New(), CustomerID: uuid.New(), DeviceID: deviceID,
 	}
 
-	svc := service.NewServiceEquipmentService(repo, devices, devices, customerDevices)
+	svc := service.NewServiceEquipmentService(repo, devices, devices, customerDevices, newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{})
 
 	now := time.Now()
 	toRemove := existing
