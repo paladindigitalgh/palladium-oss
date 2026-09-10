@@ -160,6 +160,20 @@ func (s *OLTService) Update(ctx context.Context, o olt.OLT) (olt.OLT, error) {
 // so this filters client-side the same way
 // frontend/src/services/ponPorts/ponPortRepository.ts's
 // listPONPortsByOLTId already does.
+//
+// A second, unrelated RESTRICT can also reject the final s.olts.Delete
+// call even when this OLT has no PON ports at all:
+// onu_authorizations.olt_id (database/migrations/00037_onuauthorization_
+// onu_authorizations.sql), added after this cascade was written. Unlike
+// PON ports, OnuAuthorization rows are audit history (see
+// onuauthorization.Repository's doc comment on why that package
+// deliberately exposes no List/Delete) — this method does not, and
+// should not, try to clear them, so an OLT that ever had a device
+// authorized on it stays undeletable by design until an operator
+// resolves that history directly. The error this produces is a generic
+// "violates a foreign key relationship" either way (see
+// internal/olt/postgres's translateError), so callers must not assume a
+// delete conflict on an OLT always means PON ports.
 func (s *OLTService) Delete(ctx context.Context, id uuid.UUID) error {
 	ports, err := s.ponPorts.List(ctx)
 	if err != nil {

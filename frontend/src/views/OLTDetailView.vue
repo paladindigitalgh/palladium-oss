@@ -185,10 +185,13 @@ async function confirmDeleteOLT() {
     await deleteOLT(olt.value.id)
     router.push(accessNetwork.value ? `/network/${accessNetwork.value.id}` : '/network')
   } catch (err) {
-    deleteError.value =
-      err instanceof ApiError && err.kind === 'conflict'
-        ? 'This OLT still has PON ports attached — remove those first.'
-        : 'The OLT could not be deleted.'
+    // A conflict here can come from more than one foreign key (PON ports
+    // still attached, or ONU authorization history still pointing at
+    // this OLT — see OLTService.Delete's doc comment), so show the
+    // backend's own message rather than guessing which one it was, the
+    // same way ServiceDetailView/CustomerDetailView already do for their
+    // own delete conflicts.
+    deleteError.value = err instanceof ApiError && err.kind === 'conflict' ? err.message : 'The OLT could not be deleted.'
   } finally {
     deletePending.value = false
   }

@@ -147,8 +147,10 @@ func (r *OLTRepository) Update(ctx context.Context, o olt.OLT) (olt.OLT, error) 
 
 // Delete removes the OLT identified by id, or returns an
 // apperror.KindNotFound error if it does not exist. If any PONPort still
-// references this OLT, the foreign key's ON DELETE RESTRICT rejects the
-// delete and this returns an apperror.KindConflict error instead.
+// references this OLT — or any OnuAuthorization history row still does,
+// see OLTService.Delete's doc comment — the relevant foreign key's ON
+// DELETE RESTRICT rejects the delete and this returns an
+// apperror.KindConflict error instead.
 func (r *OLTRepository) Delete(ctx context.Context, oltID uuid.UUID) error {
 	const query = `DELETE FROM olts WHERE id = $1`
 
