@@ -350,3 +350,15 @@ func (m *Middleware) RequireEventRead() func(http.Handler) http.Handler {
 func (m *Middleware) RequireProvisioning() func(http.Handler) http.Handler {
 	return m.Require(CanRunProvisioning)
 }
+
+// RequireNoteRead returns middleware allowing any Role that CanReadNotes
+// (Administrator, Operator, Viewer). Applied to GET /notes.
+func (m *Middleware) RequireNoteRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadNotes)
+}
+
+// RequireNoteWrite returns middleware allowing any Role that
+// CanWriteNotes (Administrator, Operator). Applied to POST /notes.
+func (m *Middleware) RequireNoteWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteNotes)
+}

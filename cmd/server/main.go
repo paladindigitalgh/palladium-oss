@@ -71,6 +71,9 @@ import (
 	locationpostgres "github.com/paladindigitalgh/palladium-oss/internal/location/postgres"
 	locationservice "github.com/paladindigitalgh/palladium-oss/internal/location/service"
 	logging "github.com/paladindigitalgh/palladium-oss/internal/log"
+	notehttpapi "github.com/paladindigitalgh/palladium-oss/internal/note/httpapi"
+	notepostgres "github.com/paladindigitalgh/palladium-oss/internal/note/postgres"
+	noteservice "github.com/paladindigitalgh/palladium-oss/internal/note/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/olt/connect"
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
 	oltpostgres "github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
@@ -342,6 +345,14 @@ func run() error {
 	// repository is wired directly to the handler.
 	eventRepo := eventpostgres.NewEventRepository(pool, clock.New(), id.New())
 	eventHandler := eventhttpapi.NewEventHandler(eventRepo)
+
+	// Note, unlike Event, gets a real service layer: Create validates a
+	// client-submitted body (see internal/note/service), the same
+	// reasoning every other client-writable domain in this file gets one
+	// and Event does not.
+	noteRepo := notepostgres.NewNoteRepository(pool, clock.New(), id.New())
+	noteSvc := noteservice.NewNoteService(noteRepo)
+	noteHandler := notehttpapi.NewNoteHandler(noteSvc)
 
 	// pluginRegistry is built and populated with every available plugin
 	// once, at startup — the same "every Register call happens before
@@ -669,6 +680,7 @@ func run() error {
 		CustomerDeviceHandler:                              customerDeviceHandler,
 		WorkflowHandler:                                    workflowHandler,
 		EventHandler:                                       eventHandler,
+		NoteHandler:                                        noteHandler,
 		AccessNetworkHandler:                               accessNetworkHandler,
 		OLTHandler:                                         oltHandler,
 		OLTModelHandler:                                    oltModelHandler,

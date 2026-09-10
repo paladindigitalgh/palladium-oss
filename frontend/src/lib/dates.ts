@@ -8,3 +8,19 @@
 export function formatDisplayDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+/**
+ * Formats a timestamp for display where the time of day matters, not
+ * just the date -- e.g. a Note's "who submitted it and when" (see
+ * NotesSection.vue), where several notes can land on the same day and an
+ * operator needs to tell them apart.
+ */
+export function formatDisplayDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}

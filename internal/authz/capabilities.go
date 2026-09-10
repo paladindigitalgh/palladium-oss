@@ -705,3 +705,31 @@ func CanReadEvents(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadNotes reports whether role may read Note data — the operator-
+// authored commentary attached to a Customer, Device, or Service (see
+// internal/note). All three built-in roles can, the same "everyone can
+// read" rule every other domain's capability pair gives its read side.
+func CanReadNotes(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteNotes reports whether role may create a Note. Administrator and
+// Operator can; Viewer cannot — unlike CanReadEvents's Event, which has
+// no write capability at all because nothing ever writes one through a
+// public route, a Note is always written by a client (see
+// internal/note/httpapi's package doc comment), so it needs the same
+// Read/Write pair every other client-writable domain gets.
+func CanWriteNotes(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator:
+		return true
+	default:
+		return false
+	}
+}

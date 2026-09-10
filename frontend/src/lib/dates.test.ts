@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatDisplayDate } from './dates'
+import { formatDisplayDate, formatDisplayDateTime } from './dates'
 
 /**
  * Regression coverage for a real bug found while building the Dashboard:
@@ -25,5 +25,28 @@ describe('formatDisplayDate', () => {
 
   it('never produces "Invalid Date" for a real backend timestamp', () => {
     expect(formatDisplayDate('2026-09-03T10:53:06.10142-06:00')).not.toMatch(/Invalid/)
+  })
+})
+
+/**
+ * Unlike formatDisplayDate's exact-string assertions above, these don't
+ * assert a full exact string: the hour/minute portion shifts with the
+ * test runner's local timezone (only the calendar date reliably doesn't,
+ * for timestamps chosen well clear of local midnight), so these check
+ * structure -- the date portion is present, a time-of-day portion is
+ * present, and it's never "Invalid Date" -- rather than one locale-exact
+ * render.
+ */
+describe('formatDisplayDateTime', () => {
+  it('includes the formatted date', () => {
+    expect(formatDisplayDateTime('2026-09-03T10:53:06.10142-06:00')).toContain('Sep 3, 2026')
+  })
+
+  it('includes a time-of-day component', () => {
+    expect(formatDisplayDateTime('2026-01-15T12:00:00Z')).toMatch(/\d{1,2}:\d{2}\s*(AM|PM)/i)
+  })
+
+  it('never produces "Invalid Date" for a real backend timestamp', () => {
+    expect(formatDisplayDateTime('2026-09-03T10:53:06.10142-06:00')).not.toMatch(/Invalid/)
   })
 })

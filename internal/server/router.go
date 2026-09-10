@@ -33,6 +33,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	locationhttpapi "github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
+	notehttpapi "github.com/paladindigitalgh/palladium-oss/internal/note/httpapi"
 	olthttpapi "github.com/paladindigitalgh/palladium-oss/internal/olt/httpapi"
 	oltmodelhttpapi "github.com/paladindigitalgh/palladium-oss/internal/oltmodel/httpapi"
 	ponporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/ponport/httpapi"
@@ -78,6 +79,7 @@ type Dependencies struct {
 	CustomerDeviceHandler                              *customerdevicehttpapi.CustomerDeviceHandler
 	WorkflowHandler                                    *workflowhttpapi.WorkflowHandler
 	EventHandler                                       *eventhttpapi.EventHandler
+	NoteHandler                                        *notehttpapi.NoteHandler
 	AccessNetworkHandler                               *accessnetworkhttpapi.AccessNetworkHandler
 	OLTHandler                                         *olthttpapi.OLTHandler
 	OLTModelHandler                                    *oltmodelhttpapi.OLTModelHandler
@@ -270,6 +272,7 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Use(deps.Authz.RequireInventoryWrite())
 				r.Post("/", deps.DeviceManufacturerHandler.Create)
 				r.Put("/{id}", deps.DeviceManufacturerHandler.Update)
+				r.Put("/{id}/default", deps.DeviceManufacturerHandler.SetDefault)
 				r.Delete("/{id}", deps.DeviceManufacturerHandler.Delete)
 			})
 		})
@@ -287,6 +290,7 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Use(deps.Authz.RequireInventoryWrite())
 				r.Post("/", deps.DeviceModelHandler.Create)
 				r.Put("/{id}", deps.DeviceModelHandler.Update)
+				r.Put("/{id}/default", deps.DeviceModelHandler.SetDefault)
 				r.Delete("/{id}", deps.DeviceModelHandler.Delete)
 			})
 		})
@@ -825,6 +829,28 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Use(deps.Authz.RequireEventRead())
 			r.Get("/", deps.EventHandler.List)
 			r.Get("/recent", deps.EventHandler.ListRecent)
+		})
+
+		// /notes is the client-writable counterpart to /events above:
+		// operator-authored commentary attached to a Customer, Device, or
+		// Service, with its own dedicated capability pair
+		// (RequireNoteRead/RequireNoteWrite) rather than reusing any of
+		// theirs -- the same reasoning /contacts's own comment gives for
+		// not reusing Location's or Customer's. There is deliberately no
+		// Update, Get, or Delete route: see internal/note/httpapi's
+		// package doc comment.
+		r.Route("/notes", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireNoteRead())
+				r.Get("/", deps.NoteHandler.List)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(deps.Authz.RequireNoteWrite())
+				r.Post("/", deps.NoteHandler.Create)
+			})
 		})
 
 		// /authentication-methods gets its own dedicated capability pair
