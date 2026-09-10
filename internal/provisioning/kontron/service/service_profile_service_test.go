@@ -87,7 +87,7 @@ var kontronOLTModel = oltmodel.OLTModel{ID: uuid.New(), Vendor: oltmodel.VendorK
 func TestServiceProfileServiceApplySucceedsAndClosesShell(t *testing.T) {
 	productID := uuid.New()
 	oltID := uuid.New()
-	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU, UNIPort: 1}
 	svc := service.Service{ID: uuid.New(), ProductID: productID}
 
 	shell := &fakeShell{outputs: map[string]string{}}
@@ -116,7 +116,7 @@ func TestServiceProfileServiceApplySucceedsAndClosesShell(t *testing.T) {
 		t.Errorf("dialer.gotOLTID = %v, want %v", dialer.gotOLTID, oltID)
 	}
 
-	want := []string{"configure", "interface xgs/6/3", "service-profile residential-500", "exit", "exit", "save config"}
+	want := []string{"configure", "interface xgs/6/3", "service-profile residential-500 uni 1", "exit", "exit", "save config"}
 	if len(shell.calls) != len(want) {
 		t.Fatalf("calls = %v, want %v", shell.calls, want)
 	}
@@ -161,7 +161,7 @@ func TestServiceProfileServiceApplyIsNoOpForNonPONRoles(t *testing.T) {
 }
 
 func TestServiceProfileServiceApplyErrorsForNonKontronOLT(t *testing.T) {
-	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU, UNIPort: 1}
 	nokiaModel := oltmodel.OLTModel{ID: uuid.New(), Vendor: oltmodel.VendorNokia, Name: "ISAM"}
 
 	dialer := &fakeDialer{}
@@ -179,7 +179,7 @@ func TestServiceProfileServiceApplyErrorsForNonKontronOLT(t *testing.T) {
 
 func TestServiceProfileServiceApplyErrorsWhenNoProfileMatches(t *testing.T) {
 	productID := uuid.New()
-	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU, UNIPort: 1}
 	svc := service.Service{ProductID: productID}
 
 	dialer := &fakeDialer{}
@@ -199,7 +199,7 @@ func TestServiceProfileServiceApplyErrorsWhenNoProfileMatches(t *testing.T) {
 
 func TestServiceProfileServiceApplyErrorsWhenMultipleProfilesMatch(t *testing.T) {
 	productID := uuid.New()
-	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU, UNIPort: 1}
 	svc := service.Service{ProductID: productID}
 
 	dialer := &fakeDialer{}
@@ -219,7 +219,7 @@ func TestServiceProfileServiceApplyErrorsWhenMultipleProfilesMatch(t *testing.T)
 }
 
 func TestServiceProfileServiceApplyPropagatesLocateNotFound(t *testing.T) {
-	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU, UNIPort: 1}
 
 	dialer := &fakeDialer{}
 	locator := &fakeLocator{err: apperror.NotFound("no active attachment")}
@@ -236,7 +236,7 @@ func TestServiceProfileServiceApplyPropagatesLocateNotFound(t *testing.T) {
 
 func TestServiceProfileServiceApplyPropagatesDialFailureAsUnavailable(t *testing.T) {
 	productID := uuid.New()
-	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU, UNIPort: 1}
 	svc := service.Service{ProductID: productID}
 
 	dialer := &fakeDialer{err: errors.New("connection refused")}
@@ -261,7 +261,7 @@ func TestServiceProfileServiceApplyPropagatesDialFailureAsUnavailable(t *testing
 func TestServiceProfileServiceRemoveSucceedsAndRunsRemovalCommand(t *testing.T) {
 	productID := uuid.New()
 	oltID := uuid.New()
-	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU, UNIPort: 1}
 	svc := service.Service{ID: uuid.New(), ProductID: productID}
 
 	shell := &fakeShell{outputs: map[string]string{}}
@@ -323,7 +323,7 @@ func TestServiceProfileServiceRemoveIsNoOpForNonPONRoles(t *testing.T) {
 // not a full re-test of every error path (see the Apply-specific tests
 // above for those), just confirmation the sharing actually happened.
 func TestServiceProfileServiceRemoveErrorsForNonKontronOLT(t *testing.T) {
-	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
+	equipment := serviceequipment.ServiceEquipment{ID: uuid.New(), Role: serviceequipment.EquipmentRoleONU, UNIPort: 1}
 	nokiaModel := oltmodel.OLTModel{ID: uuid.New(), Vendor: oltmodel.VendorNokia, Name: "ISAM"}
 
 	dialer := &fakeDialer{}

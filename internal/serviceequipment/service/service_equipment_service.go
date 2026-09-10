@@ -91,6 +91,22 @@ type accessAttachmentCreator interface {
 	Create(ctx context.Context, a accessattachment.AccessAttachment) (accessattachment.AccessAttachment, error)
 }
 
+// accessAttachmentRemover is the seam ServiceEquipmentService depends on
+// instead of the full accessattachment.AccessAttachmentRepository — used
+// only by Delete, to close the gap a live OLT test surfaced this
+// session: access_attachments.service_equipment_id references
+// service_equipment(id) ON DELETE RESTRICT, so a ServiceEquipment with
+// an active AccessAttachment could never actually be hard-deleted
+// without an operator first finding and detaching that attachment by
+// hand on the Network workspace — including one syncAccessAttachment
+// (see this package's own doc comment) had just auto-created moments
+// earlier, which a caller rolling back a failed Add Service has no way
+// to know exists, let alone go find. Delete now closes that loop itself.
+type accessAttachmentRemover interface {
+	GetActiveByServiceEquipmentID(ctx context.Context, serviceEquipmentID uuid.UUID) (accessattachment.AccessAttachment, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
 // ServiceEquipmentService is the Service Equipment domain's business
 // logic.
 //
@@ -115,13 +131,14 @@ type accessAttachmentCreator interface {
 // sits, leaving real provisioning with nowhere to send its config short
 // of an operator building the Access Network topology by hand.
 type ServiceEquipmentService struct {
-	equipment         serviceequipment.ServiceEquipmentRepository
-	devices           deviceGetter
-	devicesSvc        deviceUpdater
-	customerDevices   activeCustomerDeviceGetter
-	onuAuthorizations activeOnuAuthorizationGetter
-	accessInterfaces  accessInterfaceGetter
-	accessAttachments accessAttachmentCreator
+	equipment                serviceequipment.ServiceEquipmentRepository
+	devices                  deviceGetter
+	devicesSvc               deviceUpdater
+	customerDevices          activeCustomerDeviceGetter
+	onuAuthorizations        activeOnuAuthorizationGetter
+	accessInterfaces         accessInterfaceGetter
+	accessAttachments        accessAttachmentCreator
+	accessAttachmentsRemover accessAttachmentRemover
 }
 
 // NewServiceEquipmentService builds a ServiceEquipmentService.
@@ -133,15 +150,17 @@ func NewServiceEquipmentService(
 	onuAuthorizations activeOnuAuthorizationGetter,
 	accessInterfaces accessInterfaceGetter,
 	accessAttachments accessAttachmentCreator,
+	accessAttachmentsRemover accessAttachmentRemover,
 ) *ServiceEquipmentService {
 	return &ServiceEquipmentService{
-		equipment:         equipment,
-		devices:           devices,
-		devicesSvc:        devicesSvc,
-		customerDevices:   customerDevices,
-		onuAuthorizations: onuAuthorizations,
-		accessInterfaces:  accessInterfaces,
-		accessAttachments: accessAttachments,
+		equipment:                equipment,
+		devices:                  devices,
+		devicesSvc:               devicesSvc,
+		customerDevices:          customerDevices,
+		onuAuthorizations:        onuAuthorizations,
+		accessInterfaces:         accessInterfaces,
+		accessAttachments:        accessAttachments,
+		accessAttachmentsRemover: accessAttachmentsRemover,
 	}
 }
 
@@ -269,9 +288,29 @@ func (s *ServiceEquipmentService) Update(ctx context.Context, e serviceequipment
 // on the same limitation), so if markDeviceUnused fails after the
 // ServiceEquipment row has already been deleted, Delete returns that
 // error, but the row is already gone.
+//
+// An active AccessAttachment is hard-deleted first, before id itself
+// (access_attachments.service_equipment_id references service_equipment
+// ON DELETE RESTRICT, so this record could otherwise never be deleted
+// while one still referenced it). This closes a real gap a live OLT
+// test surfaced this session: an operator rolling back a just-failed Add
+// Service has no way to know syncAccessAttachment (see
+// ServiceEquipmentService.Create's own doc comment) already auto-created
+// one moments earlier, let alone go detach it by hand first -- Delete
+// now does that itself, the same way it already handles the Device-
+// status side effect.
 func (s *ServiceEquipmentService) Delete(ctx context.Context, id uuid.UUID) error {
 	existing, err := s.equipment.Get(ctx, id)
 	if err != nil {
+		return err
+	}
+
+	attachment, err := s.accessAttachmentsRemover.GetActiveByServiceEquipmentID(ctx, id)
+	if err != nil {
+		if !apperror.Is(err, apperror.KindNotFound) {
+			return err
+		}
+	} else if err := s.accessAttachmentsRemover.Delete(ctx, attachment.ID); err != nil {
 		return err
 	}
 

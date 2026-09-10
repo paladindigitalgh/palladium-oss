@@ -21,25 +21,42 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
+	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 )
+
+// activeEquipmentLister is the seam ServiceService depends on instead of
+// the full serviceequipment.ServiceEquipmentRepository — used only by
+// Delete, to give a clear, specific error when a Service still has
+// equipment attached, rather than surfacing the database's own generic
+// foreign-key-violation message (see internal/service/postgres/errors.go's
+// translateError). serviceequipment.ServiceEquipmentRepository and
+// *serviceequipmentservice.ServiceEquipmentService both already satisfy
+// this exactly.
+type activeEquipmentLister interface {
+	ListActiveByServiceID(ctx context.Context, serviceID uuid.UUID) ([]serviceequipment.ServiceEquipment, error)
+}
 
 // ServiceService is the Service domain's business logic.
 //
-// It depends only on domainservice.ServiceRepository — not clock.Clock,
-// for the same reason internal/location/service.LocationService does
-// not: timestamps are already the repository's responsibility, and this
-// service has no business rule that needs to reason about "now".
+// It depends on domainservice.ServiceRepository and, for Delete's two
+// preconditions (see that method's own doc comment), activeEquipmentLister
+// — not clock.Clock, for the same reason internal/location/service.LocationService
+// does not: timestamps are already the repository's responsibility, and
+// this service has no business rule that needs to reason about "now".
 type ServiceService struct {
-	services domainservice.ServiceRepository
+	services  domainservice.ServiceRepository
+	equipment activeEquipmentLister
 }
 
 // NewServiceService builds a ServiceService.
-func NewServiceService(services domainservice.ServiceRepository) *ServiceService {
-	return &ServiceService{services: services}
+func NewServiceService(services domainservice.ServiceRepository, equipment activeEquipmentLister) *ServiceService {
+	return &ServiceService{services: services, equipment: equipment}
 }
 
 // Get retrieves a Service by ID.
@@ -77,6 +94,49 @@ func (s *ServiceService) Update(ctx context.Context, svc domainservice.Service) 
 }
 
 // Delete removes the Service identified by id.
+//
+// Delete is a hard delete for disposable records — real operational
+// history is meant to go through Suspend/Disconnect (the real Workflow-
+// driven OLT teardown, internal/provisioning/kontron/plugin) or Remove
+// Customer's cascade (internal/customer/removal.RemovalService), neither
+// of which deletes anything. Two preconditions are checked explicitly
+// here, before ever touching the repository, so the operator gets a
+// clear reason rather than a generic database error:
+//
+//   - The Service must not still imply an applied Kontron service-
+//     profile (svc.Status.HasAppliedProfile(), i.e. Active — see that
+//     method's own doc comment on why Suspended does not count too).
+//     Delete never runs the real OLT command Suspend/Disconnect/Remove
+//     Customer's cascade would — deleting an Active Service's records
+//     here would silently leave that service-profile applied on the
+//     real ONU with no Palladium record of it left to ever clean it up.
+//     This is exactly the gap a live OLT test surfaced this session: an
+//     operator using this action as a substitute for Disconnect Service
+//     left a stale service-profile behind.
+//   - The Service must have no active ServiceEquipment. The database
+//     already enforces this (service_equipment.service_id references
+//     services(id) ON DELETE RESTRICT), but checking it here first turns
+//     that into a specific "still has equipment attached" message
+//     instead of the generic foreign-key-violation one translateError
+//     would otherwise produce.
 func (s *ServiceService) Delete(ctx context.Context, id uuid.UUID) error {
+	svc, err := s.services.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if svc.Status.HasAppliedProfile() {
+		return apperror.Conflict(fmt.Sprintf(
+			"this service is still %s -- suspend or disconnect it first so its configuration is removed from the OLT before deleting the record",
+			svc.Status))
+	}
+
+	equipment, err := s.equipment.ListActiveByServiceID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if len(equipment) > 0 {
+		return apperror.Conflict("this service still has equipment attached -- remove it first")
+	}
+
 	return s.services.Delete(ctx, id)
 }

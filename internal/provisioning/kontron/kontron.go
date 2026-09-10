@@ -217,6 +217,16 @@ func (c *Client) AuthorizeONU(ctx context.Context, iface, serialNumber, manageme
 //	exit
 //	save config
 //
+// Deliberately no "uni <N>" suffix here, unlike ApplyServiceProfile,
+// confirmed live against the real Kontron/Iskratel C16 (2026-09-10): the
+// device rejects "no service-profile <profileName> uni <N>" outright
+// ("Invalid input detected at '^' marker") — removal is unqualified by
+// LAN port, unlike application. An earlier version of this method
+// accepted a uniPort argument to mirror ApplyServiceProfile's signature;
+// that was wrong and has been removed, not just unused, so a future
+// reader never assumes symmetry between apply and remove that the real
+// hardware does not have.
+//
 // This is used for both Suspend and Disconnect: at the Kontron config
 // level they are the identical action (take the named profile back
 // off), the difference between them living entirely in
@@ -263,7 +273,7 @@ func (c *Client) RemoveServiceProfile(ctx context.Context, iface, profileName st
 //
 //	configure
 //	interface <iface>
-//	service-profile <profileName>
+//	service-profile <profileName> uni <uniPort>
 //	exit
 //	exit
 //	save config
@@ -275,12 +285,19 @@ func (c *Client) RemoveServiceProfile(ctx context.Context, iface, profileName st
 // applied, in the same interface context. profileName names a
 // ProvisioningProfile.ProfileName (see internal/provisioning) — the
 // vendor-side profile a specific commercial Product maps to, not a fixed
-// literal this package owns.
+// literal this package owns. uniPort selects which of the ONU's two LAN
+// ports the profile binds to — 1 for "10GE", 2 for "1GE" — an
+// operator-chosen value at Add Service time (see
+// internal/serviceequipment.ServiceEquipment's own doc comment); this
+// package trusts it is already 1 or 2 (see
+// ServiceEquipment.Validate) rather than re-validating it here, the same
+// "validate once, at the domain boundary" convention this codebase
+// follows throughout.
 //
 // Success/failure detection follows AuthorizeONU's exact convention: the
 // first step whose output is non-empty aborts the sequence and becomes
 // the returned error.
-func (c *Client) ApplyServiceProfile(ctx context.Context, iface, profileName string) error {
+func (c *Client) ApplyServiceProfile(ctx context.Context, iface, profileName string, uniPort int) error {
 	if strings.ContainsAny(iface, "\n\r") {
 		return ErrInvalidInterface
 	}
@@ -291,7 +308,7 @@ func (c *Client) ApplyServiceProfile(ctx context.Context, iface, profileName str
 	steps := []string{
 		"configure",
 		fmt.Sprintf("interface %s", iface),
-		fmt.Sprintf("service-profile %s", profileName),
+		fmt.Sprintf("service-profile %s uni %d", profileName, uniPort),
 		"exit",
 		"exit",
 		"save config",

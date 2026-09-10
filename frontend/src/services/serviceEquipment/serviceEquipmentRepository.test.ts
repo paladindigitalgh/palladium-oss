@@ -19,6 +19,7 @@ function equipmentDto(overrides: Partial<Record<string, unknown>> = {}) {
     device_id: 'd1',
     role: 'ONU',
     description: '',
+    uni_port: 1,
     installed_at: '2026-01-01T00:00:00Z',
     removed_at: null,
     ...overrides,
@@ -52,7 +53,7 @@ describe('listServiceEquipmentByServiceId', () => {
 
     const result = await listServiceEquipmentByServiceId('s1')
 
-    expect(result).toEqual([{ id: 'se1', serviceId: 's1', deviceId: 'd1', role: 'ONU', description: '', installedAt: '2026-01-01T00:00:00Z', removedAt: null }])
+    expect(result).toEqual([{ id: 'se1', serviceId: 's1', deviceId: 'd1', role: 'ONU', description: '', uniPort: 1, installedAt: '2026-01-01T00:00:00Z', removedAt: null }])
   })
 })
 
@@ -91,6 +92,7 @@ describe('createServiceEquipment', () => {
       deviceId: 'd1',
       role: 'ONU',
       description: 'Primary ONU',
+      uniPort: 1,
     })
 
     expect(apiFetch).toHaveBeenCalledTimes(1)
@@ -102,6 +104,7 @@ describe('createServiceEquipment', () => {
       device_id: 'd1',
       role: 'ONU',
       description: 'Primary ONU',
+      uni_port: 1,
       removed_at: null,
     })
     expect(typeof options.body.installed_at).toBe('string')

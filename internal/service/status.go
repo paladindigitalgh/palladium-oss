@@ -54,6 +54,29 @@ func (s ServiceStatus) String() string {
 	return string(s)
 }
 
+// HasAppliedProfile reports whether s implies a vendor service-profile is
+// currently applied to the Service's equipment on the OLT — Active is
+// the only status ProvisionService/ResumeService ever leave a Service in
+// with a profile still on the ONU. Pending never had one applied yet,
+// and Suspended and Disconnected have both already had it removed:
+// SuspendService and DisconnectService are, at the Kontron config level,
+// the identical action (see
+// internal/provisioning/kontron.Client.RemoveServiceProfile's own doc
+// comment) — confirmed live against the real Kontron/Iskratel C16
+// (2026-09-10), where a Suspended Service's profile really was already
+// gone from the ONU. An earlier version of this method also treated
+// Suspended as still-applied; that was wrong, not just imprecise, and
+// would have made internal/customer/removal.RemovalService try to
+// remove an already-removed profile a second time, which the real
+// device rejects outright rather than treating as a harmless no-op.
+// This is the single source of truth RemovalService and
+// internal/service/service.ServiceService.Delete both use to decide
+// whether a real OLT teardown is still owed before a Service's records
+// can safely be removed.
+func (s ServiceStatus) HasAppliedProfile() bool {
+	return s == ServiceStatusActive
+}
+
 // serviceStatusNames renders the defined statuses as a comma-separated
 // list, for use in validation error messages.
 func serviceStatusNames() string {

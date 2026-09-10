@@ -9,6 +9,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/service/service"
+	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 )
 
 // fakeServiceRepository is an in-memory domainservice.ServiceRepository.
@@ -88,6 +89,26 @@ func (f *fakeServiceRepository) Delete(_ context.Context, id uuid.UUID) error {
 
 var _ domainservice.ServiceRepository = (*fakeServiceRepository)(nil)
 
+// fakeActiveEquipmentLister is an in-memory activeEquipmentLister.
+// Defaults to "no active equipment" for any serviceID not explicitly
+// seeded, the common case for every test in this file that is not about
+// Delete's equipment-attached precondition specifically.
+type fakeActiveEquipmentLister struct {
+	byServiceID map[uuid.UUID][]serviceequipment.ServiceEquipment
+}
+
+func newFakeActiveEquipmentLister(equipment ...serviceequipment.ServiceEquipment) *fakeActiveEquipmentLister {
+	f := &fakeActiveEquipmentLister{byServiceID: make(map[uuid.UUID][]serviceequipment.ServiceEquipment)}
+	for _, e := range equipment {
+		f.byServiceID[e.ServiceID] = append(f.byServiceID[e.ServiceID], e)
+	}
+	return f
+}
+
+func (f *fakeActiveEquipmentLister) ListActiveByServiceID(_ context.Context, serviceID uuid.UUID) ([]serviceequipment.ServiceEquipment, error) {
+	return f.byServiceID[serviceID], nil
+}
+
 func validService() domainservice.Service {
 	return domainservice.Service{
 		LocationID:       uuid.New(),
@@ -99,7 +120,7 @@ func validService() domainservice.Service {
 
 func TestServiceServiceCreateSucceeds(t *testing.T) {
 	repo := newFakeServiceRepository()
-	svc := service.NewServiceService(repo)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
 
 	created, err := svc.Create(context.Background(), validService())
 	if err != nil {
@@ -115,7 +136,7 @@ func TestServiceServiceCreateSucceeds(t *testing.T) {
 
 func TestServiceServiceCreateRejectsInvalidServiceWithoutPersisting(t *testing.T) {
 	repo := newFakeServiceRepository()
-	svc := service.NewServiceService(repo)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
 
 	_, err := svc.Create(context.Background(), domainservice.Service{}) // no LocationID, ProductID, Status
 
@@ -131,7 +152,7 @@ func TestServiceServiceUpdateSucceeds(t *testing.T) {
 	existing := validService()
 	existing.ID = uuid.New()
 	repo := newFakeServiceRepository(existing)
-	svc := service.NewServiceService(repo)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
 
 	toUpdate := existing
 	toUpdate.Status = domainservice.ServiceStatusActive
@@ -152,7 +173,7 @@ func TestServiceServiceUpdateRejectsInvalidServiceWithoutPersisting(t *testing.T
 	existing := validService()
 	existing.ID = uuid.New()
 	repo := newFakeServiceRepository(existing)
-	svc := service.NewServiceService(repo)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
 
 	invalid := existing
 	invalid.Status = "" // invalid
@@ -169,7 +190,7 @@ func TestServiceServiceUpdateRejectsInvalidServiceWithoutPersisting(t *testing.T
 
 func TestServiceServiceGetPropagatesNotFound(t *testing.T) {
 	repo := newFakeServiceRepository()
-	svc := service.NewServiceService(repo)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
 
 	_, err := svc.Get(context.Background(), uuid.New())
 
@@ -184,7 +205,7 @@ func TestServiceServiceListDelegatesToRepository(t *testing.T) {
 	b := validService()
 	b.ID = uuid.New()
 	repo := newFakeServiceRepository(a, b)
-	svc := service.NewServiceService(repo)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
 
 	services, err := svc.List(context.Background())
 	if err != nil {
@@ -199,7 +220,7 @@ func TestServiceServiceDeleteSucceeds(t *testing.T) {
 	existing := validService()
 	existing.ID = uuid.New()
 	repo := newFakeServiceRepository(existing)
-	svc := service.NewServiceService(repo)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
 
 	if err := svc.Delete(context.Background(), existing.ID); err != nil {
 		t.Fatalf("Delete() = %v", err)
@@ -213,11 +234,82 @@ func TestServiceServiceDeleteSucceeds(t *testing.T) {
 
 func TestServiceServiceDeletePropagatesNotFound(t *testing.T) {
 	repo := newFakeServiceRepository()
-	svc := service.NewServiceService(repo)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
 
 	err := svc.Delete(context.Background(), uuid.New())
 
 	if !apperror.Is(err, apperror.KindNotFound) {
 		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindNotFound)
+	}
+}
+
+// TestServiceServiceDeleteRejectsServiceWithAppliedProfile proves the
+// precondition added after a live OLT test surfaced the gap: deleting an
+// Active Service (the only status that implies its Kontron
+// service-profile is still applied, see ServiceStatus.HasAppliedProfile)
+// must be rejected rather than silently leaving that profile stranded on
+// the real ONU with no Palladium record left to ever remove it.
+func TestServiceServiceDeleteRejectsServiceWithAppliedProfile(t *testing.T) {
+	existing := validService()
+	existing.ID = uuid.New()
+	existing.Status = domainservice.ServiceStatusActive
+	repo := newFakeServiceRepository(existing)
+	svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
+
+	err := svc.Delete(context.Background(), existing.ID)
+
+	if !apperror.Is(err, apperror.KindConflict) {
+		t.Errorf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindConflict)
+	}
+	if repo.byID[existing.ID].ID == uuid.Nil {
+		t.Error("service was deleted despite still having an applied profile")
+	}
+}
+
+// TestServiceServiceDeleteAllowsServiceWithoutAppliedProfile proves the
+// other half: Pending (never applied), Suspended, and Disconnected
+// (Suspend and Disconnect both already remove the profile from the real
+// ONU — see ServiceStatus.HasAppliedProfile's own doc comment on why
+// Suspended is not treated as still-applied) are not blocked by the new
+// precondition.
+func TestServiceServiceDeleteAllowsServiceWithoutAppliedProfile(t *testing.T) {
+	for _, status := range []domainservice.ServiceStatus{
+		domainservice.ServiceStatusPending,
+		domainservice.ServiceStatusSuspended,
+		domainservice.ServiceStatusDisconnected,
+	} {
+		existing := validService()
+		existing.ID = uuid.New()
+		existing.Status = status
+		repo := newFakeServiceRepository(existing)
+		svc := service.NewServiceService(repo, newFakeActiveEquipmentLister())
+
+		if err := svc.Delete(context.Background(), existing.ID); err != nil {
+			t.Errorf("status %q: Delete() = %v, want success", status, err)
+		}
+	}
+}
+
+// TestServiceServiceDeleteRejectsServiceWithActiveEquipment proves
+// Delete's other precondition: active ServiceEquipment still referencing
+// the Service blocks deletion with a specific message, checked before
+// ever calling the repository's own Delete (which would otherwise fail
+// on the database's generic foreign-key-violation error).
+func TestServiceServiceDeleteRejectsServiceWithActiveEquipment(t *testing.T) {
+	existing := validService()
+	existing.ID = uuid.New()
+	repo := newFakeServiceRepository(existing)
+	equipment := newFakeActiveEquipmentLister(serviceequipment.ServiceEquipment{
+		ID: uuid.New(), ServiceID: existing.ID, DeviceID: uuid.New(), Role: serviceequipment.EquipmentRoleONU,
+	})
+	svc := service.NewServiceService(repo, equipment)
+
+	err := svc.Delete(context.Background(), existing.ID)
+
+	if !apperror.Is(err, apperror.KindConflict) {
+		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindConflict)
+	}
+	if repo.byID[existing.ID].ID == uuid.Nil {
+		t.Error("service was deleted despite still having active equipment attached")
 	}
 }

@@ -292,6 +292,30 @@ func TestExecuteSkipsOLTTeardownForAlreadyDisconnectedService(t *testing.T) {
 	}
 }
 
+// TestExecuteSkipsOLTTeardownForAlreadySuspendedService proves
+// ServiceStatus.HasAppliedProfile's own point: Suspend and Disconnect
+// are, at the Kontron config level, the identical action (see that
+// method's doc comment) — a Suspended Service's profile is already gone
+// from the real ONU, so running Remove against it a second time here
+// would hit the real device's "profile not assigned to interface"
+// rejection instead of a harmless no-op. Confirmed live (2026-09-10)
+// against the real Kontron/Iskratel C16 after an earlier version of this
+// logic got this wrong and treated Suspended the same as Active.
+func TestExecuteSkipsOLTTeardownForAlreadySuspendedService(t *testing.T) {
+	f := newFixture(serviceequipment.EquipmentRoleONU, service.ServiceStatusSuspended, true)
+
+	if err := f.svc.Execute(context.Background(), f.customerID); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+
+	if len(f.profiles.calls) != 0 {
+		t.Errorf("OLT teardown calls = %d, want 0 for an already-Suspended service", len(f.profiles.calls))
+	}
+	if f.equipment.byService[f.serviceID][0].RemovedAt == nil {
+		t.Error("equipment was not marked removed for an already-Suspended service")
+	}
+}
+
 func TestExecuteHandlesServiceWithNoActiveEquipment(t *testing.T) {
 	f := newFixture(serviceequipment.EquipmentRoleONU, service.ServiceStatusPending, true)
 	f.equipment.byService[f.serviceID] = nil // no equipment at all

@@ -26,6 +26,24 @@
 //     on a Device because of a ServiceEquipment record, not the other
 //     way around.
 //
+// UNIPort (added 2026-09-10) is the one narrow, deliberate exception to
+// that "never how it is configured" rule -- mirroring how
+// internal/customerdevice became the one deliberate exception to "never
+// couple inventory directly to customers" (see CLAUDE.md's Core
+// Philosophy and docs/03-DOMAIN-MODEL.md section 26). Real Kontron
+// provisioning needs to know which physical LAN port on the ONU/ONT a
+// Service is delivered over -- the OLT command is literally
+// "service-profile <profile> uni <N>" -- and that choice has to persist
+// somewhere every future re-provisioning attempt (Suspend, Resume, a
+// manual retry) can read it back from, not just a one-off argument to
+// the workflow that first applies it. ServiceEquipment is the one record
+// that already names both the Service and the Device, so it is where
+// that answer lives, not a new sibling domain that would just duplicate
+// this join. It stays a plain, vendor-agnostic int (1 or 2), never a
+// literal "uni 1"/Kontron CLI fragment -- constructing the actual
+// command string is internal/provisioning/kontron's job alone (see
+// CLAUDE.md's Plugin Philosophy).
+//
 // This is the first domain in this codebase whose business logic layer
 // enforces a rule beyond "is every required field present and valid":
 // see internal/serviceequipment/service's doc comment for the
@@ -56,6 +74,12 @@ type ServiceEquipment struct {
 	DeviceID    uuid.UUID
 	Role        EquipmentRole
 	Description string
+
+	// UNIPort is 1 ("10GE") or 2 ("1GE") for ONU/ONT equipment -- which
+	// physical LAN port on the Device this Service is delivered over
+	// (see this type's own doc comment). Meaningless, and never
+	// validated, for any other Role.
+	UNIPort int
 
 	InstalledAt *time.Time
 	RemovedAt   *time.Time

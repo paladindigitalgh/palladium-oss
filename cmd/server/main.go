@@ -283,6 +283,17 @@ func run() error {
 	serviceProfileSvc := serviceprofileservice.NewServiceProfileService(serviceProfileRepo)
 	serviceProfileHandler := serviceprofilehttpapi.NewServiceProfileHandler(serviceProfileSvc)
 
+	// Service Equipment's repository is built here, ahead of Service
+	// itself, even though the "repository -> service -> handler" chain
+	// below would normally build it alongside Service Equipment's own
+	// service (see the comment near serviceEquipmentSvc's construction
+	// further down): ServiceService.Delete now depends on it too, to give
+	// a specific "still has equipment attached" error instead of a
+	// generic foreign-key one (see that method's own doc comment) — one
+	// more reader of the repository nothing here actually requires any
+	// particular construction order for.
+	serviceEquipmentRepo := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
+
 	// Service follows the exact same repository -> service -> handler
 	// chain as every domain above, one package over (internal/service
 	// instead of internal/product). It is constructed after Location,
@@ -290,22 +301,18 @@ func run() error {
 	// keys a Service row requires, though as with Product/Catalog above
 	// nothing here actually requires that ordering.
 	serviceRepo := servicepostgres.NewServiceRepository(pool, clock.New(), id.New())
-	serviceSvc := serviceservice.NewServiceService(serviceRepo)
+	serviceSvc := serviceservice.NewServiceService(serviceRepo, serviceEquipmentRepo)
 	serviceHandler := servicehttpapi.NewServiceHandler(serviceSvc)
 
-	// Service Equipment and Customer Device each need the other's
-	// repository (not service — see below), so both repositories are
-	// built first, before either service: ServiceEquipmentService's own
-	// markDeviceUnused must check "is this Device still attached to a
-	// Customer" before reverting it to Unused, and
-	// CustomerDeviceService's Update must check "does this Device still
-	// fulfill an active Service" before allowing a detach — two
-	// independent sources of Device-status truth, each needing a read
-	// into the other's domain. Repository, not service, on both sides:
-	// the specific read each needs (GetActiveByDeviceID) is a
-	// repository-level query with no business logic of its own, never
-	// exposed on either service directly.
-	serviceEquipmentRepo := serviceequipmentpostgres.NewServiceEquipmentRepository(pool, clock.New(), id.New())
+	// Customer Device needs Service Equipment's repository too (not
+	// service — see below), for the same "read into the other's domain"
+	// reasoning CustomerDeviceService.Update gives: it must check "does
+	// this Device still fulfill an active Service" before allowing a
+	// detach, and ServiceEquipmentService's own markDeviceUnused
+	// (constructed further below) makes the same check in reverse — "is
+	// this Device still attached to a Customer" — against
+	// customerDeviceRepo, built here alongside it for the identical
+	// reason.
 	customerDeviceRepo := customerdevicepostgres.NewCustomerDeviceRepository(pool, clock.New(), id.New())
 
 	// Service Equipment's own service and handler are built much further
@@ -499,17 +506,20 @@ func run() error {
 	// accessAttachmentSvc, and onuAuthorizationSvc (all built above) for
 	// its own Access Attachment auto-sync side effect — see that
 	// service's syncAccessAttachment doc comment for the full reasoning.
-	// Its two foreign keys are still Service and inventory.Device —
-	// deviceService (built above, alongside deviceHandler) is reused
-	// rather than built fresh, for the Device-status side effect
-	// ServiceEquipmentService.Create/Update also carry: attaching/
-	// detaching a Device flips it Active/Unused (see that service's own
-	// doc comment) — unless customerDeviceRepo still shows it attached to
-	// a Customer directly, in which case losing its Service leaves it
-	// Active, not Unused.
+	// accessAttachmentSvc is passed twice, satisfying both the creator and
+	// remover seams: Delete now also hard-deletes an active
+	// AccessAttachment before its own record, the same service handling
+	// both directions of that relationship. Its two foreign keys are
+	// still Service and inventory.Device — deviceService (built above,
+	// alongside deviceHandler) is reused rather than built fresh, for the
+	// Device-status side effect ServiceEquipmentService.Create/Update also
+	// carry: attaching/detaching a Device flips it Active/Unused (see
+	// that service's own doc comment) — unless customerDeviceRepo still
+	// shows it attached to a Customer directly, in which case losing its
+	// Service leaves it Active, not Unused.
 	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(
 		serviceEquipmentRepo, deviceService, deviceService, customerDeviceRepo,
-		onuAuthorizationSvc, accessInterfaceSvc, accessAttachmentSvc)
+		onuAuthorizationSvc, accessInterfaceSvc, accessAttachmentSvc, accessAttachmentSvc)
 	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
 
 	// Kontron ONU authorization (internal/provisioning/kontron) is this

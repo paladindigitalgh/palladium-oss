@@ -4,8 +4,8 @@ import BaseModal from '@/components/base/BaseModal.vue'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-import { createService, updateService } from '@/services/services/serviceRepository'
-import { createServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
+import { createService, updateService, deleteService } from '@/services/services/serviceRepository'
+import { createServiceEquipment, deleteServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { runWorkflow } from '@/services/workflow/workflowRepository'
 import { listProducts } from '@/services/products/productRepository'
 import { listProviders } from '@/services/providers/providerRepository'
@@ -15,6 +15,7 @@ import type { Service } from '@/types/service'
 import type { Product } from '@/types/product'
 import type { ServiceProfile } from '@/types/serviceProfile'
 import type { Device } from '@/types/device'
+import { UNI_PORT_OPTIONS } from '@/types/serviceEquipment'
 
 /**
  * Dual-mode: create when `service` is absent, edit when present --
@@ -35,8 +36,14 @@ import type { Device } from '@/types/device'
  * is always device-specific here: with exactly one eligible device it is
  * auto-selected with no picker shown (fewer clicks when there is only
  * one possible choice); with more than one, the operator must choose.
- * On submit, creating the ServiceEquipment link that ties the two
- * together is folded into this same action rather than left as a
+ * The LAN Port picker (10GE/1GE, i.e. uni 1/2 -- see
+ * types/serviceEquipment.ts's UNI_PORT_OPTIONS and
+ * internal/serviceequipment.ServiceEquipment's own doc comment) is the
+ * other half of that same choice: exactly one of the two, never both,
+ * which a single required <select> enforces for free.
+ *
+ * On submit, creating the ServiceEquipment link that ties the Service to
+ * its Device is folded into this same action rather than left as a
  * separate "remember to assign equipment on the Service page" step (see
  * feedback_merge_dont_chain_workflow_steps in project memory) -- and so
  * is actually running the real provision-service workflow
@@ -44,26 +51,35 @@ import type { Device } from '@/types/device'
  * ONU, rather than leaving the operator to separately open the new
  * Service and click "Provision Service" there themselves. This can take
  * a few seconds (a real SSH round trip to the OLT) and, like that same
- * button on ServiceDetailView.vue, blocks the form while it runs. If it
- * fails -- most commonly because the Device has no AccessAttachment yet
- * (internal/accesstopology.Resolver.Locate has nothing to resolve; see
- * ServiceProfileService.Apply's own doc comment) -- the Service and its
- * ServiceEquipment link still exist and are not rolled back (no
- * cross-repository transaction in this codebase; same limitation
- * documented throughout internal/serviceequipment/service and
- * internal/customerdevice/service). The failure is reported back via the
- * emitted 'created' event's second argument rather than swallowed, since
- * silently failing to configure the physical ONU is exactly the outcome
- * this feature exists to prevent.
+ * button on ServiceDetailView.vue, blocks the form while it runs.
+ *
+ * Unlike an ordinary partial-failure composed write elsewhere in this
+ * codebase, this one is all-or-nothing (2026-09-10, at the user's
+ * explicit request after a real OLT-side misconfiguration created a
+ * Service that could never actually serve the customer): if tying the
+ * Device to the Service fails, or the real provisioning workflow fails
+ * for any reason -- OLT or otherwise -- the ServiceEquipment record (if
+ * it was created) and the Service itself are deleted again before this
+ * function returns, and the error is shown inline in this still-open
+ * dialog instead. There is no cross-repository transaction in this
+ * codebase (see internal/serviceequipment/service's own doc comment on
+ * the same limitation), so this is a best-effort compensating rollback,
+ * not a real transaction -- if the browser tab closes mid-rollback, an
+ * orphaned Service/ServiceEquipment pair can still be left behind, the
+ * same way any other multi-step write here already can. This is why
+ * Remove Service (see internal/service/postgres's own migration
+ * 00040 comment) was also relaxed around the same time: an operator who
+ * finds one of those orphans must still be able to clear it out by hand.
  */
 const props = defineProps<{ open: boolean; locationId: string; service?: Service | null; devices: Device[] }>()
 const emit = defineEmits<{
   (event: 'close'): void
-  (event: 'created', service: Service, provisionError: string | null): void
+  (event: 'created', service: Service): void
   (event: 'updated', service: Service): void
 }>()
 
 const deviceId = ref('')
+const uniPort = ref('1')
 
 const deviceOptions = computed(() =>
   props.devices.map((device) => ({
@@ -146,6 +162,7 @@ watch(
       status.value = 'Active'
       description.value = ''
       deviceId.value = props.devices[0]?.id ?? ''
+      uniPort.value = '1'
     }
 
     loadingOptions.value = false
@@ -180,65 +197,66 @@ async function handleSubmit() {
         status: status.value,
         description: description.value,
       })
-      // Tying the new Service to its Device is folded into this same
-      // action (see this component's own doc comment) -- but if this
-      // second call fails after the Service already exists (e.g. the
-      // device was attached to a different service in the moment
-      // between opening this dialog and submitting it), that failure is
-      // deliberately not surfaced as a blocking error here: the Service
-      // was created successfully and is not in a broken state, only an
-      // unassigned one, exactly like any other Service before this
-      // shortcut existed -- the operator can still assign equipment from
-      // the Service page's own "Assign Equipment" action. There is no
-      // cross-repository transaction in this codebase (see e.g.
-      // internal/serviceequipment/service.ServiceEquipmentService.Create's
-      // own doc comment on the same limitation), so this mirrors the
-      // partial-failure handling every other composed write here already
-      // accepts.
-      let provisionError: string | null = null
-      if (deviceId.value) {
-        let equipmentCreated = false
-        try {
-          await createServiceEquipment({
-            serviceId: service.id,
-            deviceId: deviceId.value,
-            role: 'ONU',
-            description: '',
-          })
-          equipmentCreated = true
-        } catch {
-          // Intentionally swallowed -- see the comment above.
-        }
 
-        // Only worth running the real provisioning workflow once the
-        // Device is actually tied to this Service -- see this
-        // component's own doc comment on why a failure here is reported
-        // rather than swallowed like the createServiceEquipment failure
-        // above.
-        if (equipmentCreated) {
-          provisioning.value = true
+      // Tying the new Service to its Device, and actually provisioning
+      // it, are folded into this same action (see this component's own
+      // doc comment) -- and, since 2026-09-10, this whole action is
+      // all-or-nothing: any failure here, tying the Device or
+      // provisioning it, rolls back the ServiceEquipment (if created)
+      // and the Service itself rather than leaving a Service behind that
+      // was never actually applied to the device.
+      let equipmentId: string | null = null
+      try {
+        if (!deviceId.value) {
+          throw new Error('A device is required to add a service.')
+        }
+        const equipment = await createServiceEquipment({
+          serviceId: service.id,
+          deviceId: deviceId.value,
+          role: 'ONU',
+          description: '',
+          uniPort: Number(uniPort.value),
+        })
+        equipmentId = equipment.id
+
+        provisioning.value = true
+        // runWorkflow only throws if the instance never reaches a
+        // terminal status within its polling window (see that
+        // function's own doc comment) -- a clean Failed/Cancelled result
+        // resolves normally, so it has to be checked explicitly here
+        // rather than assumed to always throw on failure.
+        const instance = await runWorkflow(service.id, 'provision-service')
+        if (instance.status !== 'Succeeded') {
+          throw new Error(instance.errorMessage ?? 'The service could not be provisioned onto the device.')
+        }
+      } catch (createErr) {
+        // Best-effort, independent deletes -- see this component's own
+        // doc comment on why this is a compensating rollback, not a real
+        // transaction. deleteServiceEquipment runs first: services.id is
+        // still referenced by service_equipment.service_id (ON DELETE
+        // RESTRICT), so deleting the Service first would just fail.
+        if (equipmentId) {
           try {
-            // runWorkflow only throws if the instance never reaches a
-            // terminal status within its polling window (see that
-            // function's own doc comment) -- a clean Failed/Cancelled
-            // result resolves normally, so it has to be checked
-            // explicitly here rather than assumed to always throw on
-            // failure.
-            const instance = await runWorkflow(service.id, 'provision-service')
-            if (instance.status !== 'Succeeded') {
-              provisionError = instance.errorMessage ?? 'The service could not be provisioned onto the device.'
-            }
-          } catch (provisionErr) {
-            provisionError =
-              provisionErr instanceof ApiError || provisionErr instanceof Error
-                ? provisionErr.message
-                : 'The service could not be provisioned onto the device.'
-          } finally {
-            provisioning.value = false
+            await deleteServiceEquipment(equipmentId)
+          } catch {
+            // Best-effort -- see above.
           }
         }
+        try {
+          await deleteService(service.id)
+        } catch {
+          // Best-effort -- see above.
+        }
+        error.value =
+          createErr instanceof ApiError || createErr instanceof Error
+            ? createErr.message
+            : 'The service could not be added.'
+        return
+      } finally {
+        provisioning.value = false
       }
-      emit('created', service, provisionError)
+
+      emit('created', service)
     }
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : `The service could not be ${props.service ? 'saved' : 'created'}.`
@@ -264,6 +282,7 @@ async function handleSubmit() {
       </p>
       <template v-else>
         <BaseSelect v-if="!service && devices.length > 1" v-model="deviceId" label="Device" :options="deviceOptions" />
+        <BaseSelect v-if="!service" v-model="uniPort" label="LAN Port" :options="UNI_PORT_OPTIONS" />
         <BaseSelect v-model="productId" label="Product" :options="productOptions" />
         <BaseSelect
           v-model="serviceProfileId"

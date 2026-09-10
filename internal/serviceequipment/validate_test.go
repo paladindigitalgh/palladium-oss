@@ -35,6 +35,7 @@ func validServiceEquipment() serviceequipment.ServiceEquipment {
 		ServiceID: uuid.New(),
 		DeviceID:  uuid.New(),
 		Role:      serviceequipment.EquipmentRoleONU,
+		UNIPort:   1,
 	}
 }
 
@@ -82,6 +83,45 @@ func TestServiceEquipmentValidateRequiresKnownRole(t *testing.T) {
 		e.Role = r
 		if err := e.Validate(); err != nil {
 			t.Errorf("Validate() (role %q) = %v, want nil", r, err)
+		}
+	}
+}
+
+// TestServiceEquipmentValidateRequiresUNIPortForONUAndONT proves
+// UNIPort must be 1 or 2 for ONU/ONT equipment, but is never checked at
+// all for any other Role — a Router, WiFiAccessPoint, UPS, or Gateway
+// has no "uni" port for this to mean anything about.
+func TestServiceEquipmentValidateRequiresUNIPortForONUAndONT(t *testing.T) {
+	for _, role := range []serviceequipment.EquipmentRole{serviceequipment.EquipmentRoleONU, serviceequipment.EquipmentRoleONT} {
+		for _, uniPort := range []int{0, 3, -1} {
+			e := validServiceEquipment()
+			e.Role = role
+			e.UNIPort = uniPort
+			assertInvalid(t, e.Validate())
+		}
+
+		for _, uniPort := range []int{1, 2} {
+			e := validServiceEquipment()
+			e.Role = role
+			e.UNIPort = uniPort
+			if err := e.Validate(); err != nil {
+				t.Errorf("Validate() (role %q, uni_port %d) = %v, want nil", role, uniPort, err)
+			}
+		}
+	}
+
+	for _, role := range []serviceequipment.EquipmentRole{
+		serviceequipment.EquipmentRoleGateway,
+		serviceequipment.EquipmentRoleRouter,
+		serviceequipment.EquipmentRoleWiFiAccessPoint,
+		serviceequipment.EquipmentRoleUPS,
+		serviceequipment.EquipmentRoleOther,
+	} {
+		e := validServiceEquipment()
+		e.Role = role
+		e.UNIPort = 0
+		if err := e.Validate(); err != nil {
+			t.Errorf("Validate() (role %q, uni_port 0) = %v, want nil (UNIPort is not this Role's concern)", role, err)
 		}
 	}
 }

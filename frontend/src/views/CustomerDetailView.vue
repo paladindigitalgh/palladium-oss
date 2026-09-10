@@ -144,7 +144,6 @@ async function load(id: string) {
   activeServiceDeviceIds.value = new Set()
   services.value = []
   serviceLabelsById.value = new Map()
-  serviceProvisionWarning.value = null
   timeline.value = []
   equipmentLocations.value = []
   oltsById.value = new Map()
@@ -417,36 +416,41 @@ const addServiceDisabledReason = computed<string | null>(() => {
 
 const showServiceForm = ref(false)
 const serviceFormLocationId = ref('')
-const serviceProvisionWarning = ref<string | null>(null)
 
 function openServiceForm() {
   serviceFormLocationId.value = locations.value[0]?.id ?? ''
-  serviceProvisionWarning.value = null
   showServiceForm.value = true
 }
 
 /**
- * `provisionError` comes from ServiceFormDialog.vue actually running the
- * real provision-service workflow against the ONU as part of creating
- * the Service (see that component's own doc comment) -- non-null means
- * the Service and its ServiceEquipment link were created successfully,
- * but the OLT was never actually configured (most commonly a missing
- * AccessAttachment for the Device). Surfaced as a dismissible warning
- * here rather than swallowed, since silently leaving the ONU
- * unconfigured is exactly what this feature exists to prevent.
+ * By the time ServiceFormDialog.vue emits 'created', the Service, its
+ * ServiceEquipment link, and the real provision-service workflow against
+ * the ONU have all already succeeded -- that whole action is
+ * all-or-nothing (see that component's own doc comment): any failure
+ * along the way rolls everything back and reports the error inline in
+ * the still-open dialog instead of reaching this handler at all, so
+ * there is no partial-success case to surface here anymore.
  */
-async function handleServiceCreated(service: Service, provisionError: string | null) {
+async function handleServiceCreated(service: Service) {
   showServiceForm.value = false
   services.value = [...services.value, service]
   const labels = await resolveServiceLabels([service])
   serviceLabelsById.value = new Map(serviceLabelsById.value).set(service.id, labels.get(service.id) ?? service.id)
   await refreshActiveServiceDeviceIds() // the device this Service just claimed drops out of eligibleServiceDevices
-  serviceProvisionWarning.value = provisionError
 }
 
 const serviceDeleteTarget = ref<Service | null>(null)
 const serviceDeletePending = ref(false)
 const serviceDeleteError = ref<string | null>(null)
+
+// Clears any error left over from a previous attempt (e.g. "still
+// Active" before the operator went and suspended it) -- confirmDeleteService
+// itself also clears it, but only once a new attempt actually runs, which
+// left a stale error showing the instant this dialog reopens otherwise.
+function openServiceDeleteDialog(service: Service) {
+  serviceDeleteError.value = null
+  serviceDeleteTarget.value = service
+}
 
 async function confirmDeleteService() {
   const target = serviceDeleteTarget.value
@@ -458,10 +462,23 @@ async function confirmDeleteService() {
     services.value = services.value.filter((service) => service.id !== target.id)
     serviceDeleteTarget.value = null
   } catch (err) {
+    // A 404 here means the Service is already gone -- most often this
+    // view's own `services` list going stale after another session (or
+    // browser tab) deleted it first, not a real failure of this delete.
+    // Reflect that instead of showing a confusing "could not be deleted"
+    // for a Service that was, in fact, deleted.
+    if (err instanceof ApiError && err.kind === 'not_found') {
+      services.value = services.value.filter((service) => service.id !== target.id)
+      serviceDeleteTarget.value = null
+      return
+    }
+    // Conflict messages come straight from ServiceService.Delete now
+    // (see that method's own doc comment): "still has equipment
+    // attached" and "still Active/Suspended -- suspend or disconnect it
+    // first" are both real, specific reasons worth showing verbatim,
+    // rather than collapsing them into one hardcoded guess.
     serviceDeleteError.value =
-      err instanceof ApiError && err.kind === 'conflict'
-        ? 'This service still has equipment or workflow history — remove those first.'
-        : 'The service could not be deleted.'
+      err instanceof ApiError && err.kind === 'conflict' ? err.message : 'The service could not be deleted.'
   } finally {
     serviceDeletePending.value = false
   }
@@ -755,17 +772,6 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         @created="handleServiceCreated"
       />
 
-      <div v-if="serviceProvisionWarning" class="service-provision-warning" role="alert">
-        <p>
-          The service was created, but could not be applied to the device: "{{ serviceProvisionWarning }}". If the
-          device was never authorized through Palladium (so it has no recorded Access Attachment -- which OLT
-          interface it is physically plugged into), set that up on the Network workspace first. Otherwise this is
-          usually an OLT-side configuration problem (e.g. a missing service profile) -- open the service below to
-          try provisioning again once that is resolved.
-        </p>
-        <BaseButton variant="ghost" size="sm" @click="serviceProvisionWarning = null">Dismiss</BaseButton>
-      </div>
-
       <ConfirmationDialog
         :open="serviceDeleteTarget !== null"
         title="Remove Service"
@@ -790,7 +796,7 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         <template #cell-service="{ row }">{{ serviceLabelsById.get(row.id) ?? row.id }}</template>
         <template #cell-status="{ row }">{{ row.status }}</template>
         <template #cell-actions="{ row }">
-          <BaseButton variant="ghost" size="sm" @click.stop="serviceDeleteTarget = row">Remove</BaseButton>
+          <BaseButton variant="ghost" size="sm" @click.stop="openServiceDeleteDialog(row)">Remove</BaseButton>
         </template>
       </SimpleTable>
     </SectionCard>
@@ -894,23 +900,6 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
   padding-bottom: var(--space-1);
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
-}
-
-.service-provision-warning {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  padding: var(--space-3);
-  background-color: var(--color-error-bg);
-  border-radius: var(--radius-sm);
-}
-
-.service-provision-warning p {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--color-error);
 }
 
 .no-relationship {

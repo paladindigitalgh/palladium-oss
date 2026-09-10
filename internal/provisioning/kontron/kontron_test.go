@@ -136,15 +136,15 @@ func TestAuthorizeONURejectsManagementServiceProfileWithNewline(t *testing.T) {
 // way it was before stripEcho existed.
 func TestApplyServiceProfileSucceedsWithRealisticDeviceEcho(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{
-		"configure":                       "configure\n\r",
-		"interface xgs/6/3":               "interface xgs/6/3\n\r",
-		"service-profile residential-500": "service-profile residential-500\n\r",
-		"exit":                            "exit\n\r",
-		"save config":                     "save config\n\r",
+		"configure":                             "configure\n\r",
+		"interface xgs/6/3":                     "interface xgs/6/3\n\r",
+		"service-profile residential-500 uni 1": "service-profile residential-500 uni 1\n\r",
+		"exit":                                  "exit\n\r",
+		"save config":                           "save config\n\r",
 	}}
 	client := kontron.NewClient(shell)
 
-	if err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500"); err != nil {
+	if err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500", 1); err != nil {
 		t.Fatalf("ApplyServiceProfile() = %v, want success despite the device echoing every command back", err)
 	}
 }
@@ -155,17 +155,17 @@ func TestApplyServiceProfileSucceedsWithRealisticDeviceEcho(t *testing.T) {
 // failures) is stripped off first.
 func TestApplyServiceProfileAbortsOnFirstNonEmptyOutputWithRealisticEcho(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{
-		"configure":                       "configure\n\r",
-		"interface xgs/6/3":               "interface xgs/6/3\n\r",
-		"service-profile residential-500": "service-profile residential-500\r\nunknown service profile\r\n",
+		"configure":                             "configure\n\r",
+		"interface xgs/6/3":                     "interface xgs/6/3\n\r",
+		"service-profile residential-500 uni 1": "service-profile residential-500 uni 1\r\nunknown service profile\r\n",
 	}}
 	client := kontron.NewClient(shell)
 
-	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500")
+	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500", 1)
 	if err == nil {
 		t.Fatal("ApplyServiceProfile() error = nil, want an error")
 	}
-	if got := err.Error(); !strings.Contains(got, "unknown service profile") || strings.Contains(got, "service-profile residential-500\r\nunknown") {
+	if got := err.Error(); !strings.Contains(got, "unknown service profile") || strings.Contains(got, "service-profile residential-500 uni 1\r\nunknown") {
 		t.Errorf("ApplyServiceProfile() error = %q, want the echoed command stripped and only the real device message left", got)
 	}
 }
@@ -174,14 +174,14 @@ func TestApplyServiceProfileSucceedsAndRunsAllSixStepsInOrder(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{}}
 	client := kontron.NewClient(shell)
 
-	if err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500"); err != nil {
+	if err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500", 1); err != nil {
 		t.Fatalf("ApplyServiceProfile() = %v", err)
 	}
 
 	want := []string{
 		"configure",
 		"interface xgs/6/3",
-		"service-profile residential-500",
+		"service-profile residential-500 uni 1",
 		"exit",
 		"exit",
 		"save config",
@@ -202,11 +202,11 @@ func TestApplyServiceProfileSucceedsAndRunsAllSixStepsInOrder(t *testing.T) {
 // with no further steps run.
 func TestApplyServiceProfileAbortsOnFirstNonEmptyOutput(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{
-		"service-profile residential-500": "unknown service profile",
+		"service-profile residential-500 uni 1": "unknown service profile",
 	}}
 	client := kontron.NewClient(shell)
 
-	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500")
+	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500", 1)
 	if err == nil {
 		t.Fatal("ApplyServiceProfile() error = nil, want an error")
 	}
@@ -214,7 +214,7 @@ func TestApplyServiceProfileAbortsOnFirstNonEmptyOutput(t *testing.T) {
 		t.Errorf("ApplyServiceProfile() error = %q, want it to contain the device's raw message", got)
 	}
 
-	want := []string{"configure", "interface xgs/6/3", "service-profile residential-500"}
+	want := []string{"configure", "interface xgs/6/3", "service-profile residential-500 uni 1"}
 	if len(shell.calls) != len(want) {
 		t.Fatalf("calls = %v, want exactly %v (save config must not run)", shell.calls, want)
 	}
@@ -224,7 +224,7 @@ func TestApplyServiceProfileRejectsInterfaceWithNewline(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{}}
 	client := kontron.NewClient(shell)
 
-	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3\nrm -rf /", "residential-500")
+	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3\nrm -rf /", "residential-500", 1)
 	if !errors.Is(err, kontron.ErrInvalidInterface) {
 		t.Errorf("ApplyServiceProfile() error = %v, want ErrInvalidInterface", err)
 	}
@@ -237,7 +237,7 @@ func TestApplyServiceProfileRejectsProfileNameWithNewline(t *testing.T) {
 	shell := &fakeShell{outputs: map[string]string{}}
 	client := kontron.NewClient(shell)
 
-	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500\nconfigure")
+	err := client.ApplyServiceProfile(context.Background(), "xgs/6/3", "residential-500\nconfigure", 1)
 	if !errors.Is(err, kontron.ErrInvalidProfileName) {
 		t.Errorf("ApplyServiceProfile() error = %v, want ErrInvalidProfileName", err)
 	}

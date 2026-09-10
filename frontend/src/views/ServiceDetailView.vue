@@ -257,6 +257,15 @@ const showDeleteDialog = ref(false)
 const deletePending = ref(false)
 const deleteError = ref<string | null>(null)
 
+// Clears any error left over from a previous attempt (e.g. "still
+// Active" before the operator went and suspended it) -- confirmDeleteService
+// itself also clears it, but only once a new attempt actually runs, which
+// left a stale error showing the instant this dialog reopens otherwise.
+function openDeleteDialog() {
+  deleteError.value = null
+  showDeleteDialog.value = true
+}
+
 async function confirmDeleteService() {
   if (!service.value) return
   deletePending.value = true
@@ -265,10 +274,22 @@ async function confirmDeleteService() {
     await deleteService(service.value.id)
     router.push(customer.value ? `/customers/${customer.value.id}` : '/services')
   } catch (err) {
-    deleteError.value =
-      err instanceof ApiError && err.kind === 'conflict'
-        ? 'This service still has equipment or workflow history attached — remove those first.'
-        : 'The service could not be deleted.'
+    // A 404 here means this Service is already gone -- most often this
+    // page having been left open after another session (or browser tab)
+    // deleted it first, not a real failure of this delete. There is
+    // nothing left to show on this page either way, so navigate away
+    // exactly as the success path does rather than showing a confusing
+    // "could not be deleted" for a Service that was, in fact, deleted.
+    if (err instanceof ApiError && err.kind === 'not_found') {
+      router.push(customer.value ? `/customers/${customer.value.id}` : '/services')
+      return
+    }
+    // Conflict messages come straight from ServiceService.Delete now
+    // (see that method's own doc comment): "still has equipment
+    // attached" and "still Active/Suspended -- suspend or disconnect it
+    // first" are both real, specific reasons worth showing verbatim,
+    // rather than collapsing them into one hardcoded guess.
+    deleteError.value = err instanceof ApiError && err.kind === 'conflict' ? err.message : 'The service could not be deleted.'
   } finally {
     deletePending.value = false
   }
@@ -305,7 +326,7 @@ const workflowColumns: SimpleTableColumn[] = [
         <WorkspaceActions>
           <template #secondary>
             <BaseButton variant="secondary" size="sm" @click="showEditDialog = true">Edit Service</BaseButton>
-            <BaseButton variant="destructive" size="sm" @click="showDeleteDialog = true">Delete Service</BaseButton>
+            <BaseButton variant="destructive" size="sm" @click="openDeleteDialog">Delete Service</BaseButton>
           </template>
           <template v-if="primaryAction" #primary>
             <BaseButton

@@ -7,6 +7,7 @@ interface ServiceEquipmentDto {
   device_id: string
   role: ServiceEquipment['role']
   description: string
+  uni_port: number
   installed_at: string | null
   removed_at: string | null
 }
@@ -18,6 +19,7 @@ function fromDto(dto: ServiceEquipmentDto): ServiceEquipment {
     deviceId: dto.device_id,
     role: dto.role,
     description: dto.description,
+    uniPort: dto.uni_port,
     installedAt: dto.installed_at,
     removedAt: dto.removed_at,
   }
@@ -53,6 +55,7 @@ export interface CreateServiceEquipmentInput {
   deviceId: string
   role: ServiceEquipment['role']
   description: string
+  uniPort: number
 }
 
 /**
@@ -72,6 +75,7 @@ export async function createServiceEquipment(input: CreateServiceEquipmentInput)
       device_id: input.deviceId,
       role: input.role,
       description: input.description,
+      uni_port: input.uniPort,
       installed_at: new Date().toISOString(),
       removed_at: null,
     },

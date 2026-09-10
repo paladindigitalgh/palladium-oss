@@ -18,18 +18,25 @@ import type { Device } from '@/types/device'
  * first, then `setProps({ open: true })` to trigger it, the same as a
  * real caller would.
  */
-const { createService, updateService } = vi.hoisted(() => ({ createService: vi.fn(), updateService: vi.fn() }))
+const { createService, updateService, deleteService } = vi.hoisted(() => ({
+  createService: vi.fn(),
+  updateService: vi.fn(),
+  deleteService: vi.fn(),
+}))
 const { listProducts } = vi.hoisted(() => ({ listProducts: vi.fn() }))
 const { listProviders } = vi.hoisted(() => ({ listProviders: vi.fn() }))
 const { listServiceProfiles } = vi.hoisted(() => ({ listServiceProfiles: vi.fn() }))
-const { createServiceEquipment } = vi.hoisted(() => ({ createServiceEquipment: vi.fn() }))
+const { createServiceEquipment, deleteServiceEquipment } = vi.hoisted(() => ({
+  createServiceEquipment: vi.fn(),
+  deleteServiceEquipment: vi.fn(),
+}))
 const { runWorkflow } = vi.hoisted(() => ({ runWorkflow: vi.fn() }))
 
-vi.mock('@/services/services/serviceRepository', () => ({ createService, updateService }))
+vi.mock('@/services/services/serviceRepository', () => ({ createService, updateService, deleteService }))
 vi.mock('@/services/products/productRepository', () => ({ listProducts }))
 vi.mock('@/services/providers/providerRepository', () => ({ listProviders }))
 vi.mock('@/services/serviceProfiles/serviceProfileRepository', () => ({ listServiceProfiles }))
-vi.mock('@/services/serviceEquipment/serviceEquipmentRepository', () => ({ createServiceEquipment }))
+vi.mock('@/services/serviceEquipment/serviceEquipmentRepository', () => ({ createServiceEquipment, deleteServiceEquipment }))
 vi.mock('@/services/workflow/workflowRepository', () => ({ runWorkflow }))
 
 function body() {
@@ -107,6 +114,8 @@ function fixtureDevice(overrides: Partial<Device> = {}): Device {
 beforeEach(() => {
   createService.mockReset()
   updateService.mockReset()
+  deleteService.mockReset()
+  deleteService.mockResolvedValue(undefined)
   listProducts.mockReset()
   listProviders.mockReset()
   // Single Provider by default (the common case): no test below cares
@@ -115,6 +124,8 @@ beforeEach(() => {
   listServiceProfiles.mockReset()
   createServiceEquipment.mockReset()
   createServiceEquipment.mockResolvedValue({ id: 'se1' })
+  deleteServiceEquipment.mockReset()
+  deleteServiceEquipment.mockResolvedValue(undefined)
   runWorkflow.mockReset()
   runWorkflow.mockResolvedValue({ id: 'wf1', status: 'Succeeded' })
 })
@@ -151,10 +162,13 @@ describe('create mode (no service prop)', () => {
       deviceId: 'd1',
       role: 'ONU',
       description: '',
+      uniPort: 1,
     })
     expect(runWorkflow).toHaveBeenCalledWith('s1', 'provision-service')
     expect(updateService).not.toHaveBeenCalled()
-    expect(wrapper.emitted('created')?.[0]).toEqual([existingService(), null])
+    expect(deleteServiceEquipment).not.toHaveBeenCalled()
+    expect(deleteService).not.toHaveBeenCalled()
+    expect(wrapper.emitted('created')?.[0]).toEqual([existingService()])
   })
 
   it('labels each Product option with just its name when there is only one Provider', async () => {
@@ -205,7 +219,32 @@ describe('create mode (no service prop)', () => {
       deviceId: 'd2',
       role: 'ONU',
       description: '',
+      uniPort: 1,
     })
+  })
+
+  it('defaults the LAN Port to 10GE (uni 1), and submits 1GE (uni 2) once chosen -- never both', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
+    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    createService.mockResolvedValue(existingService())
+
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    const lanPortSelect = body()
+      .findAll('.base-select')
+      .find((el) => el.find('.base-select__label').text() === 'LAN Port')!
+      .find('select')
+    expect((lanPortSelect.element as HTMLSelectElement).value).toBe('1')
+
+    await lanPortSelect.setValue('2')
+    await body().find('form').trigger('submit.prevent')
+    await settle()
+
+    expect(createServiceEquipment).toHaveBeenCalledWith(
+      expect.objectContaining({ uniPort: 2 }),
+    )
   })
 
   it('blocks submission and shows a message when the customer has no eligible device', async () => {
@@ -220,7 +259,12 @@ describe('create mode (no service prop)', () => {
     expect(body().findAll('button').some((b) => b.text() === 'Add Service')).toBe(false)
   })
 
-  it('still creates the service, and emits created, even if attaching the device afterward fails -- and never attempts provisioning without equipment', async () => {
+  // 2026-09-10: Add Service is all-or-nothing (see ServiceFormDialog.vue's
+  // own doc comment) -- any failure tying the Device or provisioning it
+  // rolls back the Service (and its ServiceEquipment, if created) rather
+  // than leaving a Service behind that was never actually applied.
+
+  it('rolls back the just-created Service, and never attempts provisioning, when attaching the device fails', async () => {
     listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     createService.mockResolvedValue(existingService())
@@ -234,10 +278,14 @@ describe('create mode (no service prop)', () => {
     await settle()
 
     expect(runWorkflow).not.toHaveBeenCalled()
-    expect(wrapper.emitted('created')?.[0]).toEqual([existingService(), null])
+    // Nothing was ever tied to the Service, so there is no ServiceEquipment to delete.
+    expect(deleteServiceEquipment).not.toHaveBeenCalled()
+    expect(deleteService).toHaveBeenCalledWith('s1')
+    expect(wrapper.emitted('created')).toBeUndefined()
+    expect(body().find('.service-form__error').text()).toBe('device already assigned')
   })
 
-  it('still emits created after a successful save, surfacing the error, when provisioning the real ONU times out', async () => {
+  it('rolls back both the Service and its ServiceEquipment when provisioning the real ONU times out', async () => {
     listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     createService.mockResolvedValue(existingService())
@@ -251,10 +299,12 @@ describe('create mode (no service prop)', () => {
     await settle()
 
     expect(runWorkflow).toHaveBeenCalledWith('s1', 'provision-service')
-    expect(wrapper.emitted('created')?.[0]).toEqual([
-      existingService(),
+    expect(deleteServiceEquipment).toHaveBeenCalledWith('se1')
+    expect(deleteService).toHaveBeenCalledWith('s1')
+    expect(wrapper.emitted('created')).toBeUndefined()
+    expect(body().find('.service-form__error').text()).toBe(
       'This workflow is taking longer than expected -- check back shortly for its result.',
-    ])
+    )
   })
 
   // runWorkflow resolves normally (does not throw) for a workflow that
@@ -263,7 +313,7 @@ describe('create mode (no service prop)', () => {
   // is the actual, more common shape a real provisioning failure takes
   // (e.g. the Device has no AccessAttachment yet), verified live against
   // the real Kontron plugin during development of this feature.
-  it('still emits created after a successful save, surfacing the error, when the provisioning workflow itself fails cleanly', async () => {
+  it('rolls back both the Service and its ServiceEquipment when the provisioning workflow itself fails cleanly', async () => {
     listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     createService.mockResolvedValue(existingService())
@@ -280,10 +330,29 @@ describe('create mode (no service prop)', () => {
     await body().find('form').trigger('submit.prevent')
     await settle()
 
-    expect(wrapper.emitted('created')?.[0]).toEqual([
-      existingService(),
-      'no active access attachment for service equipment se1',
-    ])
+    expect(deleteServiceEquipment).toHaveBeenCalledWith('se1')
+    expect(deleteService).toHaveBeenCalledWith('s1')
+    expect(wrapper.emitted('created')).toBeUndefined()
+    expect(body().find('.service-form__error').text()).toBe('no active access attachment for service equipment se1')
+  })
+
+  it('still shows the rollback error even when the compensating deletes themselves fail', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
+    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    createService.mockResolvedValue(existingService())
+    runWorkflow.mockResolvedValue({ id: 'wf1', status: 'Failed', errorMessage: 'VLAN profile does not exist' })
+    deleteServiceEquipment.mockRejectedValue(new ApiError('already gone', 'not_found', 404))
+    deleteService.mockRejectedValue(new ApiError('already gone', 'not_found', 404))
+
+    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    await body().find('form').trigger('submit.prevent')
+    await settle()
+
+    expect(wrapper.emitted('created')).toBeUndefined()
+    expect(body().find('.service-form__error').text()).toBe('VLAN profile does not exist')
   })
 
   it('shows "no products" and hides the submit button when no products exist yet', async () => {

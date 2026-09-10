@@ -28,6 +28,8 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
 	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/workflow"
+	workflowpostgres "github.com/paladindigitalgh/palladium-oss/internal/workflow/postgres"
 )
 
 // newTestQuerier opens a transaction against the real test database,
@@ -521,6 +523,45 @@ func TestServiceRepositoryDelete(t *testing.T) {
 
 	_, err = repo.Get(ctx, created.ID)
 	assertNotFound(t, err)
+}
+
+// TestServiceRepositoryDeleteCascadesWorkflowInstances proves
+// workflow_instances.service_id's ON DELETE CASCADE (added
+// database/migrations/00040): deleting a Service that still has
+// WorkflowInstance history must succeed and take that history with it,
+// not be blocked the way it was before that migration -- the operator
+// has no UI or API path to clear WorkflowInstance rows individually
+// before deleting a Service, unlike Service Equipment's own real
+// hard-delete action.
+func TestServiceRepositoryDeleteCascadesWorkflowInstances(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	l := createTestLocation(t, ctx, q)
+	p := createTestProduct(t, ctx, q)
+	sp := createTestServiceProfile(t, ctx, q)
+	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
+
+	created, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	workflowRepo := workflowpostgres.NewRepository(q, clock.New(), id.New())
+	instance, err := workflowRepo.Create(ctx, workflow.Instance{
+		ServiceID:      created.ID,
+		DefinitionName: "provision-service",
+		Status:         workflow.StatusFailed,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create workflow instance: %v", err)
+	}
+
+	if err := repo.Delete(ctx, created.ID); err != nil {
+		t.Fatalf("Delete() = %v, want success despite existing WorkflowInstance history", err)
+	}
+
+	if _, err := workflowRepo.Get(ctx, instance.ID); !apperror.Is(err, apperror.KindNotFound) {
+		t.Errorf("WorkflowInstance still exists after its Service was deleted (Get() err = %v, want KindNotFound)", err)
+	}
 }
 
 func TestServiceRepositoryDeleteNotFound(t *testing.T) {

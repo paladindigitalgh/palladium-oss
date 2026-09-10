@@ -78,8 +78,8 @@ func NewServiceProfileService(dial dialer, locate locator, olts oltGetter, model
 // it. See run's doc comment for the resolution steps and the meaning of
 // an empty returned interface.
 func (s *ServiceProfileService) Apply(ctx context.Context, svc service.Service, equipment serviceequipment.ServiceEquipment) (string, error) {
-	return s.run(ctx, svc, equipment, func(client *provisioningkontron.Client, iface, profileName string) error {
-		return client.ApplyServiceProfile(ctx, iface, profileName)
+	return s.run(ctx, svc, equipment, func(client *provisioningkontron.Client, iface, profileName string, uniPort int) error {
+		return client.ApplyServiceProfile(ctx, iface, profileName, uniPort)
 	})
 }
 
@@ -88,7 +88,12 @@ func (s *ServiceProfileService) Apply(ctx context.Context, svc service.Service, 
 // comment for the resolution steps and the meaning of an empty returned
 // interface.
 func (s *ServiceProfileService) Remove(ctx context.Context, svc service.Service, equipment serviceequipment.ServiceEquipment) (string, error) {
-	return s.run(ctx, svc, equipment, func(client *provisioningkontron.Client, iface, profileName string) error {
+	// uniPort is deliberately unused here: RemoveServiceProfile takes no
+	// such argument (see its own doc comment on why apply and remove are
+	// not symmetric on the real hardware) — run's command signature stays
+	// shared between Apply and Remove regardless, so this closure just
+	// ignores the value Apply's needs.
+	return s.run(ctx, svc, equipment, func(client *provisioningkontron.Client, iface, profileName string, _ int) error {
 		return client.RemoveServiceProfile(ctx, iface, profileName)
 	})
 }
@@ -113,7 +118,7 @@ func (s *ServiceProfileService) run(
 	ctx context.Context,
 	svc service.Service,
 	equipment serviceequipment.ServiceEquipment,
-	command func(client *provisioningkontron.Client, iface, profileName string) error,
+	command func(client *provisioningkontron.Client, iface, profileName string, uniPort int) error,
 ) (string, error) {
 	if equipment.Role != serviceequipment.EquipmentRoleONU && equipment.Role != serviceequipment.EquipmentRoleONT {
 		return "", nil
@@ -152,7 +157,7 @@ func (s *ServiceProfileService) run(
 	}
 	defer func() { _ = shell.Close() }()
 
-	if err := command(provisioningkontron.NewClient(shell), location.Interface, profile.ProfileName); err != nil {
+	if err := command(provisioningkontron.NewClient(shell), location.Interface, profile.ProfileName, equipment.UNIPort); err != nil {
 		return "", classify("command failed", err)
 	}
 

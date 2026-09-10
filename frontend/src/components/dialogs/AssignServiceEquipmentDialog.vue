@@ -9,6 +9,7 @@ import { createServiceEquipment } from '@/services/serviceEquipment/serviceEquip
 import { ApiError } from '@/services/api/httpClient'
 import type { Device } from '@/types/device'
 import type { ServiceEquipment } from '@/types/serviceEquipment'
+import { UNI_PORT_OPTIONS } from '@/types/serviceEquipment'
 
 /**
  * Assigns an existing Device to a Service, creating a ServiceEquipment
@@ -29,9 +30,15 @@ const emit = defineEmits<{
 const deviceId = ref('')
 const role = ref<ServiceEquipment['role']>('ONU')
 const description = ref('')
+const uniPort = ref('1')
 const devices = ref<Device[]>([])
 const submitting = ref(false)
 const error = ref<string | null>(null)
+
+// The uni port only means anything for ONU/ONT equipment (see
+// internal/serviceequipment.ServiceEquipment's own doc comment) — hidden
+// for every other Role rather than shown-but-ignored.
+const showUniPort = computed(() => role.value === 'ONU' || role.value === 'ONT')
 
 const deviceOptions = computed(() =>
   devices.value.map((device) => ({
@@ -54,6 +61,7 @@ function reset() {
   deviceId.value = ''
   role.value = 'ONU'
   description.value = ''
+  uniPort.value = '1'
   error.value = null
 }
 
@@ -88,6 +96,7 @@ async function handleSubmit() {
       deviceId: deviceId.value,
       role: role.value,
       description: description.value,
+      uniPort: showUniPort.value ? Number(uniPort.value) : 0,
     })
     reset()
     emit('created', equipment)
@@ -107,6 +116,7 @@ async function handleSubmit() {
     <form class="assign-form" @submit.prevent="handleSubmit">
       <BaseSelect v-model="deviceId" label="Device" :options="deviceOptions" />
       <BaseSelect v-model="role" label="Role" :options="roleOptions" />
+      <BaseSelect v-if="showUniPort" v-model="uniPort" label="LAN Port" :options="UNI_PORT_OPTIONS" />
       <BaseInput v-model="description" label="Description" />
 
       <p v-if="error" class="assign-form__error" role="alert">{{ error }}</p>

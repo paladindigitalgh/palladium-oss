@@ -157,16 +157,6 @@ func isONUOrONT(role serviceequipment.EquipmentRole) bool {
 	return role == serviceequipment.EquipmentRoleONU || role == serviceequipment.EquipmentRoleONT
 }
 
-// hasAppliedProfile reports whether status implies a Kontron service-
-// profile is currently applied and therefore needs removing — Active and
-// Suspended are the only two ServiceStatus values ProvisionService/
-// ResumeService/SuspendService ever leave a Service in with a profile
-// still on the ONU (see internal/provisioning/kontron/plugin's own doc
-// comment).
-func hasAppliedProfile(status service.ServiceStatus) bool {
-	return status == service.ServiceStatusActive || status == service.ServiceStatusSuspended
-}
-
 // EquipmentPreview describes one active ServiceEquipment record that
 // Execute would unassign.
 type EquipmentPreview struct {
@@ -233,7 +223,7 @@ func (s *RemovalService) Preview(ctx context.Context, customerID uuid.UUID) (Pre
 				}
 
 				willTeardown := false
-				if isONUOrONT(eq.Role) && hasAppliedProfile(svc.Status) {
+				if isONUOrONT(eq.Role) && svc.Status.HasAppliedProfile() {
 					if _, err := s.attachments.GetActiveByServiceEquipmentID(ctx, eq.ID); err == nil {
 						willTeardown = true
 					}
@@ -326,7 +316,7 @@ func (s *RemovalService) unassignEquipment(ctx context.Context, svc service.Serv
 		attachment, err := s.attachments.GetActiveByServiceEquipmentID(ctx, eq.ID)
 		hasAttachment := err == nil
 
-		if hasAttachment && isONUOrONT(eq.Role) && hasAppliedProfile(svc.Status) {
+		if hasAttachment && isONUOrONT(eq.Role) && svc.Status.HasAppliedProfile() {
 			if _, err := s.profiles.Remove(ctx, svc, eq); err != nil {
 				return err
 			}

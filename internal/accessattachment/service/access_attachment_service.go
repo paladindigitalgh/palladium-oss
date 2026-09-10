@@ -53,6 +53,19 @@ func (s *AccessAttachmentService) List(ctx context.Context) ([]accessattachment.
 	return s.attachments.List(ctx)
 }
 
+// GetActiveByServiceEquipmentID returns the active (RemovedAt == nil)
+// AccessAttachment for serviceEquipmentID, or an apperror.KindNotFound
+// error if it has none. A pure pass-through to the repository's own
+// query of the same name -- unlike Create/Update, there is no business
+// rule of this service's own to apply on a read -- exposed publicly so
+// internal/serviceequipment/service.ServiceEquipmentService.Delete can
+// find (and then remove) a ServiceEquipment's active attachment before
+// deleting the record it references, without reaching past this service
+// to the raw repository.
+func (s *AccessAttachmentService) GetActiveByServiceEquipmentID(ctx context.Context, serviceEquipmentID uuid.UUID) (accessattachment.AccessAttachment, error) {
+	return s.attachments.GetActiveByServiceEquipmentID(ctx, serviceEquipmentID)
+}
+
 // Create validates a, enforces the active-attachment-uniqueness rule,
 // and if both pass, persists it.
 //

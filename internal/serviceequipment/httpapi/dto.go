@@ -43,6 +43,7 @@ type serviceEquipmentRequest struct {
 	DeviceID    uuid.UUID `json:"device_id"`
 	Role        string    `json:"role"`
 	Description string    `json:"description"`
+	UNIPort     int       `json:"uni_port"`
 
 	InstalledAt *time.Time `json:"installed_at"`
 	RemovedAt   *time.Time `json:"removed_at"`
@@ -58,6 +59,7 @@ func (req serviceEquipmentRequest) toServiceEquipment(id uuid.UUID) serviceequip
 		DeviceID:    req.DeviceID,
 		Role:        serviceequipment.EquipmentRole(req.Role),
 		Description: req.Description,
+		UNIPort:     req.UNIPort,
 
 		InstalledAt: req.InstalledAt,
 		RemovedAt:   req.RemovedAt,
@@ -75,6 +77,7 @@ type serviceEquipmentResponse struct {
 	DeviceID    uuid.UUID `json:"device_id"`
 	Role        string    `json:"role"`
 	Description string    `json:"description"`
+	UNIPort     int       `json:"uni_port"`
 
 	InstalledAt *time.Time `json:"installed_at"`
 	RemovedAt   *time.Time `json:"removed_at"`
@@ -90,6 +93,7 @@ func newServiceEquipmentResponse(e serviceequipment.ServiceEquipment) serviceEqu
 		DeviceID:    e.DeviceID,
 		Role:        string(e.Role),
 		Description: e.Description,
+		UNIPort:     e.UNIPort,
 
 		InstalledAt: e.InstalledAt,
 		RemovedAt:   e.RemovedAt,
