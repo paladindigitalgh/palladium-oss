@@ -71,7 +71,9 @@ onBeforeUnmount(() => {
     </h2>
     <div class="section-card__collapsible" :class="{ 'section-card__collapsible--collapsed': collapsed }">
       <div :id="bodyId" class="section-card__body" role="region" :aria-labelledby="headingId">
-        <slot />
+        <div class="section-card__body-inner">
+          <slot />
+        </div>
       </div>
     </div>
   </section>
@@ -147,7 +149,24 @@ onBeforeUnmount(() => {
 }
 
 .section-card__body {
+  /* No padding here, deliberately: this element's own box is what the
+     grid-template-rows collapse above shrinks to zero height. Padding
+     placed directly on it cannot itself shrink below the padding's own
+     size -- overflow:hidden clips *content* that overflows, but padding
+     is never "overflow," so a collapsed track still renders at least
+     padding-top + padding-bottom tall (confirmed live: a collapsed
+     Device Detail Summary section was still showing ~24px of its first
+     FactGrid row peeking out, exactly this element's old padding-bottom
+     value). Moving the padding one level down, onto a plain child with
+     no height constraint of its own, lets this element's box (and
+     therefore the whole collapsed row) reach a true 0 -- the same fix
+     BaseDisclosure.vue's own .base-disclosure__body already documents
+     and applies for this identical animation technique.
+  */
   overflow: hidden;
+}
+
+.section-card__body-inner {
   padding: 0 var(--space-5) var(--space-5);
 }
 

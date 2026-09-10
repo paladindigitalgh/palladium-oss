@@ -120,7 +120,7 @@ beforeEach(() => {
   listProviders.mockReset()
   // Single Provider by default (the common case): no test below cares
   // about Provider-prefixed labels unless it overrides this itself.
-  listProviders.mockResolvedValue([{ id: 'pr1', name: 'Acme Fiber', status: 'Active', description: '' }])
+  listProviders.mockResolvedValue([{ id: 'pr1', name: 'Acme Fiber', status: 'Active' }])
   listServiceProfiles.mockReset()
   createServiceEquipment.mockReset()
   createServiceEquipment.mockResolvedValue({ id: 'se1' })
@@ -136,7 +136,9 @@ describe('create mode (no service prop)', () => {
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     createService.mockResolvedValue(existingService())
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -161,7 +163,6 @@ describe('create mode (no service prop)', () => {
       serviceId: 's1',
       deviceId: 'd1',
       role: 'ONU',
-      description: '',
       uniPort: 1,
     })
     expect(runWorkflow).toHaveBeenCalledWith('s1', 'provision-service')
@@ -175,7 +176,9 @@ describe('create mode (no service prop)', () => {
     listProducts.mockResolvedValue([{ id: 'p1', name: 'Residential 100mb/s', status: 'Active' }])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -186,12 +189,14 @@ describe('create mode (no service prop)', () => {
   it('labels each Product option "<Provider> > <Product>" once more than one Provider exists', async () => {
     listProducts.mockResolvedValue([{ id: 'p1', providerId: 'pr1', name: 'Residential 100mb/s', status: 'Active' }])
     listProviders.mockResolvedValue([
-      { id: 'pr1', name: 'Acme Internet Provider', status: 'Active', description: '' },
-      { id: 'pr2', name: 'Other ISP', status: 'Active', description: '' },
+      { id: 'pr1', name: 'Acme Internet Provider', status: 'Active' },
+      { id: 'pr2', name: 'Other ISP', status: 'Active' },
     ])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -205,7 +210,9 @@ describe('create mode (no service prop)', () => {
     createService.mockResolvedValue(existingService())
 
     const devices = [fixtureDevice({ id: 'd1', name: 'ONT-Main-01' }), fixtureDevice({ id: 'd2', name: 'ONT-Main-02' })]
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices, attachedDeviceCount: 2 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -218,9 +225,40 @@ describe('create mode (no service prop)', () => {
       serviceId: 's1',
       deviceId: 'd2',
       role: 'ONU',
-      description: '',
       uniPort: 1,
     })
+  })
+
+  // 2026-09-10, at the user's explicit request: which Device is about to
+  // be configured should never be implicit once the Customer has more
+  // than one Device on file at all -- even if only one of them is
+  // actually eligible right now (the other already fulfills a different
+  // Service). attachedDeviceCount (the Customer's total, not just
+  // eligibleServiceDevices) is what the picker's visibility keys on for
+  // exactly this reason -- devices.length alone could not distinguish
+  // this case from the truly-only-one-device-ever case above.
+  it('shows the Device picker naming the sole eligible device when the customer has a second, already-in-service device', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
+    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    createService.mockResolvedValue(existingService())
+
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice({ id: 'd1' })], attachedDeviceCount: 2 },
+    })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    const select = deviceSelect()
+    expect(select).toBeDefined()
+    expect((select!.element as HTMLSelectElement).value).toBe('d1')
+    expect(select!.findAll('option')).toHaveLength(1)
+
+    await body().find('form').trigger('submit.prevent')
+    await wrapper.vm.$nextTick()
+
+    expect(createServiceEquipment).toHaveBeenCalledWith(
+      expect.objectContaining({ serviceId: 's1', deviceId: 'd1' }),
+    )
   })
 
   it('defaults the LAN Port to 10GE (uni 1), and submits 1GE (uni 2) once chosen -- never both', async () => {
@@ -228,7 +266,9 @@ describe('create mode (no service prop)', () => {
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     createService.mockResolvedValue(existingService())
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -251,7 +291,9 @@ describe('create mode (no service prop)', () => {
     listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [], attachedDeviceCount: 0 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -270,7 +312,9 @@ describe('create mode (no service prop)', () => {
     createService.mockResolvedValue(existingService())
     createServiceEquipment.mockRejectedValue(new ApiError('device already assigned', 'conflict', 409))
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -291,7 +335,9 @@ describe('create mode (no service prop)', () => {
     createService.mockResolvedValue(existingService())
     runWorkflow.mockRejectedValue(new Error('This workflow is taking longer than expected -- check back shortly for its result.'))
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -323,7 +369,9 @@ describe('create mode (no service prop)', () => {
       errorMessage: 'no active access attachment for service equipment se1',
     })
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -344,7 +392,9 @@ describe('create mode (no service prop)', () => {
     deleteServiceEquipment.mockRejectedValue(new ApiError('already gone', 'not_found', 404))
     deleteService.mockRejectedValue(new ApiError('already gone', 'not_found', 404))
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -359,7 +409,9 @@ describe('create mode (no service prop)', () => {
     listProducts.mockResolvedValue([])
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -372,7 +424,9 @@ describe('create mode (no service prop)', () => {
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     createService.mockRejectedValue(new ApiError('a service already exists for this location', 'conflict', 409))
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', devices: [fixtureDevice()] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -393,7 +447,9 @@ describe('edit mode (service prop present)', () => {
     listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     const service = existingService({ productId: 'p2', status: 'Active', description: 'Existing service' })
 
-    const wrapper = mount(ServiceFormDialog, { props: { open: false, locationId: 'l1', service, devices: [] } })
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', service, devices: [], attachedDeviceCount: 0 },
+    })
     await wrapper.setProps({ open: true })
     await settle()
 
@@ -413,7 +469,7 @@ describe('edit mode (service prop present)', () => {
     updateService.mockResolvedValue({ ...service, description: 'Updated' })
 
     const wrapper = mount(ServiceFormDialog, {
-      props: { open: false, locationId: 'l-prop-should-be-ignored', service, devices: [] },
+      props: { open: false, locationId: 'l-prop-should-be-ignored', service, devices: [], attachedDeviceCount: 0 },
     })
     await wrapper.setProps({ open: true })
     await settle()

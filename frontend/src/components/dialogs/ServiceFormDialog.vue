@@ -33,9 +33,15 @@ import { UNI_PORT_OPTIONS } from '@/types/serviceEquipment'
  * computes it as the Customer's attached, not-yet-in-service devices
  * (internal/customerdevice) and disables the "Add Service" button
  * entirely when it is empty -- see that view's own reasoning. A Service
- * is always device-specific here: with exactly one eligible device it is
- * auto-selected with no picker shown (fewer clicks when there is only
- * one possible choice); with more than one, the operator must choose.
+ * is always device-specific here: the eligible device is always
+ * auto-selected as a default, but the picker itself is only hidden when
+ * `attachedDeviceCount` -- the Customer's total attached devices,
+ * eligible or not -- is 1. A Customer with two attached devices, one
+ * already in service, still sees the picker naming the one eligible
+ * choice: with a second device on file at all, which device is about to
+ * be configured should never be implicit, even though only one is
+ * actually selectable right now. Only when there is truly just one
+ * device attached, period, is there no ambiguity left to surface.
  * The LAN Port picker (10GE/1GE, i.e. uni 1/2 -- see
  * types/serviceEquipment.ts's UNI_PORT_OPTIONS and
  * internal/serviceequipment.ServiceEquipment's own doc comment) is the
@@ -71,7 +77,13 @@ import { UNI_PORT_OPTIONS } from '@/types/serviceEquipment'
  * 00040 comment) was also relaxed around the same time: an operator who
  * finds one of those orphans must still be able to clear it out by hand.
  */
-const props = defineProps<{ open: boolean; locationId: string; service?: Service | null; devices: Device[] }>()
+const props = defineProps<{
+  open: boolean
+  locationId: string
+  service?: Service | null
+  devices: Device[]
+  attachedDeviceCount: number
+}>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', service: Service): void
@@ -280,7 +292,12 @@ async function handleSubmit() {
         This customer has no device available for a new service — attach one first.
       </p>
       <template v-else>
-        <BaseSelect v-if="!service && devices.length > 1" v-model="deviceId" label="Device" :options="deviceOptions" />
+        <BaseSelect
+          v-if="!service && attachedDeviceCount > 1"
+          v-model="deviceId"
+          label="Device"
+          :options="deviceOptions"
+        />
         <BaseSelect v-if="!service" v-model="uniPort" label="LAN Port" :options="UNI_PORT_OPTIONS" />
         <BaseSelect v-model="productId" label="Product" :options="productOptions" />
         <BaseSelect

@@ -8,6 +8,7 @@ import SectionCard from '@/components/data-display/SectionCard.vue'
 import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
 import RelationshipCard from '@/components/data-display/RelationshipCard.vue'
 import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
+import NotesSection from '@/components/data-display/NotesSection.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
@@ -20,12 +21,14 @@ import { deauthorizeONU } from '@/services/provisioning/provisioningRepository'
 import { getServiceById } from '@/services/services/serviceRepository'
 import { getRackById } from '@/services/racks/rackRepository'
 import { listEvents } from '@/services/events/eventRepository'
+import { listNotes, createNote } from '@/services/notes/noteRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { Device } from '@/types/device'
 import type { Service } from '@/types/service'
 import type { Rack } from '@/types/rack'
 import type { TimelineEvent } from '@/types/timelineEvent'
+import type { Note } from '@/types/note'
 
 /**
  * The Device Detail Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md,
@@ -47,6 +50,9 @@ const device = ref<Device | null>(null)
 const assignedServices = ref<Service[]>([])
 const rack = ref<Rack | null>(null)
 const timeline = ref<TimelineEvent[]>([])
+const notes = ref<Note[]>([])
+const notesSubmitting = ref(false)
+const notesError = ref<string | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
 
@@ -57,6 +63,7 @@ async function load(id: string) {
   assignedServices.value = []
   rack.value = null
   timeline.value = []
+  notes.value = []
 
   const result = await getDeviceById(id)
   if (!result) {
@@ -66,18 +73,39 @@ async function load(id: string) {
   }
   device.value = result
 
-  const [equipment, events, deviceRack] = await Promise.all([
+  const [equipment, events, deviceNotes, deviceRack] = await Promise.all([
     listServiceEquipmentByDeviceId(id),
     listEvents('device', id),
+    listNotes('device', id),
     result.rackId ? getRackById(result.rackId) : Promise.resolve(null),
   ])
   timeline.value = events
+  notes.value = deviceNotes
   rack.value = deviceRack
 
   const services = await Promise.all(equipment.map((item) => getServiceById(item.serviceId)))
   assignedServices.value = services.filter((service): service is Service => service !== null)
 
   loading.value = false
+}
+
+async function refreshNotes() {
+  if (!device.value) return
+  notes.value = await listNotes('device', device.value.id)
+}
+
+async function handleAddNote(body: string) {
+  if (!device.value) return
+  notesSubmitting.value = true
+  notesError.value = null
+  try {
+    await createNote({ entityType: 'device', entityId: device.value.id, body })
+    await refreshNotes()
+  } catch {
+    notesError.value = 'The note could not be added.'
+  } finally {
+    notesSubmitting.value = false
+  }
 }
 
 onMounted(() => load(route.params.id as string))
@@ -157,7 +185,11 @@ async function confirmRemoveDevice() {
   try {
     await deauthorizeONU(device.value.id)
     showRemoveDialog.value = false
-    await load(device.value.id)
+    // Unlike Edit or a failed removal, a successful Remove Device leaves
+    // nothing on this page worth staying for -- the Device is now
+    // Retired, and the operator's next move is almost always back to the
+    // list, not watching this one record reload in place.
+    router.push('/devices')
   } catch (err) {
     if (err instanceof ApiError && err.kind === 'invalid') {
       removeError.value = 'This device is not an ONU/ONT on a Kontron OLT.'
@@ -254,6 +286,10 @@ async function confirmRemoveDevice() {
 
     <SectionCard title="Timeline" icon="history">
       <TimelineEntries :entries="timelineEntries" />
+    </SectionCard>
+
+    <SectionCard title="Notes" icon="notes" :badge="notes.length">
+      <NotesSection :notes="notes" :submitting="notesSubmitting" :error="notesError" @submit="handleAddNote" />
     </SectionCard>
   </DetailWorkspace>
 </template>

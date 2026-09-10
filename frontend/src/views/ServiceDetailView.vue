@@ -9,6 +9,7 @@ import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
 import RelationshipCard from '@/components/data-display/RelationshipCard.vue'
 import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/SimpleTable.vue'
 import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
+import NotesSection from '@/components/data-display/NotesSection.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
@@ -23,6 +24,7 @@ import { listServiceEquipmentByServiceId, deleteServiceEquipment } from '@/servi
 import { getDeviceById } from '@/services/devices/deviceRepository'
 import { getActiveAccessAttachmentByServiceEquipmentId } from '@/services/accessAttachments/accessAttachmentRepository'
 import { listEvents } from '@/services/events/eventRepository'
+import { listNotes, createNote } from '@/services/notes/noteRepository'
 import { listWorkflowInstancesByServiceId, runWorkflow } from '@/services/workflow/workflowRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
@@ -33,6 +35,7 @@ import type { Device } from '@/types/device'
 import type { ServiceEquipment } from '@/types/serviceEquipment'
 import type { AccessAttachment } from '@/types/accessAttachment'
 import type { TimelineEvent } from '@/types/timelineEvent'
+import type { Note } from '@/types/note'
 import type { WorkflowDefinitionName, WorkflowInstance } from '@/types/workflowInstance'
 
 /**
@@ -64,6 +67,9 @@ const equipment = ref<ServiceEquipment[]>([])
 const devicesById = ref<Map<string, Device>>(new Map())
 const activeAttachmentByEquipmentId = ref<Map<string, AccessAttachment>>(new Map())
 const timeline = ref<TimelineEvent[]>([])
+const notes = ref<Note[]>([])
+const notesSubmitting = ref(false)
+const notesError = ref<string | null>(null)
 const workflowHistory = ref<WorkflowInstance[]>([])
 const loading = ref(true)
 const notFound = ref(false)
@@ -82,6 +88,7 @@ async function load(id: string) {
   devicesById.value = new Map()
   activeAttachmentByEquipmentId.value = new Map()
   timeline.value = []
+  notes.value = []
   workflowHistory.value = []
 
   const result = await getServiceById(id)
@@ -92,10 +99,11 @@ async function load(id: string) {
   }
   service.value = result
 
-  const [relatedLocation, relatedEquipment, events, history, labels] = await Promise.all([
+  const [relatedLocation, relatedEquipment, events, serviceNotes, history, labels] = await Promise.all([
     getLocationById(result.locationId),
     listServiceEquipmentByServiceId(result.id),
     listEvents('service', result.id),
+    listNotes('service', result.id),
     listWorkflowInstancesByServiceId(result.id),
     resolveServiceLabels([result]),
   ])
@@ -103,6 +111,7 @@ async function load(id: string) {
   location.value = relatedLocation
   equipment.value = relatedEquipment
   timeline.value = events
+  notes.value = serviceNotes
   workflowHistory.value = history
 
   if (relatedLocation) {
@@ -129,6 +138,25 @@ async function load(id: string) {
   activeAttachmentByEquipmentId.value = attachmentByEquipmentId
 
   loading.value = false
+}
+
+async function refreshNotes() {
+  if (!service.value) return
+  notes.value = await listNotes('service', service.value.id)
+}
+
+async function handleAddNote(body: string) {
+  if (!service.value) return
+  notesSubmitting.value = true
+  notesError.value = null
+  try {
+    await createNote({ entityType: 'service', entityId: service.value.id, body })
+    await refreshNotes()
+  } catch {
+    notesError.value = 'The note could not be added.'
+  } finally {
+    notesSubmitting.value = false
+  }
 }
 
 onMounted(() => load(route.params.id as string))
@@ -348,6 +376,7 @@ const workflowColumns: SimpleTableColumn[] = [
       :location-id="service.locationId"
       :service="service"
       :devices="[]"
+      :attached-device-count="0"
       @close="showEditDialog = false"
       @updated="handleServiceUpdated"
     />
@@ -461,6 +490,10 @@ const workflowColumns: SimpleTableColumn[] = [
 
     <SectionCard title="Timeline" icon="history">
       <TimelineEntries :entries="timelineEntries" />
+    </SectionCard>
+
+    <SectionCard title="Notes" icon="notes" :badge="notes.length">
+      <NotesSection :notes="notes" :submitting="notesSubmitting" :error="notesError" @submit="handleAddNote" />
     </SectionCard>
   </DetailWorkspace>
 </template>

@@ -7,8 +7,10 @@ import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import SectionCard from '@/components/data-display/SectionCard.vue'
 import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/SimpleTable.vue'
 import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
+import NotesSection from '@/components/data-display/NotesSection.vue'
 import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
+import BaseIcon from '@/components/base/BaseIcon.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
@@ -23,8 +25,10 @@ import { getCustomerById } from '@/services/customers/customerRepository'
 import { listContactsByCustomerId, deleteContact } from '@/services/contacts/contactRepository'
 import { listLocationsByCustomerId, deleteLocation } from '@/services/locations/locationRepository'
 import { listServicesByLocationIds, deleteService } from '@/services/services/serviceRepository'
+import { runWorkflow } from '@/services/workflow/workflowRepository'
 import { resolveServiceLabels } from '@/services/services/serviceLabels'
 import { listEvents } from '@/services/events/eventRepository'
+import { listNotes, createNote } from '@/services/notes/noteRepository'
 import {
   listCustomerEquipmentLocations,
   runONURunningConfig,
@@ -35,8 +39,12 @@ import {
 } from '@/services/diagnostics/diagnosticsRepository'
 import { getOLTById } from '@/services/olts/oltRepository'
 import { getDeviceById } from '@/services/devices/deviceRepository'
-import { listActiveCustomerDevicesByCustomerId, detachCustomerDevice } from '@/services/customerDevices/customerDeviceRepository'
-import { listServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
+import {
+  listActiveCustomerDevicesByCustomerId,
+  detachCustomerDevice,
+  setCustomerDeviceLocation,
+} from '@/services/customerDevices/customerDeviceRepository'
+import { listServiceEquipment, listServiceEquipmentByServiceId, deleteServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { Contact } from '@/types/contact'
@@ -44,8 +52,10 @@ import type { Customer } from '@/types/customer'
 import type { Location } from '@/types/location'
 import type { Service } from '@/types/service'
 import type { TimelineEvent } from '@/types/timelineEvent'
+import type { Note } from '@/types/note'
 import type { CustomerEquipmentLocation } from '@/types/onuDiagnostics'
 import type { OLT } from '@/types/olt'
+import type { ServiceEquipment } from '@/types/serviceEquipment'
 import type { Device } from '@/types/device'
 import type { CustomerDevice } from '@/types/customerDevice'
 
@@ -88,10 +98,13 @@ const contacts = ref<Contact[]>([])
 const locations = ref<Location[]>([])
 const customerDevices = ref<CustomerDevice[]>([])
 const devicesById = ref<Map<string, Device>>(new Map())
-const activeServiceDeviceIds = ref<Set<string>>(new Set())
+const activeServiceEquipment = ref<ServiceEquipment[]>([])
 const services = ref<Service[]>([])
 const serviceLabelsById = ref<Map<string, string>>(new Map())
 const timeline = ref<TimelineEvent[]>([])
+const notes = ref<Note[]>([])
+const notesSubmitting = ref(false)
+const notesError = ref<string | null>(null)
 const equipmentLocations = ref<CustomerEquipmentLocation[]>([])
 const oltsById = ref<Map<string, OLT>>(new Map())
 const onuDiagnostics = ref<Map<string, ONUDiagnosticsState>>(new Map())
@@ -116,22 +129,56 @@ async function refreshAttachedDevices() {
 }
 
 /**
- * Re-resolves which Devices currently fulfill an active
- * serviceequipment.ServiceEquipment record, refreshing
- * activeServiceDeviceIds -- what eligibleServiceDevices below actually
- * gates on. Deliberately not derived from Device.Status: since
- * internal/customerdevice/service.CustomerDeviceService started marking
- * a Device Active purely from being attached to a Customer (see
- * project memory on that fix), Status alone can no longer answer "does
- * this Device already have a Service" -- a Device attached here and
- * nothing else is Active too, and should still be offered. Called on
- * initial load and again after creating a Service, which is the one
- * action that can add a Device to this set out from under this view.
+ * Re-fetches every active serviceequipment.ServiceEquipment record
+ * system-wide into activeServiceEquipment -- the one source three
+ * separate computed lookups below derive from, each keyed differently
+ * for its own caller:
+ *  - activeServiceDeviceIds -- which Devices currently fulfill one --
+ *    what eligibleServiceDevices below actually gates on. Deliberately
+ *    not derived from Device.Status: since
+ *    internal/customerdevice/service.CustomerDeviceService started
+ *    marking a Device Active purely from being attached to a Customer
+ *    (see project memory on that fix), Status alone can no longer
+ *    answer "does this Device already have a Service" -- a Device
+ *    attached here and nothing else is Active too, and should still be
+ *    offered.
+ *  - serviceDeviceIdById -- which one Device each Service is currently
+ *    tied to, keyed by Service ID -- what the Services section's Device
+ *    column reads, so an operator with more than one Service can tell
+ *    them apart without opening each one.
+ *  - deviceIdByServiceEquipmentId -- the same relationship keyed by
+ *    ServiceEquipment ID instead, since that is what
+ *    CustomerEquipmentLocation.serviceEquipmentId (ONU Diagnostics
+ *    below) addresses, not a Service ID.
+ * Called on initial load and again after creating or removing a
+ * Service, the two actions that can change any of the three.
  */
-async function refreshActiveServiceDeviceIds() {
-  const equipment = await listServiceEquipment()
-  activeServiceDeviceIds.value = new Set(equipment.filter((e) => e.removedAt === null).map((e) => e.deviceId))
+async function refreshActiveServiceEquipment() {
+  activeServiceEquipment.value = (await listServiceEquipment()).filter((e) => e.removedAt === null)
 }
+
+async function refreshNotes() {
+  if (!customer.value) return
+  notes.value = await listNotes('customer', customer.value.id)
+}
+
+async function handleAddNote(body: string) {
+  if (!customer.value) return
+  notesSubmitting.value = true
+  notesError.value = null
+  try {
+    await createNote({ entityType: 'customer', entityId: customer.value.id, body })
+    await refreshNotes()
+  } catch {
+    notesError.value = 'The note could not be added.'
+  } finally {
+    notesSubmitting.value = false
+  }
+}
+
+const activeServiceDeviceIds = computed(() => new Set(activeServiceEquipment.value.map((e) => e.deviceId)))
+const serviceDeviceIdById = computed(() => new Map(activeServiceEquipment.value.map((e) => [e.serviceId, e.deviceId])))
+const deviceIdByServiceEquipmentId = computed(() => new Map(activeServiceEquipment.value.map((e) => [e.id, e.deviceId])))
 
 async function load(id: string) {
   loading.value = true
@@ -141,13 +188,15 @@ async function load(id: string) {
   locations.value = []
   customerDevices.value = []
   devicesById.value = new Map()
-  activeServiceDeviceIds.value = new Set()
+  activeServiceEquipment.value = []
   services.value = []
   serviceLabelsById.value = new Map()
   timeline.value = []
+  notes.value = []
   equipmentLocations.value = []
   oltsById.value = new Map()
   onuDiagnostics.value = new Map()
+  collapsedONUDiagnostics.value = new Set()
 
   const result = await getCustomerById(id)
   if (!result) {
@@ -157,16 +206,18 @@ async function load(id: string) {
   }
   customer.value = result
 
-  const [customerContacts, customerLocations, events, customerEquipmentLocations, activeCustomerDevices] =
+  const [customerContacts, customerLocations, events, customerNotes, customerEquipmentLocations, activeCustomerDevices] =
     await Promise.all([
       listContactsByCustomerId(id),
       listLocationsByCustomerId(id),
       listEvents('customer', id),
+      listNotes('customer', id),
       listCustomerEquipmentLocations(id),
       listActiveCustomerDevicesByCustomerId(id),
-      refreshActiveServiceDeviceIds(),
+      refreshActiveServiceEquipment(),
     ])
   contacts.value = customerContacts
+  notes.value = customerNotes
   locations.value = customerLocations
   timeline.value = events
   services.value = await listServicesByLocationIds(customerLocations.map((location) => location.id))
@@ -220,12 +271,14 @@ const locationColumns: SimpleTableColumn[] = [
 
 const serviceColumns: SimpleTableColumn[] = [
   { key: 'service', label: 'Service' },
+  { key: 'device', label: 'Device' },
   { key: 'status', label: 'Status' },
   { key: 'actions', label: '' },
 ]
 
 const deviceColumns: SimpleTableColumn[] = [
   { key: 'device', label: 'Device' },
+  { key: 'location', label: 'Location' },
   { key: 'status', label: 'Status' },
   { key: 'actions', label: '' },
 ]
@@ -330,10 +383,11 @@ async function confirmDeleteLocation() {
     locations.value = locations.value.filter((location) => location.id !== target.id)
     locationDeleteTarget.value = null
   } catch (err) {
-    locationDeleteError.value =
-      err instanceof ApiError && err.kind === 'conflict'
-        ? 'This location still has services attached — remove those first.'
-        : 'The location could not be deleted.'
+    // The backend now names the specific relationship that's still
+    // attached (a Service, or a Device's placement history) rather than
+    // this always guessing "services" -- see
+    // internal/location/postgres/errors.go's fkViolationReasons.
+    locationDeleteError.value = err instanceof ApiError ? err.message : 'The location could not be deleted.'
   } finally {
     locationDeletePending.value = false
   }
@@ -377,11 +431,33 @@ async function confirmDetachDevice() {
   }
 }
 
+const deviceLocationError = ref<string | null>(null)
+const deviceLocationPending = ref<string | null>(null)
+
+/**
+ * Changes which of the Customer's own Locations an already-attached
+ * Device is recorded as sitting at -- purely operator tracking (see
+ * CustomerDevice.locationId's own doc comment), correcting or filling in
+ * that field without detaching and reattaching the Device.
+ */
+async function handleDeviceLocationChanged(record: CustomerDevice, locationId: string) {
+  deviceLocationError.value = null
+  deviceLocationPending.value = record.id
+  try {
+    const updated = await setCustomerDeviceLocation(record, locationId === '' ? null : locationId)
+    customerDevices.value = customerDevices.value.map((cd) => (cd.id === updated.id ? updated : cd))
+  } catch {
+    deviceLocationError.value = 'The location could not be updated for this device.'
+  } finally {
+    deviceLocationPending.value = null
+  }
+}
+
 /**
  * The devices ServiceFormDialog's create mode may pick from: attached to
  * this customer, and not already fulfilling another active Service (the
  * same uniqueness rule internal/serviceequipment/service enforces
- * server-side -- see activeServiceDeviceIds/refreshActiveServiceDeviceIds
+ * server-side -- see activeServiceDeviceIds/refreshActiveServiceEquipment
  * above for why this is not simply "Device.Status === 'Unused'": Status
  * is Active for any attached Device now, service or no service, so it
  * can no longer answer this question by itself). This is also what "Add
@@ -436,7 +512,7 @@ async function handleServiceCreated(service: Service) {
   services.value = [...services.value, service]
   const labels = await resolveServiceLabels([service])
   serviceLabelsById.value = new Map(serviceLabelsById.value).set(service.id, labels.get(service.id) ?? service.id)
-  await refreshActiveServiceDeviceIds() // the device this Service just claimed drops out of eligibleServiceDevices
+  await refreshActiveServiceEquipment() // the device this Service just claimed drops out of eligibleServiceDevices
 }
 
 const serviceDeleteTarget = ref<Service | null>(null)
@@ -458,9 +534,48 @@ async function confirmDeleteService() {
   serviceDeletePending.value = true
   serviceDeleteError.value = null
   try {
+    // ServiceService.Delete blocks while Active (its config is still
+    // applied on the OLT -- see Status.HasAppliedProfile's doc comment).
+    // Remove Service used to just surface that as a dead-end error and
+    // send the operator to the Service Workspace to run Suspend by hand
+    // before coming back here -- the same "do X, remember to do Y" chain
+    // this codebase prefers to collapse into one action rather than
+    // patch the hand-off for. Suspended and Disconnected are "the
+    // identical action at the Kontron config level" (status.go), so
+    // suspending is enough to satisfy Delete's precondition; it's also
+    // the one of the two already proven end-to-end from the UI
+    // (ServiceDetailView.vue's primaryAction), unlike disconnect-service.
+    if (target.status === 'Active') {
+      const instance = await runWorkflow(target.id, 'suspend-service')
+      if (instance.status !== 'Succeeded') {
+        serviceDeleteError.value = instance.errorMessage ?? 'This service could not be suspended, so it was not removed.'
+        return
+      }
+    }
+    // Delete's second precondition: no active ServiceEquipment left
+    // (internal/service/service.ServiceService.Delete only ever checks
+    // ListActiveByServiceID, so an already-removed/historical row here
+    // is left untouched). ServiceEquipmentService.Delete already tears
+    // down its own AccessAttachment first (see that method's doc
+    // comment), so removing each item is the same complete, self-
+    // contained teardown ServiceDetailView.vue's own "Remove Equipment"
+    // button performs -- just run for every attached item instead of
+    // one at a time by hand.
+    const activeEquipment = (await listServiceEquipmentByServiceId(target.id)).filter((item) => item.removedAt === null)
+    for (const item of activeEquipment) {
+      await deleteServiceEquipment(item.id)
+    }
     await deleteService(target.id)
     services.value = services.value.filter((service) => service.id !== target.id)
     serviceDeleteTarget.value = null
+    // Removing that equipment just freed its Device the same way
+    // handleServiceCreated's own comment describes in reverse -- refresh
+    // both the eligibility set and the Devices section's cached Status
+    // (ServiceEquipmentService.Delete marks the Device Unused server-side)
+    // rather than leave them showing stale Active state until a reload.
+    if (activeEquipment.length > 0) {
+      await Promise.all([refreshActiveServiceEquipment(), refreshAttachedDevices()])
+    }
   } catch (err) {
     // A 404 here means the Service is already gone -- most often this
     // view's own `services` list going stale after another session (or
@@ -474,17 +589,31 @@ async function confirmDeleteService() {
     }
     // Conflict messages come straight from ServiceService.Delete now
     // (see that method's own doc comment): "still has equipment
-    // attached" and "still Active/Suspended -- suspend or disconnect it
-    // first" are both real, specific reasons worth showing verbatim,
-    // rather than collapsing them into one hardcoded guess.
+    // attached" is a real, specific reason worth showing verbatim,
+    // rather than collapsing it into one hardcoded guess. This also
+    // catches a thrown runWorkflow error above (an ApiError from the
+    // POST itself, or the plain Error it throws when the suspend
+    // instance never reaches a terminal status in time) -- both carry a
+    // real .message worth showing rather than the generic fallback,
+    // same as ServiceDetailView.vue's own runAction catch.
     serviceDeleteError.value =
-      err instanceof ApiError && err.kind === 'conflict' ? err.message : 'The service could not be deleted.'
+      err instanceof ApiError && err.kind === 'conflict'
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : 'The service could not be deleted.'
   } finally {
     serviceDeletePending.value = false
   }
 }
 
 const locationOptions = computed(() => locations.value.map((location) => ({ value: location.id, label: location.name })))
+
+// Unlike locationOptions above (always a real choice, for Add Service),
+// a CustomerDevice's Location is optional tracking (see
+// CustomerDevice.locationId's own doc comment) -- "Not set" is a
+// legitimate, common answer, not something to force a pick away from.
+const deviceLocationOptions = computed(() => [{ value: '', label: 'Not set' }, ...locationOptions.value])
 
 // --- ONU Diagnostics ---
 
@@ -497,6 +626,36 @@ interface DiagnosticCommandResult {
 interface ONUDiagnosticsState {
   pending: boolean
   results: DiagnosticCommandResult[] | null
+}
+
+/**
+ * Which ONU Diagnostics blocks are collapsed, by serviceEquipmentId --
+ * each block is independent (no accordion, more than one may be open at
+ * once). A customer with several attached devices otherwise means
+ * scrolling past one block's full result set (five commands' worth of
+ * output) just to reach the next block's own "Check ONU Status" button;
+ * this lets an operator collapse a block back down once they've seen
+ * what they needed from it. Collapsing is purely a display toggle --
+ * onuDiagnostics above still holds the results underneath, so expanding
+ * again shows them instantly with no re-run.
+ */
+const collapsedONUDiagnostics = ref<Set<string>>(new Set())
+
+function toggleONUDiagnosticsCollapsed(serviceEquipmentId: string) {
+  const next = new Set(collapsedONUDiagnostics.value)
+  if (next.has(serviceEquipmentId)) {
+    next.delete(serviceEquipmentId)
+  } else {
+    next.add(serviceEquipmentId)
+  }
+  collapsedONUDiagnostics.value = next
+}
+
+/** The block header's large title -- resolved through deviceIdByServiceEquipmentId/devicesById rather than a bare interface string, so which physical ONU is which is legible at a glance. */
+function onuDiagnosticsDeviceName(serviceEquipmentId: string): string {
+  const deviceId = deviceIdByServiceEquipmentId.value.get(serviceEquipmentId)
+  const device = deviceId ? devicesById.value.get(deviceId) : undefined
+  return device?.name ?? 'Unknown Device'
 }
 
 /**
@@ -520,6 +679,13 @@ const ONU_STATUS_COMMANDS: { label: string; run: (oltId: string, iface: string) 
 
 async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
   onuDiagnostics.value.set(equipmentLocation.serviceEquipmentId, { pending: true, results: null })
+  // A block collapsed from a previous run should not hide the fresh
+  // results this run is about to produce.
+  if (collapsedONUDiagnostics.value.has(equipmentLocation.serviceEquipmentId)) {
+    const next = new Set(collapsedONUDiagnostics.value)
+    next.delete(equipmentLocation.serviceEquipmentId)
+    collapsedONUDiagnostics.value = next
+  }
 
   const results: DiagnosticCommandResult[] = []
   for (const command of ONU_STATUS_COMMANDS) {
@@ -703,6 +869,7 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
       <AttachCustomerDeviceDialog
         :open="showAttachDeviceDialog"
         :customer-id="customer.id"
+        :locations="locations"
         @close="showAttachDeviceDialog = false"
         @attached="handleDeviceAttached"
       />
@@ -718,6 +885,8 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         @confirm="confirmDetachDevice"
         @cancel="deviceDetachTarget = null"
       />
+
+      <p v-if="deviceLocationError" class="device-location-error" role="alert">{{ deviceLocationError }}</p>
 
       <SimpleTable
         :columns="deviceColumns"
@@ -736,6 +905,17 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
               {{ devicesById.get(row.deviceId)?.serialNumber }}
             </span>
           </div>
+        </template>
+        <template #cell-location="{ row }">
+          <BaseSelect
+            label="Location"
+            hide-label
+            :model-value="row.locationId ?? ''"
+            :options="deviceLocationOptions"
+            :disabled="deviceLocationPending === row.id"
+            @click.stop
+            @update:model-value="(value) => handleDeviceLocationChanged(row, value)"
+          />
         </template>
         <template #cell-status="{ row }">{{ devicesById.get(row.deviceId)?.status ?? '—' }}</template>
         <template #cell-actions="{ row }">
@@ -768,6 +948,7 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         :open="showServiceForm"
         :location-id="serviceFormLocationId"
         :devices="eligibleServiceDevices"
+        :attached-device-count="customerDevices.length"
         @close="showServiceForm = false"
         @created="handleServiceCreated"
       />
@@ -775,7 +956,7 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
       <ConfirmationDialog
         :open="serviceDeleteTarget !== null"
         title="Remove Service"
-        :description="`Remove ${serviceDeleteTarget ? serviceLabelsById.get(serviceDeleteTarget.id) ?? serviceDeleteTarget.id : ''}? This cannot be undone.`"
+        :description="`Remove ${serviceDeleteTarget ? serviceLabelsById.get(serviceDeleteTarget.id) ?? serviceDeleteTarget.id : ''}? This will suspend it on the OLT first if it's Active, detach any assigned equipment, then delete the record. This cannot be undone.`"
         confirm-label="Remove Service"
         destructive
         :pending="serviceDeletePending"
@@ -794,6 +975,7 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         @row-click="openService"
       >
         <template #cell-service="{ row }">{{ serviceLabelsById.get(row.id) ?? row.id }}</template>
+        <template #cell-device="{ row }">{{ devicesById.get(serviceDeviceIdById.get(row.id) ?? '')?.name ?? '—' }}</template>
         <template #cell-status="{ row }">{{ row.status }}</template>
         <template #cell-actions="{ row }">
           <BaseButton variant="ghost" size="sm" @click.stop="openServiceDeleteDialog(row)">Remove</BaseButton>
@@ -812,12 +994,33 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
         class="onu-diagnostics-block"
       >
         <div class="onu-diagnostics-block__header">
-          <div>
-            <span class="cell-strong">{{ equipmentLocation.interface }}</span>
-            <span class="onu-diagnostics-block__olt">
-              on {{ oltsById.get(equipmentLocation.oltId)?.name ?? equipmentLocation.oltId }}
+          <button
+            type="button"
+            class="onu-diagnostics-block__toggle"
+            :disabled="!onuDiagnostics.get(equipmentLocation.serviceEquipmentId)?.results"
+            :aria-expanded="!collapsedONUDiagnostics.has(equipmentLocation.serviceEquipmentId)"
+            @click="toggleONUDiagnosticsCollapsed(equipmentLocation.serviceEquipmentId)"
+          >
+            <BaseIcon
+              v-if="onuDiagnostics.get(equipmentLocation.serviceEquipmentId)?.results"
+              name="chevron-down"
+              size="sm"
+              class="onu-diagnostics-block__chevron"
+              :class="{
+                'onu-diagnostics-block__chevron--collapsed': collapsedONUDiagnostics.has(
+                  equipmentLocation.serviceEquipmentId,
+                ),
+              }"
+            />
+            <span class="onu-diagnostics-block__title">
+              <span class="onu-diagnostics-block__device">
+                {{ onuDiagnosticsDeviceName(equipmentLocation.serviceEquipmentId) }}
+              </span>
+              <span class="onu-diagnostics-block__meta">
+                {{ equipmentLocation.interface }} on {{ oltsById.get(equipmentLocation.oltId)?.name ?? equipmentLocation.oltId }}
+              </span>
             </span>
-          </div>
+          </button>
           <BaseButton
             variant="secondary"
             size="sm"
@@ -831,7 +1034,13 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
           </BaseButton>
         </div>
 
-        <div v-if="onuDiagnostics.get(equipmentLocation.serviceEquipmentId)?.results" class="onu-diagnostics-results">
+        <div
+          v-if="
+            onuDiagnostics.get(equipmentLocation.serviceEquipmentId)?.results &&
+            !collapsedONUDiagnostics.has(equipmentLocation.serviceEquipmentId)
+          "
+          class="onu-diagnostics-results"
+        >
           <div
             v-for="result in onuDiagnostics.get(equipmentLocation.serviceEquipmentId)!.results"
             :key="result.label"
@@ -847,6 +1056,10 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
 
     <SectionCard title="Timeline" icon="history">
       <TimelineEntries :entries="timelineEntries" />
+    </SectionCard>
+
+    <SectionCard title="Notes" icon="notes" :badge="notes.length">
+      <NotesSection :notes="notes" :submitting="notesSubmitting" :error="notesError" @submit="handleAddNote" />
     </SectionCard>
   </DetailWorkspace>
 </template>
@@ -924,10 +1137,57 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
   gap: var(--space-3);
 }
 
-.onu-diagnostics-block__olt {
-  margin-left: var(--space-2);
+.onu-diagnostics-block__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.onu-diagnostics-block__toggle:disabled {
+  cursor: default;
+}
+
+.onu-diagnostics-block__chevron {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  transition: transform var(--motion-normal) var(--motion-ease);
+}
+
+.onu-diagnostics-block__chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
+.onu-diagnostics-block__title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.onu-diagnostics-block__device {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.onu-diagnostics-block__meta {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onu-diagnostics-block__chevron {
+    transition: none;
+  }
 }
 
 .onu-diagnostics-results {
@@ -960,6 +1220,12 @@ async function checkONUStatus(equipmentLocation: CustomerEquipmentLocation) {
 
 .onu-diagnostics-result__error {
   margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+}
+
+.device-location-error {
+  margin: 0 0 var(--space-3);
   font-size: var(--font-size-sm);
   color: var(--color-error);
 }
