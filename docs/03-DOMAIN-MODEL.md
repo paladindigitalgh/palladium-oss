@@ -632,6 +632,12 @@ Created → Immutable Archive
 Entity state changes should always be represented explicitly and should
 generate corresponding operational events.
 
+## Note
+
+Created → Immutable Archive — the same shape as Event, for the same
+reason (section 27): once an operator writes one, it is never changed or
+removed.
+
 ------------------------------------------------------------------------
 
 # 17. Domain Invariants
@@ -664,6 +670,14 @@ The following rules must always remain true.
 -   Workflow definitions are immutable once published.
 -   Workflow Instances are permanent historical records.
 -   Events are immutable.
+-   Notes are immutable once written — there is no update or delete
+    action for one at all (section 27).
+-   A Location can never be permanently deleted once a Service has ever
+    been sold at it or a Device has ever been placed there, even long
+    after both are gone — `services.location_id` and
+    `customer_devices.location_id` are both `ON DELETE RESTRICT`, and
+    neither a disconnected Service nor a detached Customer Device row is
+    ever deleted, only marked so (sections 5 and 26).
 -   Vendor Plugins never contain business rules.
 -   Users are never deleted; deactivation (status) is the only way to
     revoke a User's ability to log in.
@@ -733,7 +747,6 @@ versus "Business Internet".
 A Product Catalog records:
 
 -   Name
--   Description
 -   Current status (Active / Inactive)
 
 A Product Catalog describes how the ISP organizes its own offerings,
@@ -757,7 +770,6 @@ A Product records:
 -   Owning Provider (see section 23)
 -   Category (Internet, Voice, IPTV, Transport, Managed WiFi, Other)
 -   Name
--   Description
 -   Current status (Active / Retired -- one-way, unlike most other
     status fields in this document)
 
@@ -782,7 +794,6 @@ Ethernet" -- distinct from which Product was sold.
 A Service Profile records:
 
 -   Name
--   Description
 -   Current status (Active / Inactive)
 
 Like Product, a Service Profile carries no bandwidth, QoS, VLAN, or
@@ -803,7 +814,6 @@ physical OLTs and PON ports it is delivered over.
 A Provider records:
 
 -   Name
--   Description
 -   Current status (Active / Inactive)
 
 This distinction is invisible in a single-ISP deployment: exactly one
@@ -830,7 +840,6 @@ A Provisioning Profile records:
 -   Owning Product
 -   Vendor
 -   Profile name
--   Description
 
 Palladium never generates, applies, or modifies this profile itself --
 see section 13 (Vendor Plugin) and section 14 (Transport) for why that
@@ -907,14 +916,36 @@ A Customer Device records:
 
 -   Owning Customer
 -   Placed Device
--   Description (optional — e.g. "living room," "basement network
-    closet")
+-   Location (optional — which of the Customer's Locations the Device
+    sits at, for tracking purposes only; added 2026-09-10)
 -   Attached date
 -   Detached date
 
 Only one active (not-yet-detached) placement should exist for a given
 Device at a time — the same rule Service Equipment already enforces for
 its own assignments, applied one domain up.
+
+## Interaction with Location
+
+A set Location must belong to the same Customer as the placement itself
+— the same "no reaching across Customers" rule this document expects
+everywhere a record names more than one other record. This is purely a
+"which Location" pointer for an operator glancing at a Customer with
+several: it carries no meaning beyond that, the same way this entity's
+own Description field once did before it was removed (2026-09-10) for
+never being displayed anywhere but a create modal.
+
+`customer_devices.location_id` is `ON DELETE RESTRICT`, and — like every
+other field on this entity — a detached Customer Device row is never
+deleted, only marked detached (see this section's own opening). The two
+facts combined mean a Location can never be hard-deleted once any Device
+was ever placed there, even long after that Device was detached and the
+placement is pure history: the row enforcing the foreign key is still
+sitting there. `internal/location/postgres`'s Delete error names this
+specifically ("it still has Device placement history") rather than the
+generic foreign-key message it used to give, found live when a
+Customer's only Location couldn't be deleted with no Service anywhere on
+the page — the real blocker was this, not a Service at all.
 
 ## Interaction with Device Status
 
@@ -936,6 +967,58 @@ placed at an Archived Customer until someone detaches it by hand. Fixing
 this means extending the removal cascade (`internal/customer/removal`)
 to also detach active Customer Device records, mirroring what it already
 does for Service Equipment and Access Attachment.
+
+------------------------------------------------------------------------
+
+# 27. Note
+
+A Note is free-text, operator-authored commentary attached to a
+Customer, Device, or Service (added 2026-09-10) — "called the customer
+back, issue resolved," "swapped the power adapter," the kind of running
+history an operator wants attached to a record that isn't a Service
+status change or anything else this document already models as an
+Event.
+
+It shares Event's `EntityType`/`EntityID` shape (section 12): a loose
+reference, not a typed foreign key, so `internal/note` has no dependency
+on `internal/customer`, `internal/inventory`, or `internal/service`, and
+nothing stops a future caller from attaching a Note to some other entity
+without this domain growing a new field or import for it. The one
+deliberate difference from Event is that a Note is always written by a
+client — an operator typing into a form — never generated internally by
+workflow or domain code the way every Event is. That is also why Note is
+its own domain rather than a field or mode added to Event: Event's own
+package doc comment states plainly that there is no create route,
+because nothing ever posts one from outside the system.
+
+## Responsibilities
+
+A Note records:
+
+-   What it is about (EntityType + EntityID — Customer, Device, or
+    Service today)
+-   Who wrote it (AuthorUserID, and AuthorEmail captured from that
+    caller's authenticated identity at write time)
+-   The note text
+-   When it was written
+
+AuthorEmail is a deliberate snapshot, not resolved by joining against
+the User's current record at read time: a Note keeps showing who wrote
+it even if that User's email later changes, and every Role that can read
+Notes can see who left one without also needing User Management
+permission (section 25) just to resolve a name.
+
+A Note is immutable once written — there is no update or delete anywhere
+in this domain, the same "operational history, never changed or
+removed" treatment this document already gives Event (see the
+Architectural Principle following section 12).
+
+## Interaction with Display
+
+Notes render newest-first, in a collapsible section alongside Timeline
+(the display of Event history) on the Customer, Device, and Service
+Detail Workspaces — see docs/09-WORKSPACE-SPECIFICATIONS.md sections 8,
+9, and 10.
 
 ------------------------------------------------------------------------
 
@@ -961,6 +1044,7 @@ understandable, extensible, and maintainable as it grows.
   1.3 Draft   2026-09-07   Added section 25 (User & Role) and a User row in section 16 (Entity Lifecycles), documenting the already-implemented `internal/auth` domain; added the corresponding section 17 invariant (Users are never deleted)
   1.4 Draft   2026-09-09   Added section 26 (Customer Device), documenting `internal/customerdevice` -- the one deliberate exception to section 4's "Customers do not directly own network equipment" rule, letting a Device be placed at a Customer's premises before any Service exists. Corrected section 6 and the section 16 Device row: Device status is a flat Unused/Active/Retired set (not the original seven-value procurement progression, which never matched Device's actual CPE-only scope), Active now derives from either a Service Equipment assignment or a Customer Device placement, and a Device is never permanently deleted (removed the corresponding stale hard-delete assumption). Added section 7 coverage of `internal/onuauthorization`'s fallback OLT-resolution role, and new section 17 invariants for Customer Device's own one-active-placement rule and its detach-blocked-while-in-service rule
   1.5 Draft   2026-09-10   Added section 7 coverage of the new Access Attachment auto-sync: authorizing a Device via the OLT blacklist flow now also finds-or-creates its PON Port/Access Interface (`internal/provisioning/kontron/service`), and creating its Service Equipment record auto-creates the matching Access Attachment (`ServiceEquipmentService.syncAccessAttachment`) when both are on file -- closing the gap flagged in 1.4's docs-sync pass where this was manual-only
+  1.6 Draft   2026-09-10   Added section 27 (Note), documenting the new `internal/note` domain. Added a Location field to section 26 (Customer Device) and an "Interaction with Location" subsection covering why a Location with any Device placement history can never be hard-deleted; removed section 26's Description field, and the stale Description bullet from sections 20-24 (Product Catalog, Product, Service Profile, Provider, Provisioning Profile) -- Description was removed from all ten domains for never displaying anywhere but a create modal (CustomerType's "Government" value was removed for the same reason: modeled but never used). Added section 17 invariants for Note immutability and the Location-delete restriction
 
 ------------------------------------------------------------------------
 
