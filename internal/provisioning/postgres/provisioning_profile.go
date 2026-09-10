@@ -39,7 +39,7 @@ func NewProvisioningProfileRepository(db database.Querier, clock clock.Clock, id
 // error if none exists.
 func (r *ProvisioningProfileRepository) Get(ctx context.Context, profileID uuid.UUID) (provisioning.ProvisioningProfile, error) {
 	const query = `
-		SELECT id, product_id, vendor, profile_name, description, created_at, updated_at
+		SELECT id, product_id, vendor, profile_name, created_at, updated_at
 		FROM provisioning_profiles
 		WHERE id = $1
 	`
@@ -58,7 +58,7 @@ func (r *ProvisioningProfileRepository) Get(ctx context.Context, profileID uuid.
 // name for stable, human-useful output.
 func (r *ProvisioningProfileRepository) List(ctx context.Context) ([]provisioning.ProvisioningProfile, error) {
 	const query = `
-		SELECT id, product_id, vendor, profile_name, description, created_at, updated_at
+		SELECT id, product_id, vendor, profile_name, created_at, updated_at
 		FROM provisioning_profiles
 		ORDER BY vendor, profile_name
 	`
@@ -93,14 +93,14 @@ func (r *ProvisioningProfileRepository) List(ctx context.Context) ([]provisionin
 // apperror.KindConflict error (see translateError).
 func (r *ProvisioningProfileRepository) Create(ctx context.Context, p provisioning.ProvisioningProfile) (provisioning.ProvisioningProfile, error) {
 	const query = `
-		INSERT INTO provisioning_profiles (id, product_id, vendor, profile_name, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $6)
-		RETURNING id, product_id, vendor, profile_name, description, created_at, updated_at
+		INSERT INTO provisioning_profiles (id, product_id, vendor, profile_name, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $5)
+		RETURNING id, product_id, vendor, profile_name, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanProvisioningProfile(r.db.QueryRow(ctx, query,
-		r.ids.New(), p.ProductID, p.Vendor, p.ProfileName, p.Description, now))
+		r.ids.New(), p.ProductID, p.Vendor, p.ProfileName, now))
 	if err != nil {
 		return provisioning.ProvisioningProfile{}, translateError("create provisioning profile", err)
 	}
@@ -113,13 +113,13 @@ func (r *ProvisioningProfileRepository) Create(ctx context.Context, p provisioni
 func (r *ProvisioningProfileRepository) Update(ctx context.Context, p provisioning.ProvisioningProfile) (provisioning.ProvisioningProfile, error) {
 	const query = `
 		UPDATE provisioning_profiles
-		SET product_id = $1, vendor = $2, profile_name = $3, description = $4, updated_at = $5
-		WHERE id = $6
-		RETURNING id, product_id, vendor, profile_name, description, created_at, updated_at
+		SET product_id = $1, vendor = $2, profile_name = $3, updated_at = $4
+		WHERE id = $5
+		RETURNING id, product_id, vendor, profile_name, created_at, updated_at
 	`
 
 	updated, err := scanProvisioningProfile(r.db.QueryRow(ctx, query,
-		p.ProductID, p.Vendor, p.ProfileName, p.Description, r.clock.Now(), p.ID))
+		p.ProductID, p.Vendor, p.ProfileName, r.clock.Now(), p.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return provisioning.ProvisioningProfile{}, profileNotFound(p.ID)
@@ -157,6 +157,6 @@ type rowScanner interface {
 
 func scanProvisioningProfile(row rowScanner) (provisioning.ProvisioningProfile, error) {
 	var p provisioning.ProvisioningProfile
-	err := row.Scan(&p.ID, &p.ProductID, &p.Vendor, &p.ProfileName, &p.Description, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.ProductID, &p.Vendor, &p.ProfileName, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }

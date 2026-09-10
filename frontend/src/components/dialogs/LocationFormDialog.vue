@@ -33,7 +33,6 @@ const city = ref('')
 const state = ref('')
 const postalCode = ref('')
 const country = ref('US')
-const description = ref('')
 const submitting = ref(false)
 const error = ref<string | null>(null)
 
@@ -62,7 +61,6 @@ function reset() {
   state.value = ''
   postalCode.value = ''
   country.value = 'US'
-  description.value = ''
   error.value = null
 }
 
@@ -76,7 +74,6 @@ function populateFrom(location: Location) {
   state.value = location.state
   postalCode.value = location.postalCode
   country.value = location.country
-  description.value = location.description
   error.value = null
 }
 
@@ -113,7 +110,6 @@ async function handleSubmit() {
         state: state.value,
         postalCode: postalCode.value,
         country: country.value,
-        description: description.value,
       })
       emit('updated', updated)
     } else {
@@ -128,7 +124,6 @@ async function handleSubmit() {
         state: state.value,
         postalCode: postalCode.value,
         country: country.value,
-        description: description.value,
       })
       reset()
       emit('created', location)
@@ -157,7 +152,6 @@ async function handleSubmit() {
         <BaseInput v-model="postalCode" label="Postal Code" />
         <BaseInput v-model="country" label="Country" />
       </div>
-      <BaseInput v-model="description" label="Description" />
 
       <p v-if="error" class="location-form__error" role="alert">{{ error }}</p>
 

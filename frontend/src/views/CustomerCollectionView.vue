@@ -68,7 +68,6 @@ const typeOptions = [
   { value: 'all', label: 'All Types' },
   { value: 'Residential', label: 'Residential' },
   { value: 'Business', label: 'Business' },
-  { value: 'Government', label: 'Government' },
   { value: 'Internal', label: 'Internal' },
 ]
 

@@ -24,7 +24,6 @@ type provisioningProfileRequest struct {
 	ProductID   uuid.UUID `json:"product_id"`
 	Vendor      string    `json:"vendor"`
 	ProfileName string    `json:"profile_name"`
-	Description string    `json:"description"`
 }
 
 // toProvisioningProfile converts a request into a domain
@@ -37,7 +36,6 @@ func (req provisioningProfileRequest) toProvisioningProfile(id uuid.UUID) provis
 		ProductID:   req.ProductID,
 		Vendor:      req.Vendor,
 		ProfileName: req.ProfileName,
-		Description: req.Description,
 	}
 }
 
@@ -51,7 +49,6 @@ type provisioningProfileResponse struct {
 	ProductID   uuid.UUID `json:"product_id"`
 	Vendor      string    `json:"vendor"`
 	ProfileName string    `json:"profile_name"`
-	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -62,7 +59,6 @@ func newProvisioningProfileResponse(p provisioning.ProvisioningProfile) provisio
 		ProductID:   p.ProductID,
 		Vendor:      p.Vendor,
 		ProfileName: p.ProfileName,
-		Description: p.Description,
 		CreatedAt:   p.CreatedAt,
 		UpdatedAt:   p.UpdatedAt,
 	}

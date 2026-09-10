@@ -105,16 +105,15 @@ func TestContactValidateRequiresKnownStatus(t *testing.T) {
 	}
 }
 
-func TestContactValidateEmailPhoneDescriptionAreOptional(t *testing.T) {
-	c := validContact() // no email, phone, or description set
+func TestContactValidateEmailPhoneAreOptional(t *testing.T) {
+	c := validContact() // no email or phone set
 	if err := c.Validate(); err != nil {
-		t.Errorf("Validate() (no email/phone/description) = %v, want nil", err)
+		t.Errorf("Validate() (no email/phone) = %v, want nil", err)
 	}
 
 	c.Email = "jane@example.com"
 	c.Phone = "555-0100"
-	c.Description = "Prefers email over phone"
 	if err := c.Validate(); err != nil {
-		t.Errorf("Validate() (with email/phone/description) = %v, want nil", err)
+		t.Errorf("Validate() (with email/phone) = %v, want nil", err)
 	}
 }

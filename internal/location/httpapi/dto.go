@@ -51,8 +51,6 @@ type locationRequest struct {
 
 	Latitude  *float64 `json:"latitude"`
 	Longitude *float64 `json:"longitude"`
-
-	Description string `json:"description"`
 }
 
 // toLocation converts a request into a domain location.Location. id is
@@ -75,8 +73,6 @@ func (req locationRequest) toLocation(id uuid.UUID) location.Location {
 
 		Latitude:  req.Latitude,
 		Longitude: req.Longitude,
-
-		Description: req.Description,
 	}
 }
 
@@ -101,9 +97,8 @@ type locationResponse struct {
 	Latitude  *float64 `json:"latitude"`
 	Longitude *float64 `json:"longitude"`
 
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func newLocationResponse(l location.Location) locationResponse {
@@ -124,9 +119,8 @@ func newLocationResponse(l location.Location) locationResponse {
 		Latitude:  l.Latitude,
 		Longitude: l.Longitude,
 
-		Description: l.Description,
-		CreatedAt:   l.CreatedAt,
-		UpdatedAt:   l.UpdatedAt,
+		CreatedAt: l.CreatedAt,
+		UpdatedAt: l.UpdatedAt,
 	}
 }
 

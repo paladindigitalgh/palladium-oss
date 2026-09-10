@@ -6,7 +6,7 @@
  * Customer is an identity record only: no address (see types/location.ts
  * for that), no embedded services, no contacts, no alerts.
  */
-export type CustomerType = 'Residential' | 'Business' | 'Government' | 'Internal'
+export type CustomerType = 'Residential' | 'Business' | 'Internal'
 
 export type CustomerStatus = 'Active' | 'Inactive' | 'Archived'
 

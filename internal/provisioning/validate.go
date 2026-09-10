@@ -7,9 +7,7 @@ import (
 )
 
 // Validate reports whether p has every required field set: a present
-// ProductID, and non-empty Vendor and ProfileName. Description is
-// optional and is never checked for presence, consistent with
-// product.Product.Validate.
+// ProductID, and non-empty Vendor and ProfileName.
 func (p ProvisioningProfile) Validate() error {
 	errs := validate.New()
 

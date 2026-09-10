@@ -10,9 +10,8 @@ import (
 
 // Validate reports whether e has every required field set: a present
 // ServiceID, a present DeviceID, and a Role that is one of its defined
-// values (see role.go). Description is optional and is never checked for
-// presence, consistent with service.Service.Validate. UNIPort is
-// required, and must be 1 or 2, only for EquipmentRoleONU/ONT -- the two
+// values (see role.go). UNIPort is required, and must be 1 or 2, only
+// for EquipmentRoleONU/ONT -- the two
 // Roles internal/provisioning/kontron/service.ServiceProfileService's own
 // run method already treats as its only concern (see that method's doc
 // comment); it is never checked for any other Role, since a Router,

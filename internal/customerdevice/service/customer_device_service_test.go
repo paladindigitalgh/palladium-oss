@@ -10,6 +10,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/customerdevice"
 	"github.com/paladindigitalgh/palladium-oss/internal/customerdevice/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
+	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 )
@@ -61,6 +62,27 @@ func (f *fakeServiceEquipmentGetter) GetActiveByDeviceID(_ context.Context, devi
 		return serviceequipment.ServiceEquipment{}, apperror.NotFound("no active service equipment assignment for device")
 	}
 	return e, nil
+}
+
+// fakeLocationGetter is an in-memory locationGetter.
+type fakeLocationGetter struct {
+	byID map[uuid.UUID]location.Location
+}
+
+func newFakeLocationGetter(locations ...location.Location) *fakeLocationGetter {
+	f := &fakeLocationGetter{byID: make(map[uuid.UUID]location.Location)}
+	for _, l := range locations {
+		f.byID[l.ID] = l
+	}
+	return f
+}
+
+func (f *fakeLocationGetter) Get(_ context.Context, id uuid.UUID) (location.Location, error) {
+	l, ok := f.byID[id]
+	if !ok {
+		return location.Location{}, apperror.NotFound("location not found")
+	}
+	return l, nil
 }
 
 // fakeCustomerDeviceRepository is an in-memory
@@ -133,7 +155,7 @@ func validCustomerDevice() customerdevice.CustomerDevice {
 
 func TestCustomerDeviceServiceCreateSucceeds(t *testing.T) {
 	repo := newFakeCustomerDeviceRepository()
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	created, err := svc.Create(context.Background(), validCustomerDevice())
 	if err != nil {
@@ -149,7 +171,7 @@ func TestCustomerDeviceServiceCreateSucceeds(t *testing.T) {
 
 func TestCustomerDeviceServiceCreateRejectsInvalidRecordWithoutPersisting(t *testing.T) {
 	repo := newFakeCustomerDeviceRepository()
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	_, err := svc.Create(context.Background(), customerdevice.CustomerDevice{}) // no CustomerID, DeviceID
 
@@ -167,7 +189,7 @@ func TestCustomerDeviceServiceCreateRejectsSecondActiveAssignmentForSameDevice(t
 	existing.ID = uuid.New()
 	existing.DeviceID = deviceID
 	repo := newFakeCustomerDeviceRepository(existing)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	second := validCustomerDevice()
 	second.DeviceID = deviceID // same device, still active
@@ -190,7 +212,7 @@ func TestCustomerDeviceServiceCreateAllowsHistoricalReattachment(t *testing.T) {
 	historical.DeviceID = deviceID
 	historical.DetachedAt = &detachedAt // no longer active
 	repo := newFakeCustomerDeviceRepository(historical)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	replacement := validCustomerDevice()
 	replacement.DeviceID = deviceID
@@ -211,7 +233,7 @@ func TestCustomerDeviceServiceCreateRejectsRetiredDevice(t *testing.T) {
 		Status:   inventory.DeviceStatusRetired,
 	})
 	repo := newFakeCustomerDeviceRepository()
-	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	cd := validCustomerDevice()
 	cd.DeviceID = deviceID
@@ -226,21 +248,125 @@ func TestCustomerDeviceServiceCreateRejectsRetiredDevice(t *testing.T) {
 	}
 }
 
+// TestCustomerDeviceServiceCreateAllowsLocationBelongingToSameCustomer
+// proves the common case: a LocationID naming one of the attaching
+// Customer's own Locations is accepted.
+func TestCustomerDeviceServiceCreateAllowsLocationBelongingToSameCustomer(t *testing.T) {
+	cd := validCustomerDevice()
+	loc := location.Location{ID: uuid.New(), CustomerID: cd.CustomerID}
+	locations := newFakeLocationGetter(loc)
+	repo := newFakeCustomerDeviceRepository()
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), locations)
+
+	cd.LocationID = &loc.ID
+
+	created, err := svc.Create(context.Background(), cd)
+	if err != nil {
+		t.Fatalf("Create() = %v, want success (Location belongs to the same Customer)", err)
+	}
+	if created.LocationID == nil || *created.LocationID != loc.ID {
+		t.Errorf("LocationID = %v, want %v", created.LocationID, loc.ID)
+	}
+}
+
+// TestCustomerDeviceServiceCreateRejectsLocationBelongingToDifferentCustomer
+// proves a CustomerDevice cannot name another Customer's Location, even
+// though nothing about the write itself (CustomerID, DeviceID) is
+// otherwise invalid.
+func TestCustomerDeviceServiceCreateRejectsLocationBelongingToDifferentCustomer(t *testing.T) {
+	cd := validCustomerDevice()
+	loc := location.Location{ID: uuid.New(), CustomerID: uuid.New()} // a different customer's Location
+	locations := newFakeLocationGetter(loc)
+	repo := newFakeCustomerDeviceRepository()
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), locations)
+
+	cd.LocationID = &loc.ID
+
+	_, err := svc.Create(context.Background(), cd)
+
+	if !apperror.Is(err, apperror.KindInvalid) {
+		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindInvalid)
+	}
+	if repo.createCalled {
+		t.Error("repository Create() was called despite a foreign Location; the check must run first")
+	}
+}
+
+// TestCustomerDeviceServiceCreateRejectsNonexistentLocation proves a
+// LocationID naming no real Location propagates the lookup's own
+// NotFound rather than being silently accepted.
+func TestCustomerDeviceServiceCreateRejectsNonexistentLocation(t *testing.T) {
+	cd := validCustomerDevice()
+	bogusLocationID := uuid.New()
+	repo := newFakeCustomerDeviceRepository()
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
+
+	cd.LocationID = &bogusLocationID
+
+	_, err := svc.Create(context.Background(), cd)
+
+	if !apperror.Is(err, apperror.KindNotFound) {
+		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindNotFound)
+	}
+}
+
+// TestCustomerDeviceServiceCreateAllowsNilLocation proves "not recorded"
+// (the zero/default state validCustomerDevice already produces) is
+// legitimate, not something ensureLocationBelongsToCustomer rejects --
+// most of the other tests in this file already rely on this implicitly,
+// but this makes the guarantee explicit.
+func TestCustomerDeviceServiceCreateAllowsNilLocation(t *testing.T) {
+	repo := newFakeCustomerDeviceRepository()
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
+
+	created, err := svc.Create(context.Background(), validCustomerDevice())
+	if err != nil {
+		t.Fatalf("Create() = %v, want success (nil LocationID is not recorded, not invalid)", err)
+	}
+	if created.LocationID != nil {
+		t.Errorf("LocationID = %v, want nil", created.LocationID)
+	}
+}
+
+// TestCustomerDeviceServiceUpdateRejectsLocationBelongingToDifferentCustomer
+// proves the same rule applies on Update, not just Create.
+func TestCustomerDeviceServiceUpdateRejectsLocationBelongingToDifferentCustomer(t *testing.T) {
+	existing := validCustomerDevice()
+	existing.ID = uuid.New()
+	loc := location.Location{ID: uuid.New(), CustomerID: uuid.New()} // a different customer's Location
+	locations := newFakeLocationGetter(loc)
+	repo := newFakeCustomerDeviceRepository(existing)
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), locations)
+
+	toUpdate := existing
+	toUpdate.LocationID = &loc.ID
+
+	_, err := svc.Update(context.Background(), toUpdate)
+
+	if !apperror.Is(err, apperror.KindInvalid) {
+		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindInvalid)
+	}
+	if repo.updateCalled {
+		t.Error("repository Update() was called despite a foreign Location; the check must run first")
+	}
+}
+
 func TestCustomerDeviceServiceUpdateSucceeds(t *testing.T) {
 	existing := validCustomerDevice()
 	existing.ID = uuid.New()
+	loc := location.Location{ID: uuid.New(), CustomerID: existing.CustomerID}
 	repo := newFakeCustomerDeviceRepository(existing)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter(loc))
 
 	toUpdate := existing
-	toUpdate.Description = "Updated description"
+	toUpdate.LocationID = &loc.ID
 
 	updated, err := svc.Update(context.Background(), toUpdate)
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
-	if updated.Description != "Updated description" {
-		t.Errorf("Description = %q, want %q", updated.Description, "Updated description")
+	if updated.LocationID == nil || *updated.LocationID != loc.ID {
+		t.Errorf("LocationID = %v, want %v", updated.LocationID, loc.ID)
 	}
 	if !repo.updateCalled {
 		t.Error("repository Update() was never called")
@@ -254,7 +380,7 @@ func TestCustomerDeviceServiceUpdateDetachSucceedsWithoutActiveService(t *testin
 	existing := validCustomerDevice()
 	existing.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(existing)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	now := time.Now()
 	toDetach := existing
@@ -285,7 +411,7 @@ func TestCustomerDeviceServiceUpdateDetachBlockedByActiveService(t *testing.T) {
 		ID: uuid.New(), ServiceID: uuid.New(), DeviceID: deviceID, Role: serviceequipment.EquipmentRoleONU,
 	}
 
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), equipment)
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), equipment, newFakeLocationGetter())
 
 	now := time.Now()
 	toDetach := existing
@@ -324,10 +450,9 @@ func TestCustomerDeviceServiceUpdateOfAlreadyDetachedRecordDoesNotCheckService(t
 		ID: uuid.New(), ServiceID: uuid.New(), DeviceID: deviceID, Role: serviceequipment.EquipmentRoleONU,
 	}
 
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), equipment)
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), equipment, newFakeLocationGetter())
 
 	toUpdate := existing
-	toUpdate.Description = "editing history, not detaching anything new"
 
 	if _, err := svc.Update(context.Background(), toUpdate); err != nil {
 		t.Fatalf("Update() = %v, want success (record was already detached before this edit)", err)
@@ -343,7 +468,7 @@ func TestCustomerDeviceServiceUpdateRejectsReassigningDeviceWithExistingActiveAs
 	toReassign := validCustomerDevice()
 	toReassign.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(busy, toReassign)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	toReassign.DeviceID = busyDeviceID // now targets a device that's already actively attached
 
@@ -358,7 +483,7 @@ func TestCustomerDeviceServiceUpdateRejectsInvalidRecordWithoutPersisting(t *tes
 	existing := validCustomerDevice()
 	existing.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(existing)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	invalid := existing
 	invalid.DeviceID = uuid.Nil
@@ -375,7 +500,7 @@ func TestCustomerDeviceServiceUpdateRejectsInvalidRecordWithoutPersisting(t *tes
 
 func TestCustomerDeviceServiceGetPropagatesNotFound(t *testing.T) {
 	repo := newFakeCustomerDeviceRepository()
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	_, err := svc.Get(context.Background(), uuid.New())
 
@@ -390,7 +515,7 @@ func TestCustomerDeviceServiceListDelegatesToRepository(t *testing.T) {
 	b := validCustomerDevice()
 	b.ID = uuid.New()
 	repo := newFakeCustomerDeviceRepository(a, b)
-	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, newFakeDeviceStore(), newFakeDeviceStore(), newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	records, err := svc.List(context.Background())
 	if err != nil {
@@ -410,7 +535,7 @@ func TestCustomerDeviceServiceCreateMarksDeviceActive(t *testing.T) {
 	deviceID := uuid.New()
 	repo := newFakeCustomerDeviceRepository()
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusUnused})
-	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	cd := validCustomerDevice()
 	cd.DeviceID = deviceID
@@ -435,7 +560,7 @@ func TestCustomerDeviceServiceCreateOfHistoricalRecordDoesNotTouchDevice(t *test
 	deviceID := uuid.New()
 	repo := newFakeCustomerDeviceRepository()
 	devices := newFakeDeviceStore()
-	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	detachedAt := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	cd := validCustomerDevice()
@@ -461,7 +586,7 @@ func TestCustomerDeviceServiceUpdateMarksDeviceUnusedOnDetach(t *testing.T) {
 	existing.DeviceID = deviceID
 	repo := newFakeCustomerDeviceRepository(existing)
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
-	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	now := time.Now()
 	toDetach := existing
@@ -491,10 +616,9 @@ func TestCustomerDeviceServiceUpdateOfAlreadyDetachedRecordDoesNotTouchDevice(t 
 	existing.DetachedAt = &detachedAt
 	repo := newFakeCustomerDeviceRepository(existing)
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusActive})
-	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	toUpdate := existing
-	toUpdate.Description = "editing history, not detaching anything new"
 
 	if _, err := svc.Update(context.Background(), toUpdate); err != nil {
 		t.Fatalf("Update() = %v", err)
@@ -516,7 +640,7 @@ func TestCustomerDeviceServiceMarkDeviceUnusedNeverUnretires(t *testing.T) {
 	existing.DeviceID = deviceID
 	repo := newFakeCustomerDeviceRepository(existing)
 	devices := newFakeDeviceStore(inventory.Device{Metadata: inventory.Metadata{ID: deviceID}, Status: inventory.DeviceStatusRetired})
-	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter())
+	svc := service.NewCustomerDeviceService(repo, devices, devices, newFakeServiceEquipmentGetter(), newFakeLocationGetter())
 
 	now := time.Now()
 	toDetach := existing

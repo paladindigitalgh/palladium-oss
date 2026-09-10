@@ -59,9 +59,8 @@ func TestCatalogRepositoryCreate(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
 	created, err := repo.Create(ctx, catalog.ProductCatalog{
-		Name:        "Residential",
-		Status:      catalog.CatalogStatusActive,
-		Description: "Products sold to residential customers",
+		Name:   "Residential",
+		Status: catalog.CatalogStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -75,9 +74,6 @@ func TestCatalogRepositoryCreate(t *testing.T) {
 	}
 	if created.Status != catalog.CatalogStatusActive {
 		t.Errorf("Status = %q, want %q", created.Status, catalog.CatalogStatusActive)
-	}
-	if created.Description != "Products sold to residential customers" {
-		t.Errorf("Description = %q, want %q", created.Description, "Products sold to residential customers")
 	}
 	if created.CreatedAt.IsZero() {
 		t.Error("CreatedAt was not set")
@@ -214,19 +210,17 @@ func TestCatalogRepositoryUpdate(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
 	created, err := repo.Create(ctx, catalog.ProductCatalog{
-		Name:        "Old Name",
-		Status:      catalog.CatalogStatusActive,
-		Description: "Old Description",
+		Name:   "Old Name",
+		Status: catalog.CatalogStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
 	updated, err := repo.Update(ctx, catalog.ProductCatalog{
-		ID:          created.ID,
-		Name:        "New Name",
-		Status:      catalog.CatalogStatusInactive,
-		Description: "New Description",
+		ID:     created.ID,
+		Name:   "New Name",
+		Status: catalog.CatalogStatusInactive,
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
@@ -237,9 +231,6 @@ func TestCatalogRepositoryUpdate(t *testing.T) {
 	}
 	if updated.Status != catalog.CatalogStatusInactive {
 		t.Errorf("Status = %q, want %q", updated.Status, catalog.CatalogStatusInactive)
-	}
-	if updated.Description != "New Description" {
-		t.Errorf("Description = %q, want %q", updated.Description, "New Description")
 	}
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Errorf("CreatedAt changed on Update(): was %v, now %v", created.CreatedAt, updated.CreatedAt)

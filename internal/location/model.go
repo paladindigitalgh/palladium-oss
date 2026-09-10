@@ -40,8 +40,8 @@ import (
 // Location is a physical place associated with a Customer.
 //
 // Latitude and Longitude are *float64, not float64, even though every
-// other optional field in this codebase (Description, the address
-// fields) is a plain string defaulting to "". A string's zero value ("")
+// other optional field in this codebase (the address fields, among many
+// others) is a plain string defaulting to "". A string's zero value ("")
 // unambiguously means "not set". A float64's zero value (0) does not:
 // (0, 0) is a real, meaningful coordinate — off the coast of West
 // Africa, but real — so 0 cannot double as "no coordinate supplied"
@@ -65,7 +65,6 @@ type Location struct {
 	Latitude  *float64
 	Longitude *float64
 
-	Description string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

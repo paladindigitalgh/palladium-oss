@@ -25,13 +25,11 @@ const emit = defineEmits<{
 }>()
 
 const name = ref('')
-const description = ref('')
 const submitting = ref(false)
 const error = ref<string | null>(null)
 
 function reset() {
   name.value = ''
-  description.value = ''
   error.value = null
 }
 
@@ -51,7 +49,7 @@ async function handleSubmit() {
   error.value = null
   submitting.value = true
   try {
-    const provider = await createProvider({ name: name.value, description: description.value })
+    const provider = await createProvider({ name: name.value })
     reset()
     emit('created', provider)
   } catch (err) {
@@ -66,7 +64,6 @@ async function handleSubmit() {
   <BaseModal :open="open" title="New Provider" @close="close">
     <form class="provider-form" @submit.prevent="handleSubmit">
       <BaseInput v-model="name" label="Name" placeholder="Acme Fiber" required />
-      <BaseInput v-model="description" label="Description" />
 
       <p v-if="error" class="provider-form__error" role="alert">{{ error }}</p>
 

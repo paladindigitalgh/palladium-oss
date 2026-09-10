@@ -25,9 +25,9 @@
 // # What this package deliberately does not validate
 //
 // This milestone's Rules section for ConnectionProfile lists exactly
-// one requirement: "Name unique." Protocol, Port, AuthenticationID,
-// Timeout, and Description are all left unvalidated beyond what their
-// types already guarantee — see validate.go's own doc comment for the
+// one requirement: "Name unique." Protocol, Port, AuthenticationID, and
+// Timeout are all left unvalidated beyond what their types already
+// guarantee — see validate.go's own doc comment for the
 // full reasoning, and HostKeyPolicy.go for the one field that is a
 // closed enum (and is required, the same as every other closed-enum
 // field in this codebase) despite not being called out by name in the
@@ -61,7 +61,6 @@ type ConnectionProfile struct {
 	AuthenticationID *uuid.UUID
 	Timeout          time.Duration
 	HostKeyPolicy    HostKeyPolicy
-	Description      string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }

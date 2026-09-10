@@ -37,8 +37,6 @@ type contactRequest struct {
 	Email      string    `json:"email"`
 	Phone      string    `json:"phone"`
 	Status     string    `json:"status"`
-
-	Description string `json:"description"`
 }
 
 // toContact converts a request into a domain contact.Contact. id is
@@ -53,8 +51,6 @@ func (req contactRequest) toContact(id uuid.UUID) contact.Contact {
 		Email:      req.Email,
 		Phone:      req.Phone,
 		Status:     contact.ContactStatus(req.Status),
-
-		Description: req.Description,
 	}
 }
 
@@ -71,9 +67,8 @@ type contactResponse struct {
 	Phone      string    `json:"phone"`
 	Status     string    `json:"status"`
 
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func newContactResponse(c contact.Contact) contactResponse {
@@ -86,9 +81,8 @@ func newContactResponse(c contact.Contact) contactResponse {
 		Phone:      c.Phone,
 		Status:     string(c.Status),
 
-		Description: c.Description,
-		CreatedAt:   c.CreatedAt,
-		UpdatedAt:   c.UpdatedAt,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
 	}
 }
 

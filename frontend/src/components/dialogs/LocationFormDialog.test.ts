@@ -35,7 +35,6 @@ function existingLocation(overrides: Partial<Location> = {}): Location {
     state: 'IL',
     postalCode: '62704',
     country: 'US',
-    description: '',
     ...overrides,
   }
 }
@@ -116,7 +115,6 @@ describe('edit mode (location prop present)', () => {
       state: location.state,
       postalCode: location.postalCode,
       country: location.country,
-      description: location.description,
     })
     expect(createLocation).not.toHaveBeenCalled()
     expect(wrapper.emitted('updated')?.[0]).toEqual([{ ...location, name: 'Renamed Office' }])

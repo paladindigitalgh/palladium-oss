@@ -28,9 +28,8 @@ import (
 // server-assigned (POST) or comes from the URL path (PUT); CreatedAt and
 // UpdatedAt are metadata the repository owns and a caller cannot set.
 type providerRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 // toProvider converts a request into a domain provider.Provider. id is
@@ -38,10 +37,9 @@ type providerRequest struct {
 // real one), or the URL path parameter's UUID for Update.
 func (req providerRequest) toProvider(id uuid.UUID) provider.Provider {
 	return provider.Provider{
-		ID:          id,
-		Name:        req.Name,
-		Description: req.Description,
-		Status:      provider.Status(req.Status),
+		ID:     id,
+		Name:   req.Name,
+		Status: provider.Status(req.Status),
 	}
 }
 
@@ -50,22 +48,20 @@ func (req providerRequest) toProvider(id uuid.UUID) provider.Provider {
 // layout and types means a change to how the domain model is composed
 // internally can never silently change the API's JSON shape.
 type providerResponse struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func newProviderResponse(p provider.Provider) providerResponse {
 	return providerResponse{
-		ID:          p.ID,
-		Name:        p.Name,
-		Description: p.Description,
-		Status:      string(p.Status),
-		CreatedAt:   p.CreatedAt,
-		UpdatedAt:   p.UpdatedAt,
+		ID:        p.ID,
+		Name:      p.Name,
+		Status:    string(p.Status),
+		CreatedAt: p.CreatedAt,
+		UpdatedAt: p.UpdatedAt,
 	}
 }
 

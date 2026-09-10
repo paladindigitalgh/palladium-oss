@@ -5,7 +5,7 @@ interface CustomerDeviceDto {
   id: string
   customer_id: string
   device_id: string
-  description: string
+  location_id: string | null
   attached_at: string | null
   detached_at: string | null
 }
@@ -15,7 +15,7 @@ function fromDto(dto: CustomerDeviceDto): CustomerDevice {
     id: dto.id,
     customerId: dto.customer_id,
     deviceId: dto.device_id,
-    description: dto.description,
+    locationId: dto.location_id,
     attachedAt: dto.attached_at,
     detachedAt: dto.detached_at,
   }
@@ -47,7 +47,8 @@ export async function listActiveCustomerDevicesByCustomerId(customerId: string):
 export interface AttachCustomerDeviceInput {
   customerId: string
   deviceId: string
-  description: string
+  /** Which of customerId's own Locations this Device physically sits at -- optional, purely for tracking (see CustomerDevice.locationId). */
+  locationId: string | null
 }
 
 /**
@@ -57,7 +58,9 @@ export interface AttachCustomerDeviceInput {
  * this only ever creates a fresh, currently-active attachment. The
  * backend rejects a Device that is already attached elsewhere, or that
  * is Retired, with an error (see
- * internal/customerdevice/service.CustomerDeviceService.Create).
+ * internal/customerdevice/service.CustomerDeviceService.Create) -- and,
+ * if locationId is set, rejects one that does not belong to customerId
+ * (see that method's own ensureLocationBelongsToCustomer check).
  */
 export async function attachCustomerDevice(input: AttachCustomerDeviceInput): Promise<CustomerDevice> {
   const dto = await apiFetch<CustomerDeviceDto>('/customer-devices/', {
@@ -65,7 +68,7 @@ export async function attachCustomerDevice(input: AttachCustomerDeviceInput): Pr
     body: {
       customer_id: input.customerId,
       device_id: input.deviceId,
-      description: input.description,
+      location_id: input.locationId,
       attached_at: new Date().toISOString(),
       detached_at: null,
     },
@@ -90,9 +93,34 @@ export async function detachCustomerDevice(record: CustomerDevice): Promise<Cust
     body: {
       customer_id: record.customerId,
       device_id: record.deviceId,
-      description: record.description,
+      location_id: record.locationId,
       attached_at: record.attachedAt,
       detached_at: new Date().toISOString(),
+    },
+  })
+  return fromDto(dto)
+}
+
+/**
+ * Sets or clears which of the Customer's own Locations a Device is
+ * recorded as sitting at, on an already-attached CustomerDevice -- an
+ * operator correcting or filling in tracking data after the fact,
+ * without detaching and reattaching. Every other field is echoed back
+ * unchanged, the same full-record PUT convention detachCustomerDevice
+ * above uses. The backend rejects a Location that does not belong to
+ * this record's own customerId (see
+ * internal/customerdevice/service.CustomerDeviceService's
+ * ensureLocationBelongsToCustomer).
+ */
+export async function setCustomerDeviceLocation(record: CustomerDevice, locationId: string | null): Promise<CustomerDevice> {
+  const dto = await apiFetch<CustomerDeviceDto>(`/customer-devices/${record.id}`, {
+    method: 'PUT',
+    body: {
+      customer_id: record.customerId,
+      device_id: record.deviceId,
+      location_id: locationId,
+      attached_at: record.attachedAt,
+      detached_at: record.detachedAt,
     },
   })
   return fromDto(dto)

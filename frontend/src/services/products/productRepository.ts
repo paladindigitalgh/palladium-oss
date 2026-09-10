@@ -17,7 +17,6 @@ interface ProductDto {
   name: string
   category: ProductCategory
   status: Product['status']
-  description: string
 }
 
 function fromDto(dto: ProductDto): Product {
@@ -28,7 +27,6 @@ function fromDto(dto: ProductDto): Product {
     name: dto.name,
     category: dto.category,
     status: dto.status,
-    description: dto.description,
   }
 }
 
@@ -42,7 +40,6 @@ export interface CreateProductInput {
   providerId: string
   name: string
   category: ProductCategory
-  description: string
 }
 
 /**
@@ -62,7 +59,6 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
       name: input.name,
       category: input.category,
       status: 'Active',
-      description: input.description,
     },
   })
   return fromDto(dto)

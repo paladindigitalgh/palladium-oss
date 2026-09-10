@@ -7,8 +7,7 @@ import (
 )
 
 // Validate reports whether c has every required field set: a present
-// CustomerID and a present DeviceID. Description is optional and never
-// checked for presence, consistent with serviceequipment.ServiceEquipment.
+// CustomerID and a present DeviceID.
 //
 // The active-assignment-uniqueness business rule ("a Device may be
 // attached to at most one Customer at a time") is deliberately not

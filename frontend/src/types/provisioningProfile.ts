@@ -10,5 +10,4 @@ export interface ProvisioningProfile {
   productId: string
   vendor: string
   profileName: string
-  description: string
 }

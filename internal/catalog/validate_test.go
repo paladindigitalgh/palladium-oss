@@ -69,15 +69,3 @@ func TestCatalogValidateRequiresKnownStatus(t *testing.T) {
 		}
 	}
 }
-
-func TestCatalogValidateDescriptionIsOptional(t *testing.T) {
-	c := validCatalog() // no description set
-	if err := c.Validate(); err != nil {
-		t.Errorf("Validate() (no description) = %v, want nil", err)
-	}
-
-	c.Description = "Products sold to residential customers"
-	if err := c.Validate(); err != nil {
-		t.Errorf("Validate() (with description) = %v, want nil", err)
-	}
-}

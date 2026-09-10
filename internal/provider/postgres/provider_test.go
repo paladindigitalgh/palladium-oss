@@ -59,9 +59,8 @@ func TestProviderRepositoryCreate(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
 	created, err := repo.Create(ctx, provider.Provider{
-		Name:        "Acme Fiber",
-		Status:      provider.StatusActive,
-		Description: "Retail ISP on the open-access network",
+		Name:   "Acme Fiber",
+		Status: provider.StatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -75,9 +74,6 @@ func TestProviderRepositoryCreate(t *testing.T) {
 	}
 	if created.Status != provider.StatusActive {
 		t.Errorf("Status = %q, want %q", created.Status, provider.StatusActive)
-	}
-	if created.Description != "Retail ISP on the open-access network" {
-		t.Errorf("Description = %q, want %q", created.Description, "Retail ISP on the open-access network")
 	}
 	if created.CreatedAt.IsZero() {
 		t.Error("CreatedAt was not set")
@@ -214,19 +210,17 @@ func TestProviderRepositoryUpdate(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
 	created, err := repo.Create(ctx, provider.Provider{
-		Name:        "Old Name",
-		Status:      provider.StatusActive,
-		Description: "Old Description",
+		Name:   "Old Name",
+		Status: provider.StatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
 	updated, err := repo.Update(ctx, provider.Provider{
-		ID:          created.ID,
-		Name:        "New Name",
-		Status:      provider.StatusInactive,
-		Description: "New Description",
+		ID:     created.ID,
+		Name:   "New Name",
+		Status: provider.StatusInactive,
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
@@ -237,9 +231,6 @@ func TestProviderRepositoryUpdate(t *testing.T) {
 	}
 	if updated.Status != provider.StatusInactive {
 		t.Errorf("Status = %q, want %q", updated.Status, provider.StatusInactive)
-	}
-	if updated.Description != "New Description" {
-		t.Errorf("Description = %q, want %q", updated.Description, "New Description")
 	}
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Errorf("CreatedAt changed on Update(): was %v, now %v", created.CreatedAt, updated.CreatedAt)

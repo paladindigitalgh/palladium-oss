@@ -328,10 +328,13 @@ func run() error {
 	// Customer Device follows the exact same repository -> service ->
 	// handler chain as Service Equipment, one domain up
 	// (internal/customerdevice instead of internal/serviceequipment): its
-	// two foreign keys are Customer and inventory.Device, the latter
-	// reusing deviceService for the same "run the real business-rule
-	// check, not the raw repository" reason serviceEquipmentSvc does.
-	customerDeviceSvc := customerdeviceservice.NewCustomerDeviceService(customerDeviceRepo, deviceService, deviceService, serviceEquipmentRepo)
+	// foreign keys are Customer, inventory.Device, and (optionally)
+	// Location, the Device one reusing deviceService for the same "run
+	// the real business-rule check, not the raw repository" reason
+	// serviceEquipmentSvc does. locationSvc backs the same check for
+	// LocationID -- a set LocationID must belong to the same Customer.
+	customerDeviceSvc := customerdeviceservice.NewCustomerDeviceService(
+		customerDeviceRepo, deviceService, deviceService, serviceEquipmentRepo, locationSvc)
 	customerDeviceHandler := customerdevicehttpapi.NewCustomerDeviceHandler(customerDeviceSvc)
 
 	// Event has no service layer: there is no business logic beyond

@@ -22,9 +22,9 @@ import (
 // cannot set. Mirrors
 // internal/serviceequipment/httpapi.serviceEquipmentRequest exactly.
 type customerDeviceRequest struct {
-	CustomerID  uuid.UUID `json:"customer_id"`
-	DeviceID    uuid.UUID `json:"device_id"`
-	Description string    `json:"description"`
+	CustomerID uuid.UUID  `json:"customer_id"`
+	DeviceID   uuid.UUID  `json:"device_id"`
+	LocationID *uuid.UUID `json:"location_id"`
 
 	AttachedAt *time.Time `json:"attached_at"`
 	DetachedAt *time.Time `json:"detached_at"`
@@ -35,10 +35,10 @@ type customerDeviceRequest struct {
 // real one), or the URL path parameter's UUID for Update.
 func (req customerDeviceRequest) toCustomerDevice(id uuid.UUID) customerdevice.CustomerDevice {
 	return customerdevice.CustomerDevice{
-		ID:          id,
-		CustomerID:  req.CustomerID,
-		DeviceID:    req.DeviceID,
-		Description: req.Description,
+		ID:         id,
+		CustomerID: req.CustomerID,
+		DeviceID:   req.DeviceID,
+		LocationID: req.LocationID,
 
 		AttachedAt: req.AttachedAt,
 		DetachedAt: req.DetachedAt,
@@ -50,10 +50,10 @@ func (req customerDeviceRequest) toCustomerDevice(id uuid.UUID) customerdevice.C
 // Go field layout means a change to how the domain model is composed
 // internally can never silently change the API's JSON shape.
 type customerDeviceResponse struct {
-	ID          uuid.UUID `json:"id"`
-	CustomerID  uuid.UUID `json:"customer_id"`
-	DeviceID    uuid.UUID `json:"device_id"`
-	Description string    `json:"description"`
+	ID         uuid.UUID  `json:"id"`
+	CustomerID uuid.UUID  `json:"customer_id"`
+	DeviceID   uuid.UUID  `json:"device_id"`
+	LocationID *uuid.UUID `json:"location_id"`
 
 	AttachedAt *time.Time `json:"attached_at"`
 	DetachedAt *time.Time `json:"detached_at"`
@@ -64,10 +64,10 @@ type customerDeviceResponse struct {
 
 func newCustomerDeviceResponse(cd customerdevice.CustomerDevice) customerDeviceResponse {
 	return customerDeviceResponse{
-		ID:          cd.ID,
-		CustomerID:  cd.CustomerID,
-		DeviceID:    cd.DeviceID,
-		Description: cd.Description,
+		ID:         cd.ID,
+		CustomerID: cd.CustomerID,
+		DeviceID:   cd.DeviceID,
+		LocationID: cd.LocationID,
 
 		AttachedAt: cd.AttachedAt,
 		DetachedAt: cd.DetachedAt,

@@ -69,15 +69,3 @@ func TestServiceProfileValidateRequiresKnownStatus(t *testing.T) {
 		}
 	}
 }
-
-func TestServiceProfileValidateDescriptionIsOptional(t *testing.T) {
-	p := validServiceProfile() // no description set
-	if err := p.Validate(); err != nil {
-		t.Errorf("Validate() (no description) = %v, want nil", err)
-	}
-
-	p.Description = "Standard residential internet service"
-	if err := p.Validate(); err != nil {
-		t.Errorf("Validate() (with description) = %v, want nil", err)
-	}
-}

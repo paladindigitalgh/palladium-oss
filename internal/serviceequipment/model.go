@@ -69,11 +69,10 @@ import (
 // "not yet removed" without risking a genuine 0001-01-01 timestamp being
 // read as a removal.
 type ServiceEquipment struct {
-	ID          uuid.UUID
-	ServiceID   uuid.UUID
-	DeviceID    uuid.UUID
-	Role        EquipmentRole
-	Description string
+	ID        uuid.UUID
+	ServiceID uuid.UUID
+	DeviceID  uuid.UUID
+	Role      EquipmentRole
 
 	// UNIPort is 1 ("10GE") or 2 ("1GE") for ONU/ONT equipment -- which
 	// physical LAN port on the Device this Service is delivered over

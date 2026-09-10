@@ -28,9 +28,8 @@ import (
 // server-assigned (POST) or comes from the URL path (PUT); CreatedAt and
 // UpdatedAt are metadata the repository owns and a caller cannot set.
 type catalogRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 // toCatalog converts a request into a domain catalog.ProductCatalog. id
@@ -38,10 +37,9 @@ type catalogRequest struct {
 // a real one), or the URL path parameter's UUID for Update.
 func (req catalogRequest) toCatalog(id uuid.UUID) catalog.ProductCatalog {
 	return catalog.ProductCatalog{
-		ID:          id,
-		Name:        req.Name,
-		Description: req.Description,
-		Status:      catalog.CatalogStatus(req.Status),
+		ID:     id,
+		Name:   req.Name,
+		Status: catalog.CatalogStatus(req.Status),
 	}
 }
 
@@ -50,22 +48,20 @@ func (req catalogRequest) toCatalog(id uuid.UUID) catalog.ProductCatalog {
 // field layout and types means a change to how the domain model is
 // composed internally can never silently change the API's JSON shape.
 type catalogResponse struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func newCatalogResponse(c catalog.ProductCatalog) catalogResponse {
 	return catalogResponse{
-		ID:          c.ID,
-		Name:        c.Name,
-		Description: c.Description,
-		Status:      string(c.Status),
-		CreatedAt:   c.CreatedAt,
-		UpdatedAt:   c.UpdatedAt,
+		ID:        c.ID,
+		Name:      c.Name,
+		Status:    string(c.Status),
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
 	}
 }
 

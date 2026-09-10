@@ -41,7 +41,7 @@ func NewCustomerDeviceRepository(db database.Querier, clock clock.Clock, ids id.
 // apperror.KindNotFound error if none exists.
 func (r *CustomerDeviceRepository) Get(ctx context.Context, recordID uuid.UUID) (customerdevice.CustomerDevice, error) {
 	const query = `
-		SELECT id, customer_id, device_id, description,
+		SELECT id, customer_id, device_id, location_id,
 		       attached_at, detached_at, created_at, updated_at
 		FROM customer_devices
 		WHERE id = $1
@@ -63,7 +63,7 @@ func (r *CustomerDeviceRepository) Get(ctx context.Context, recordID uuid.UUID) 
 // gives for its own ordering.
 func (r *CustomerDeviceRepository) List(ctx context.Context) ([]customerdevice.CustomerDevice, error) {
 	const query = `
-		SELECT id, customer_id, device_id, description,
+		SELECT id, customer_id, device_id, location_id,
 		       attached_at, detached_at, created_at, updated_at
 		FROM customer_devices
 		ORDER BY created_at
@@ -104,17 +104,17 @@ func (r *CustomerDeviceRepository) List(ctx context.Context) ([]customerdevice.C
 func (r *CustomerDeviceRepository) Create(ctx context.Context, cd customerdevice.CustomerDevice) (customerdevice.CustomerDevice, error) {
 	const query = `
 		INSERT INTO customer_devices (
-			id, customer_id, device_id, description,
+			id, customer_id, device_id, location_id,
 			attached_at, detached_at, created_at, updated_at
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-		RETURNING id, customer_id, device_id, description,
+		RETURNING id, customer_id, device_id, location_id,
 		          attached_at, detached_at, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanCustomerDevice(r.db.QueryRow(ctx, query,
-		r.ids.New(), cd.CustomerID, cd.DeviceID, cd.Description,
+		r.ids.New(), cd.CustomerID, cd.DeviceID, cd.LocationID,
 		cd.AttachedAt, cd.DetachedAt, now))
 	if err != nil {
 		return customerdevice.CustomerDevice{}, translateError("create customer device", err)
@@ -130,15 +130,15 @@ func (r *CustomerDeviceRepository) Create(ctx context.Context, cd customerdevice
 func (r *CustomerDeviceRepository) Update(ctx context.Context, cd customerdevice.CustomerDevice) (customerdevice.CustomerDevice, error) {
 	const query = `
 		UPDATE customer_devices
-		SET customer_id = $1, device_id = $2, description = $3,
+		SET customer_id = $1, device_id = $2, location_id = $3,
 		    attached_at = $4, detached_at = $5, updated_at = $6
 		WHERE id = $7
-		RETURNING id, customer_id, device_id, description,
+		RETURNING id, customer_id, device_id, location_id,
 		          attached_at, detached_at, created_at, updated_at
 	`
 
 	updated, err := scanCustomerDevice(r.db.QueryRow(ctx, query,
-		cd.CustomerID, cd.DeviceID, cd.Description,
+		cd.CustomerID, cd.DeviceID, cd.LocationID,
 		cd.AttachedAt, cd.DetachedAt, r.clock.Now(), cd.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -162,7 +162,7 @@ func (r *CustomerDeviceRepository) Update(ctx context.Context, cd customerdevice
 // constraint, so nothing here guarantees only one row could ever match.
 func (r *CustomerDeviceRepository) GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (customerdevice.CustomerDevice, error) {
 	const query = `
-		SELECT id, customer_id, device_id, description,
+		SELECT id, customer_id, device_id, location_id,
 		       attached_at, detached_at, created_at, updated_at
 		FROM customer_devices
 		WHERE device_id = $1 AND detached_at IS NULL
@@ -193,7 +193,7 @@ type rowScanner interface {
 func scanCustomerDevice(row rowScanner) (customerdevice.CustomerDevice, error) {
 	var cd customerdevice.CustomerDevice
 	err := row.Scan(
-		&cd.ID, &cd.CustomerID, &cd.DeviceID, &cd.Description,
+		&cd.ID, &cd.CustomerID, &cd.DeviceID, &cd.LocationID,
 		&cd.AttachedAt, &cd.DetachedAt, &cd.CreatedAt, &cd.UpdatedAt,
 	)
 	return cd, err

@@ -32,7 +32,6 @@ function existingContact(overrides: Partial<Contact> = {}): Contact {
     email: 'jane@example.com',
     phone: '555-0100',
     status: 'Active',
-    description: '',
     ...overrides,
   }
 }
@@ -85,7 +84,6 @@ describe('create mode (no contact prop)', () => {
       email: 'john@example.com',
       phone: '',
       status: 'Active',
-      description: '',
     })
     expect(updateContact).not.toHaveBeenCalled()
     expect(wrapper.emitted('created')?.[0]).toEqual([existingContact({ name: 'John Smith' })])
@@ -134,7 +132,6 @@ describe('edit mode (contact prop present)', () => {
       email: contact.email,
       phone: contact.phone,
       status: contact.status,
-      description: contact.description,
     })
     expect(createContact).not.toHaveBeenCalled()
     expect(wrapper.emitted('updated')?.[0]).toEqual([{ ...contact, name: 'Jane Renamed' }])

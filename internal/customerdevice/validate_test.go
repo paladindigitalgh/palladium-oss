@@ -58,18 +58,6 @@ func TestCustomerDeviceValidateRequiresDeviceID(t *testing.T) {
 	assertInvalid(t, c.Validate())
 }
 
-func TestCustomerDeviceValidateDescriptionIsOptional(t *testing.T) {
-	c := validCustomerDevice() // no description set
-	if err := c.Validate(); err != nil {
-		t.Errorf("Validate() (no description) = %v, want nil", err)
-	}
-
-	c.Description = "In the basement network closet"
-	if err := c.Validate(); err != nil {
-		t.Errorf("Validate() (with description) = %v, want nil", err)
-	}
-}
-
 func TestCustomerDeviceValidateLifecycleTimestampsAreOptional(t *testing.T) {
 	c := validCustomerDevice() // no lifecycle timestamps set
 	if err := c.Validate(); err != nil {

@@ -39,7 +39,7 @@ func NewProviderRepository(db database.Querier, clock clock.Clock, ids id.Genera
 // none exists.
 func (r *ProviderRepository) Get(ctx context.Context, providerID uuid.UUID) (provider.Provider, error) {
 	const query = `
-		SELECT id, name, description, status, created_at, updated_at
+		SELECT id, name, status, created_at, updated_at
 		FROM providers
 		WHERE id = $1
 	`
@@ -58,7 +58,7 @@ func (r *ProviderRepository) Get(ctx context.Context, providerID uuid.UUID) (pro
 // output (see the index added on that column in the migration).
 func (r *ProviderRepository) List(ctx context.Context) ([]provider.Provider, error) {
 	const query = `
-		SELECT id, name, description, status, created_at, updated_at
+		SELECT id, name, status, created_at, updated_at
 		FROM providers
 		ORDER BY name
 	`
@@ -92,23 +92,23 @@ func (r *ProviderRepository) List(ctx context.Context) ([]provider.Provider, err
 // repository has no business logic and does not decide it.
 func (r *ProviderRepository) Create(ctx context.Context, p provider.Provider) (provider.Provider, error) {
 	const query = `
-		INSERT INTO providers (id, name, description, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $5)
-		RETURNING id, name, description, status, created_at, updated_at
+		INSERT INTO providers (id, name, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $4)
+		RETURNING id, name, status, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanProvider(r.db.QueryRow(ctx, query,
-		r.ids.New(), p.Name, p.Description, string(p.Status), now))
+		r.ids.New(), p.Name, string(p.Status), now))
 	if err != nil {
 		return provider.Provider{}, translateError("create provider", err)
 	}
 	return created, nil
 }
 
-// Update overwrites the mutable fields (Name, Description, Status) of
-// the Provider identified by p.ID and returns the persisted record, or
-// an apperror.KindNotFound error if it does not exist.
+// Update overwrites the mutable fields (Name, Status) of the Provider
+// identified by p.ID and returns the persisted record, or an
+// apperror.KindNotFound error if it does not exist.
 //
 // CreatedAt cannot be altered through this method: the UPDATE statement
 // below never assigns that column, and the RETURNING clause reports its
@@ -116,13 +116,13 @@ func (r *ProviderRepository) Create(ctx context.Context, p provider.Provider) (p
 func (r *ProviderRepository) Update(ctx context.Context, p provider.Provider) (provider.Provider, error) {
 	const query = `
 		UPDATE providers
-		SET name = $1, description = $2, status = $3, updated_at = $4
-		WHERE id = $5
-		RETURNING id, name, description, status, created_at, updated_at
+		SET name = $1, status = $2, updated_at = $3
+		WHERE id = $4
+		RETURNING id, name, status, created_at, updated_at
 	`
 
 	updated, err := scanProvider(r.db.QueryRow(ctx, query,
-		p.Name, p.Description, string(p.Status), r.clock.Now(), p.ID))
+		p.Name, string(p.Status), r.clock.Now(), p.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return provider.Provider{}, providerNotFound(p.ID)
@@ -166,7 +166,7 @@ func scanProvider(row rowScanner) (provider.Provider, error) {
 		p      provider.Provider
 		status string
 	)
-	err := row.Scan(&p.ID, &p.Name, &p.Description, &status, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.Name, &status, &p.CreatedAt, &p.UpdatedAt)
 	p.Status = provider.Status(status)
 	return p, err
 }

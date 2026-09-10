@@ -39,11 +39,10 @@ import (
 // CreatedAt and UpdatedAt are metadata the repository owns and a caller
 // cannot set.
 type serviceEquipmentRequest struct {
-	ServiceID   uuid.UUID `json:"service_id"`
-	DeviceID    uuid.UUID `json:"device_id"`
-	Role        string    `json:"role"`
-	Description string    `json:"description"`
-	UNIPort     int       `json:"uni_port"`
+	ServiceID uuid.UUID `json:"service_id"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	Role      string    `json:"role"`
+	UNIPort   int       `json:"uni_port"`
 
 	InstalledAt *time.Time `json:"installed_at"`
 	RemovedAt   *time.Time `json:"removed_at"`
@@ -54,12 +53,11 @@ type serviceEquipmentRequest struct {
 // assigns a real one), or the URL path parameter's UUID for Update.
 func (req serviceEquipmentRequest) toServiceEquipment(id uuid.UUID) serviceequipment.ServiceEquipment {
 	return serviceequipment.ServiceEquipment{
-		ID:          id,
-		ServiceID:   req.ServiceID,
-		DeviceID:    req.DeviceID,
-		Role:        serviceequipment.EquipmentRole(req.Role),
-		Description: req.Description,
-		UNIPort:     req.UNIPort,
+		ID:        id,
+		ServiceID: req.ServiceID,
+		DeviceID:  req.DeviceID,
+		Role:      serviceequipment.EquipmentRole(req.Role),
+		UNIPort:   req.UNIPort,
 
 		InstalledAt: req.InstalledAt,
 		RemovedAt:   req.RemovedAt,
@@ -72,12 +70,11 @@ func (req serviceEquipmentRequest) toServiceEquipment(id uuid.UUID) serviceequip
 // domain model is composed internally can never silently change the
 // API's JSON shape.
 type serviceEquipmentResponse struct {
-	ID          uuid.UUID `json:"id"`
-	ServiceID   uuid.UUID `json:"service_id"`
-	DeviceID    uuid.UUID `json:"device_id"`
-	Role        string    `json:"role"`
-	Description string    `json:"description"`
-	UNIPort     int       `json:"uni_port"`
+	ID        uuid.UUID `json:"id"`
+	ServiceID uuid.UUID `json:"service_id"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	Role      string    `json:"role"`
+	UNIPort   int       `json:"uni_port"`
 
 	InstalledAt *time.Time `json:"installed_at"`
 	RemovedAt   *time.Time `json:"removed_at"`
@@ -88,12 +85,11 @@ type serviceEquipmentResponse struct {
 
 func newServiceEquipmentResponse(e serviceequipment.ServiceEquipment) serviceEquipmentResponse {
 	return serviceEquipmentResponse{
-		ID:          e.ID,
-		ServiceID:   e.ServiceID,
-		DeviceID:    e.DeviceID,
-		Role:        string(e.Role),
-		Description: e.Description,
-		UNIPort:     e.UNIPort,
+		ID:        e.ID,
+		ServiceID: e.ServiceID,
+		DeviceID:  e.DeviceID,
+		Role:      string(e.Role),
+		UNIPort:   e.UNIPort,
 
 		InstalledAt: e.InstalledAt,
 		RemovedAt:   e.RemovedAt,

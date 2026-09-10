@@ -5,19 +5,38 @@ package postgres_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/catalog"
+	catalogpostgres "github.com/paladindigitalgh/palladium-oss/internal/catalog/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/customer"
 	customerpostgres "github.com/paladindigitalgh/palladium-oss/internal/customer/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/customerdevice"
+	customerdevicepostgres "github.com/paladindigitalgh/palladium-oss/internal/customerdevice/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
+	"github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer"
+	devicemanufacturerpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/devicemodel"
+	devicemodelpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemodel/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
+	inventorypostgres "github.com/paladindigitalgh/palladium-oss/internal/inventory/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	"github.com/paladindigitalgh/palladium-oss/internal/location/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/clock"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/id"
+	"github.com/paladindigitalgh/palladium-oss/internal/product"
+	productpostgres "github.com/paladindigitalgh/palladium-oss/internal/product/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/provider"
+	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/service"
+	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
+	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
+	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
 )
 
 // newTestQuerier opens a transaction against the real test database,
@@ -92,18 +111,17 @@ func TestLocationRepositoryCreate(t *testing.T) {
 
 	lat, lng := 39.7817, -89.6501
 	created, err := repo.Create(ctx, location.Location{
-		CustomerID:  c.ID,
-		Name:        "Main Service Address",
-		Type:        location.LocationTypeService,
-		Status:      location.LocationStatusActive,
-		Address1:    "123 Main St",
-		City:        "Springfield",
-		State:       "IL",
-		PostalCode:  "62701",
-		Country:     "US",
-		Latitude:    &lat,
-		Longitude:   &lng,
-		Description: "Primary residence",
+		CustomerID: c.ID,
+		Name:       "Main Service Address",
+		Type:       location.LocationTypeService,
+		Status:     location.LocationStatusActive,
+		Address1:   "123 Main St",
+		City:       "Springfield",
+		State:      "IL",
+		PostalCode: "62701",
+		Country:    "US",
+		Latitude:   &lat,
+		Longitude:  &lng,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -405,6 +423,130 @@ func TestLocationRepositoryDeleteNotFound(t *testing.T) {
 	err := repo.Delete(ctx, uuid.New())
 
 	assertNotFound(t, err)
+}
+
+// TestLocationRepositoryDeleteBlockedByExistingService and
+// TestLocationRepositoryDeleteBlockedByExistingCustomerDevice both exist
+// to pin down errors.go's fkViolationReasons: a Delete blocked by
+// services.location_id must name "Service" specifically, and one blocked
+// by customer_devices.location_id must name "Device" placement history
+// specifically, rather than both collapsing into the same generic
+// "violates a foreign key relationship" message a caller (like
+// CustomerDetailView.vue's confirmDeleteLocation) cannot act on.
+func TestLocationRepositoryDeleteBlockedByExistingService(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	repo := postgres.NewLocationRepository(q, clock.New(), id.New())
+
+	c := createTestCustomer(t, ctx, q)
+	loc, err := repo.Create(ctx, testLocation(c.ID, "Blocked By Service"))
+	if err != nil {
+		t.Fatalf("fixture: create location: %v", err)
+	}
+
+	catalogRepo := catalogpostgres.NewCatalogRepository(q, clock.New(), id.New())
+	cat, err := catalogRepo.Create(ctx, catalog.ProductCatalog{
+		Name:   "Fixture Catalog " + uuid.NewString(),
+		Status: catalog.CatalogStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create catalog: %v", err)
+	}
+	providerRepo := providerpostgres.NewProviderRepository(q, clock.New(), id.New())
+	pr, err := providerRepo.Create(ctx, provider.Provider{
+		Name:   "Fixture Provider " + uuid.NewString(),
+		Status: provider.StatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create provider: %v", err)
+	}
+	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
+	prod, err := productRepo.Create(ctx, product.Product{
+		CatalogID:  cat.ID,
+		ProviderID: pr.ID,
+		Name:       "Fixture Product " + uuid.NewString(),
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create product: %v", err)
+	}
+	profileRepo := serviceprofilepostgres.NewServiceProfileRepository(q, clock.New(), id.New())
+	profile, err := profileRepo.Create(ctx, serviceprofile.ServiceProfile{
+		Name:   "Fixture Service Profile " + uuid.NewString(),
+		Status: serviceprofile.StatusActive,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create service profile: %v", err)
+	}
+	serviceRepo := servicepostgres.NewServiceRepository(q, clock.New(), id.New())
+	if _, err := serviceRepo.Create(ctx, service.Service{
+		LocationID:       loc.ID,
+		ProductID:        prod.ID,
+		ServiceProfileID: profile.ID,
+		Status:           service.ServiceStatusActive,
+	}); err != nil {
+		t.Fatalf("fixture: create service: %v", err)
+	}
+
+	err = repo.Delete(ctx, loc.ID)
+
+	assertConflict(t, err)
+	if !strings.Contains(err.Error(), "Service") {
+		t.Errorf("error = %q, want it to name the Service specifically", err.Error())
+	}
+}
+
+func TestLocationRepositoryDeleteBlockedByExistingCustomerDevice(t *testing.T) {
+	q, ctx := newTestQuerier(t)
+	repo := postgres.NewLocationRepository(q, clock.New(), id.New())
+
+	c := createTestCustomer(t, ctx, q)
+	loc, err := repo.Create(ctx, testLocation(c.ID, "Blocked By CustomerDevice"))
+	if err != nil {
+		t.Fatalf("fixture: create location: %v", err)
+	}
+
+	manufacturerRepo := devicemanufacturerpostgres.NewDeviceManufacturerRepository(q, clock.New(), id.New())
+	manufacturer, err := manufacturerRepo.Create(ctx, devicemanufacturer.DeviceManufacturer{
+		Name: "Fixture Manufacturer " + uuid.NewString(),
+	})
+	if err != nil {
+		t.Fatalf("fixture: create device manufacturer: %v", err)
+	}
+	modelRepo := devicemodelpostgres.NewDeviceModelRepository(q, clock.New(), id.New())
+	model, err := modelRepo.Create(ctx, devicemodel.DeviceModel{
+		ManufacturerID: manufacturer.ID,
+		Name:           "Fixture Model " + uuid.NewString(),
+	})
+	if err != nil {
+		t.Fatalf("fixture: create device model: %v", err)
+	}
+	deviceRepo := inventorypostgres.NewDeviceRepository(q, clock.New(), id.New())
+	dev, err := deviceRepo.Create(ctx, inventory.Device{
+		Metadata:      inventory.Metadata{Name: "Fixture Device " + uuid.NewString()},
+		DeviceModelID: model.ID,
+		SerialNumber:  uuid.NewString(),
+		Status:        inventory.DeviceStatusUnused,
+	})
+	if err != nil {
+		t.Fatalf("fixture: create device: %v", err)
+	}
+
+	customerDeviceRepo := customerdevicepostgres.NewCustomerDeviceRepository(q, clock.New(), id.New())
+	if _, err := customerDeviceRepo.Create(ctx, customerdevice.CustomerDevice{
+		CustomerID: c.ID,
+		DeviceID:   dev.ID,
+		LocationID: &loc.ID,
+	}); err != nil {
+		t.Fatalf("fixture: create customer device: %v", err)
+	}
+
+	err = repo.Delete(ctx, loc.ID)
+
+	assertConflict(t, err)
+	if !strings.Contains(err.Error(), "Device") {
+		t.Errorf("error = %q, want it to name the Device placement history specifically", err.Error())
+	}
 }
 
 func TestLocationRepositoryCreateConflictOnDuplicateID(t *testing.T) {

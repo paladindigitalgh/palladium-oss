@@ -59,9 +59,8 @@ func TestServiceProfileRepositoryCreate(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
 	created, err := repo.Create(ctx, serviceprofile.ServiceProfile{
-		Name:        "Residential Internet",
-		Status:      serviceprofile.StatusActive,
-		Description: "Standard residential internet service",
+		Name:   "Residential Internet",
+		Status: serviceprofile.StatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -75,9 +74,6 @@ func TestServiceProfileRepositoryCreate(t *testing.T) {
 	}
 	if created.Status != serviceprofile.StatusActive {
 		t.Errorf("Status = %q, want %q", created.Status, serviceprofile.StatusActive)
-	}
-	if created.Description != "Standard residential internet service" {
-		t.Errorf("Description = %q, want %q", created.Description, "Standard residential internet service")
 	}
 	if created.CreatedAt.IsZero() {
 		t.Error("CreatedAt was not set")
@@ -214,19 +210,17 @@ func TestServiceProfileRepositoryUpdate(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
 	created, err := repo.Create(ctx, serviceprofile.ServiceProfile{
-		Name:        "Old Name",
-		Status:      serviceprofile.StatusActive,
-		Description: "Old Description",
+		Name:   "Old Name",
+		Status: serviceprofile.StatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
 	updated, err := repo.Update(ctx, serviceprofile.ServiceProfile{
-		ID:          created.ID,
-		Name:        "New Name",
-		Status:      serviceprofile.StatusInactive,
-		Description: "New Description",
+		ID:     created.ID,
+		Name:   "New Name",
+		Status: serviceprofile.StatusInactive,
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
@@ -237,9 +231,6 @@ func TestServiceProfileRepositoryUpdate(t *testing.T) {
 	}
 	if updated.Status != serviceprofile.StatusInactive {
 		t.Errorf("Status = %q, want %q", updated.Status, serviceprofile.StatusInactive)
-	}
-	if updated.Description != "New Description" {
-		t.Errorf("Description = %q, want %q", updated.Description, "New Description")
 	}
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Errorf("CreatedAt changed on Update(): was %v, now %v", created.CreatedAt, updated.CreatedAt)

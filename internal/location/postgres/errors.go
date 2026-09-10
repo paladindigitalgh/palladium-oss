@@ -21,6 +21,30 @@ const (
 	pgForeignKeyViolation = "23503"
 )
 
+// fkViolationReasons maps the name of a foreign key constraint that can
+// fail against this table to a human-readable reason, so a caller sees
+// specifically what is still attached instead of a generic "violates a
+// foreign key relationship" — which, on a Delete, previously left every
+// caller guessing (see e.g. CustomerDetailView.vue's confirmDeleteLocation
+// on the frontend, which used to hardcode "still has services attached"
+// even when the real blocker was a Device's placement history, not a
+// Service at all).
+//
+// locations_customer_id_fkey is this table's own outgoing reference
+// (Create/Update with a CustomerID that does not exist); the other two
+// are incoming references from tables whose rows are never deleted, only
+// marked inactive/detached (see internal/customer/removal's package doc
+// comment and internal/customerdevice's own "un-tie, not delete"
+// reasoning) — which is exactly why a Location can still be blocked here
+// even after every visible Service and Device attachment looks gone: a
+// detached customer_devices row is history, kept forever, and still
+// satisfies this constraint.
+var fkViolationReasons = map[string]string{
+	"locations_customer_id_fkey":        "the customer does not exist",
+	"services_location_id_fkey":         "it still has a Service",
+	"customer_devices_location_id_fkey": "it still has Device placement history",
+}
+
 // translateError maps a lower-level error into a platform apperror so
 // PostgreSQL- and pgx-specific error types never leak past this package.
 // op names the operation that failed, for context in the wrapped message.
@@ -32,13 +56,15 @@ const (
 // does: customer_id references customers(id) ON DELETE RESTRICT, so a
 // foreign key violation is a real, reachable outcome here in both
 // directions — creating/updating a Location with a CustomerID that does
-// not exist, and deleting a Customer that still has Locations — and both
-// map to apperror.KindConflict for the same reasoning
-// internal/inventory/postgres/errors.go's translateError already gives:
-// they are, at heart, the same kind of problem (the request conflicts
-// with the current relational state of the data), and distinguishing them
-// would require guessing intent for no practical benefit since callers
-// already know whether they just called Create or Delete.
+// not exist, and deleting a Location that still has Services or Device
+// placement history — and all map to apperror.KindConflict for the same
+// reasoning internal/inventory/postgres/errors.go's translateError
+// already gives: they are, at heart, the same kind of problem (the
+// request conflicts with the current relational state of the data).
+// Unlike that package, though, this one does distinguish which
+// relationship actually conflicted (see fkViolationReasons) — locations
+// has more than one incoming reference, so "a foreign key relationship"
+// alone is not specific enough for a caller to act on.
 //
 // Callers check for pgx.ErrNoRows themselves before calling this
 // function, for the same reason as every other repository in this
@@ -56,6 +82,9 @@ func translateError(op string, err error) error {
 		case pgUniqueViolation:
 			return apperror.Conflict(fmt.Sprintf("%s: already exists", op))
 		case pgForeignKeyViolation:
+			if reason, ok := fkViolationReasons[pgErr.ConstraintName]; ok {
+				return apperror.Conflict(fmt.Sprintf("%s: %s", op, reason))
+			}
 			return apperror.Conflict(fmt.Sprintf("%s: violates a foreign key relationship", op))
 		}
 	}

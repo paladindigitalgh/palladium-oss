@@ -41,7 +41,7 @@ func (r *LocationRepository) Get(ctx context.Context, locationID uuid.UUID) (loc
 	const query = `
 		SELECT id, customer_id, name, type, status,
 		       address1, address2, city, state, postal_code, country,
-		       latitude, longitude, description, created_at, updated_at
+		       latitude, longitude, created_at, updated_at
 		FROM locations
 		WHERE id = $1
 	`
@@ -62,7 +62,7 @@ func (r *LocationRepository) List(ctx context.Context) ([]location.Location, err
 	const query = `
 		SELECT id, customer_id, name, type, status,
 		       address1, address2, city, state, postal_code, country,
-		       latitude, longitude, description, created_at, updated_at
+		       latitude, longitude, created_at, updated_at
 		FROM locations
 		ORDER BY name
 	`
@@ -94,7 +94,7 @@ func (r *LocationRepository) ListByCustomerID(ctx context.Context, customerID uu
 	const query = `
 		SELECT id, customer_id, name, type, status,
 		       address1, address2, city, state, postal_code, country,
-		       latitude, longitude, description, created_at, updated_at
+		       latitude, longitude, created_at, updated_at
 		FROM locations
 		WHERE customer_id = $1
 		ORDER BY name
@@ -133,19 +133,19 @@ func (r *LocationRepository) Create(ctx context.Context, l location.Location) (l
 		INSERT INTO locations (
 			id, customer_id, name, type, status,
 			address1, address2, city, state, postal_code, country,
-			latitude, longitude, description, created_at, updated_at
+			latitude, longitude, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
 		RETURNING id, customer_id, name, type, status,
 		          address1, address2, city, state, postal_code, country,
-		          latitude, longitude, description, created_at, updated_at
+		          latitude, longitude, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanLocation(r.db.QueryRow(ctx, query,
 		r.ids.New(), l.CustomerID, l.Name, string(l.Type), string(l.Status),
 		l.Address1, l.Address2, l.City, l.State, l.PostalCode, l.Country,
-		l.Latitude, l.Longitude, l.Description, now))
+		l.Latitude, l.Longitude, now))
 	if err != nil {
 		return location.Location{}, translateError("create location", err)
 	}
@@ -164,17 +164,17 @@ func (r *LocationRepository) Update(ctx context.Context, l location.Location) (l
 		UPDATE locations
 		SET customer_id = $1, name = $2, type = $3, status = $4,
 		    address1 = $5, address2 = $6, city = $7, state = $8, postal_code = $9, country = $10,
-		    latitude = $11, longitude = $12, description = $13, updated_at = $14
-		WHERE id = $15
+		    latitude = $11, longitude = $12, updated_at = $13
+		WHERE id = $14
 		RETURNING id, customer_id, name, type, status,
 		          address1, address2, city, state, postal_code, country,
-		          latitude, longitude, description, created_at, updated_at
+		          latitude, longitude, created_at, updated_at
 	`
 
 	updated, err := scanLocation(r.db.QueryRow(ctx, query,
 		l.CustomerID, l.Name, string(l.Type), string(l.Status),
 		l.Address1, l.Address2, l.City, l.State, l.PostalCode, l.Country,
-		l.Latitude, l.Longitude, l.Description, r.clock.Now(), l.ID))
+		l.Latitude, l.Longitude, r.clock.Now(), l.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return location.Location{}, locationNotFound(l.ID)
@@ -219,7 +219,7 @@ func scanLocation(row rowScanner) (location.Location, error) {
 	err := row.Scan(
 		&l.ID, &l.CustomerID, &l.Name, &locType, &status,
 		&l.Address1, &l.Address2, &l.City, &l.State, &l.PostalCode, &l.Country,
-		&l.Latitude, &l.Longitude, &l.Description, &l.CreatedAt, &l.UpdatedAt,
+		&l.Latitude, &l.Longitude, &l.CreatedAt, &l.UpdatedAt,
 	)
 	l.Type = location.LocationType(locType)
 	l.Status = location.LocationStatus(status)

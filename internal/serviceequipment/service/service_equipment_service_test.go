@@ -390,14 +390,14 @@ func TestServiceEquipmentServiceUpdateSucceeds(t *testing.T) {
 	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{}, &fakeAccessAttachmentCreator{})
 
 	toUpdate := existing
-	toUpdate.Description = "Updated description"
+	toUpdate.UNIPort = 2
 
 	updated, err := svc.Update(context.Background(), toUpdate)
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
-	if updated.Description != "Updated description" {
-		t.Errorf("Description = %q, want %q", updated.Description, "Updated description")
+	if updated.UNIPort != 2 {
+		t.Errorf("UNIPort = %d, want %d", updated.UNIPort, 2)
 	}
 	if !repo.updateCalled {
 		t.Error("repository Update() was never called")
@@ -813,7 +813,6 @@ func TestServiceEquipmentServiceUpdateOfAlreadyRemovedRecordDoesNotTouchDevice(t
 	svc := service.NewServiceEquipmentService(repo, devices, devices, newFakeCustomerDeviceGetter(), newFakeOnuAuthorizationGetter(), newFakeAccessInterfaceGetter(), &fakeAccessAttachmentCreator{}, &fakeAccessAttachmentCreator{})
 
 	toUpdate := existing
-	toUpdate.Description = "editing history, not removing anything new"
 
 	if _, err := svc.Update(context.Background(), toUpdate); err != nil {
 		t.Fatalf("Update() = %v", err)

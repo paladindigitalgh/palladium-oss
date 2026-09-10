@@ -5,11 +5,10 @@ interface ProviderDto {
   id: string
   name: string
   status: Provider['status']
-  description: string
 }
 
 function fromDto(dto: ProviderDto): Provider {
-  return { id: dto.id, name: dto.name, status: dto.status, description: dto.description }
+  return { id: dto.id, name: dto.name, status: dto.status }
 }
 
 export async function listProviders(): Promise<Provider[]> {
@@ -19,7 +18,6 @@ export async function listProviders(): Promise<Provider[]> {
 
 export interface CreateProviderInput {
   name: string
-  description: string
 }
 
 /**
@@ -34,7 +32,6 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     body: {
       name: input.name,
       status: 'Active',
-      description: input.description,
     },
   })
   return fromDto(dto)

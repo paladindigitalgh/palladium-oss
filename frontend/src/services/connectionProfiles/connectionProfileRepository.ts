@@ -18,7 +18,6 @@ interface ConnectionProfileDto {
   authentication_id: string | null
   timeout: string
   host_key_policy: string
-  description: string
   created_at: string
   updated_at: string
 }
@@ -32,7 +31,6 @@ function fromDto(dto: ConnectionProfileDto): ConnectionProfile {
     authenticationId: dto.authentication_id,
     timeout: dto.timeout,
     hostKeyPolicy: dto.host_key_policy,
-    description: dto.description,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   }

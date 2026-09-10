@@ -12,10 +12,10 @@ import (
 // CustomerID, a present Name, and a Role and Status that are each one of
 // their defined values (see contact_role.go and status.go).
 //
-// Email, Phone, and Description are never checked — the same "optional,
-// plain string" treatment location.Location's address fields get, and
-// for the same reason: not every Contact necessarily has both an email
-// and a phone number on file.
+// Email and Phone are never checked — the same "optional, plain string"
+// treatment location.Location's address fields get, and for the same
+// reason: not every Contact necessarily has both an email and a phone
+// number on file.
 func (c Contact) Validate() error {
 	errs := validate.New()
 

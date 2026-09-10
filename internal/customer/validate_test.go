@@ -62,7 +62,6 @@ func TestCustomerValidateRequiresKnownCustomerType(t *testing.T) {
 	for _, ct := range []customer.CustomerType{
 		customer.CustomerTypeResidential,
 		customer.CustomerTypeBusiness,
-		customer.CustomerTypeGovernment,
 		customer.CustomerTypeInternal,
 	} {
 		c := validCustomer()

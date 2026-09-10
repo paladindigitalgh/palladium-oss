@@ -8,22 +8,22 @@ import "strings"
 // auth.Role: an unrecognized value is caught by validation instead of
 // silently persisted.
 //
-// Internal exists alongside the three real-world categories for the same
+// Internal exists alongside the two real-world categories for the same
 // reason ISPs actually need it in practice: staff test lines, lab
-// circuits, and other accounts that are not a paying resident, business,
-// or government entity still need to be modeled as Customers so Services
-// (a later phase) have someone to attach to — not exempted from the
-// domain model as a special case.
+// circuits, and other accounts that are not a paying resident or
+// business still need to be modeled as Customers so Services (a later
+// phase) have someone to attach to — not exempted from the domain model
+// as a special case.
 type CustomerType string
 
-// The four defined customer types. There is no zero-value/default type —
-// an empty CustomerType is invalid — so CustomerType is effectively
-// required on every Customer (see Customer.Validate in validate.go), for
-// the same reason inventory.DeviceStatus has no default status.
+// The three defined customer types. There is no zero-value/default
+// type — an empty CustomerType is invalid — so CustomerType is
+// effectively required on every Customer (see Customer.Validate in
+// validate.go), for the same reason inventory.DeviceStatus has no
+// default status.
 const (
 	CustomerTypeResidential CustomerType = "Residential"
 	CustomerTypeBusiness    CustomerType = "Business"
-	CustomerTypeGovernment  CustomerType = "Government"
 	CustomerTypeInternal    CustomerType = "Internal"
 )
 
@@ -33,7 +33,6 @@ const (
 var customerTypeOrder = []CustomerType{
 	CustomerTypeResidential,
 	CustomerTypeBusiness,
-	CustomerTypeGovernment,
 	CustomerTypeInternal,
 }
 

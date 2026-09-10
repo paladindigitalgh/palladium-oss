@@ -14,7 +14,6 @@ export interface ConnectionProfile {
   authenticationId: string | null
   timeout: string
   hostKeyPolicy: string
-  description: string
   createdAt: string
   updatedAt: string
 }

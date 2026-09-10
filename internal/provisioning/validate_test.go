@@ -65,15 +65,3 @@ func TestProvisioningProfileValidateRequiresProfileName(t *testing.T) {
 
 	assertInvalid(t, p.Validate())
 }
-
-func TestProvisioningProfileValidateDescriptionIsOptional(t *testing.T) {
-	p := validProvisioningProfile() // no description set
-	if err := p.Validate(); err != nil {
-		t.Errorf("Validate() (no description) = %v, want nil", err)
-	}
-
-	p.Description = "500 Mbps residential rate-limit + VLAN profile"
-	if err := p.Validate(); err != nil {
-		t.Errorf("Validate() (with description) = %v, want nil", err)
-	}
-}

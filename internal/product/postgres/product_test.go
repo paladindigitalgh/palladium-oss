@@ -111,12 +111,11 @@ func TestProductRepositoryCreate(t *testing.T) {
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
 	created, err := repo.Create(ctx, product.Product{
-		CatalogID:   c.ID,
-		ProviderID:  pr.ID,
-		Name:        "Residential Internet 100/20",
-		Category:    product.ProductCategoryInternet,
-		Status:      product.ProductStatusActive,
-		Description: "100 Mbps down / 20 Mbps up",
+		CatalogID:  c.ID,
+		ProviderID: pr.ID,
+		Name:       "Residential Internet 100/20",
+		Category:   product.ProductCategoryInternet,
+		Status:     product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -139,9 +138,6 @@ func TestProductRepositoryCreate(t *testing.T) {
 	}
 	if created.Status != product.ProductStatusActive {
 		t.Errorf("Status = %q, want %q", created.Status, product.ProductStatusActive)
-	}
-	if created.Description != "100 Mbps down / 20 Mbps up" {
-		t.Errorf("Description = %q, want %q", created.Description, "100 Mbps down / 20 Mbps up")
 	}
 	if created.CreatedAt.IsZero() {
 		t.Error("CreatedAt was not set")
@@ -289,13 +285,12 @@ func TestProductRepositoryUpdate(t *testing.T) {
 	}
 
 	updated, err := repo.Update(ctx, product.Product{
-		ID:          created.ID,
-		CatalogID:   otherCatalog.ID,
-		ProviderID:  otherProvider.ID,
-		Name:        "New Name",
-		Category:    product.ProductCategoryVoice,
-		Status:      product.ProductStatusRetired,
-		Description: "New Description",
+		ID:         created.ID,
+		CatalogID:  otherCatalog.ID,
+		ProviderID: otherProvider.ID,
+		Name:       "New Name",
+		Category:   product.ProductCategoryVoice,
+		Status:     product.ProductStatusRetired,
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
@@ -315,9 +310,6 @@ func TestProductRepositoryUpdate(t *testing.T) {
 	}
 	if updated.Status != product.ProductStatusRetired {
 		t.Errorf("Status = %q, want %q", updated.Status, product.ProductStatusRetired)
-	}
-	if updated.Description != "New Description" {
-		t.Errorf("Description = %q, want %q", updated.Description, "New Description")
 	}
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Errorf("CreatedAt changed on Update(): was %v, now %v", created.CreatedAt, updated.CreatedAt)

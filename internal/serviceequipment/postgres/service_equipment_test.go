@@ -215,7 +215,6 @@ func TestServiceEquipmentRepositoryCreate(t *testing.T) {
 		ServiceID:   s.ID,
 		DeviceID:    d.ID,
 		Role:        serviceequipment.EquipmentRoleONU,
-		Description: "Installed in the network closet",
 		InstalledAt: &installedAt,
 	})
 	if err != nil {
@@ -233,9 +232,6 @@ func TestServiceEquipmentRepositoryCreate(t *testing.T) {
 	}
 	if created.Role != serviceequipment.EquipmentRoleONU {
 		t.Errorf("Role = %q, want %q", created.Role, serviceequipment.EquipmentRoleONU)
-	}
-	if created.Description != "Installed in the network closet" {
-		t.Errorf("Description = %q, want %q", created.Description, "Installed in the network closet")
 	}
 	if created.InstalledAt == nil || !created.InstalledAt.Equal(installedAt) {
 		t.Errorf("InstalledAt = %v, want %v", created.InstalledAt, installedAt)
@@ -423,7 +419,6 @@ func TestServiceEquipmentRepositoryUpdate(t *testing.T) {
 		ServiceID:   s.ID,
 		DeviceID:    otherDevice.ID,
 		Role:        serviceequipment.EquipmentRoleRouter,
-		Description: "Swapped for a replacement unit",
 		InstalledAt: &installedAt,
 		RemovedAt:   &removedAt,
 	})
@@ -436,9 +431,6 @@ func TestServiceEquipmentRepositoryUpdate(t *testing.T) {
 	}
 	if updated.Role != serviceequipment.EquipmentRoleRouter {
 		t.Errorf("Role = %q, want %q", updated.Role, serviceequipment.EquipmentRoleRouter)
-	}
-	if updated.Description != "Swapped for a replacement unit" {
-		t.Errorf("Description = %q, want %q", updated.Description, "Swapped for a replacement unit")
 	}
 	if updated.RemovedAt == nil || !updated.RemovedAt.Equal(removedAt) {
 		t.Errorf("RemovedAt = %v, want %v", updated.RemovedAt, removedAt)

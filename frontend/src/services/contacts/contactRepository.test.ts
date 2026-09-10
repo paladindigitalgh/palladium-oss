@@ -25,7 +25,6 @@ function contactDto(overrides: Partial<Record<string, unknown>> = {}) {
     email: 'jane@example.com',
     phone: '555-0100',
     status: 'Active',
-    description: '',
     ...overrides,
   }
 }
@@ -89,7 +88,6 @@ describe('createContact', () => {
       email: 'john@example.com',
       phone: '555-0199',
       status: 'Active',
-      description: 'New billing contact',
     })
 
     expect(apiFetch).toHaveBeenCalledWith('/contacts/', {
@@ -101,7 +99,6 @@ describe('createContact', () => {
         email: 'john@example.com',
         phone: '555-0199',
         status: 'Active',
-        description: 'New billing contact',
       },
     })
   })
@@ -118,7 +115,6 @@ describe('updateContact', () => {
       email: 'jane.renamed@example.com',
       phone: '555-0111',
       status: 'Inactive',
-      description: 'Updated',
     })
 
     expect(apiFetch).toHaveBeenCalledWith('/contacts/ct1', {
@@ -130,7 +126,6 @@ describe('updateContact', () => {
         email: 'jane.renamed@example.com',
         phone: '555-0111',
         status: 'Inactive',
-        description: 'Updated',
       },
     })
   })

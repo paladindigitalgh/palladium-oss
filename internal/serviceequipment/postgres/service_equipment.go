@@ -42,7 +42,7 @@ func NewServiceEquipmentRepository(db database.Querier, clock clock.Clock, ids i
 // apperror.KindNotFound error if none exists.
 func (r *ServiceEquipmentRepository) Get(ctx context.Context, equipmentID uuid.UUID) (serviceequipment.ServiceEquipment, error) {
 	const query = `
-		SELECT id, service_id, device_id, role, description, uni_port,
+		SELECT id, service_id, device_id, role, uni_port,
 		       installed_at, removed_at, created_at, updated_at
 		FROM service_equipment
 		WHERE id = $1
@@ -64,7 +64,7 @@ func (r *ServiceEquipmentRepository) Get(ctx context.Context, equipmentID uuid.U
 // ordering: an equipment assignment has no name column to order by.
 func (r *ServiceEquipmentRepository) List(ctx context.Context) ([]serviceequipment.ServiceEquipment, error) {
 	const query = `
-		SELECT id, service_id, device_id, role, description, uni_port,
+		SELECT id, service_id, device_id, role, uni_port,
 		       installed_at, removed_at, created_at, updated_at
 		FROM service_equipment
 		ORDER BY created_at
@@ -107,17 +107,17 @@ func (r *ServiceEquipmentRepository) List(ctx context.Context) ([]serviceequipme
 func (r *ServiceEquipmentRepository) Create(ctx context.Context, e serviceequipment.ServiceEquipment) (serviceequipment.ServiceEquipment, error) {
 	const query = `
 		INSERT INTO service_equipment (
-			id, service_id, device_id, role, description, uni_port,
+			id, service_id, device_id, role, uni_port,
 			installed_at, removed_at, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-		RETURNING id, service_id, device_id, role, description, uni_port,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		RETURNING id, service_id, device_id, role, uni_port,
 		          installed_at, removed_at, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanServiceEquipment(r.db.QueryRow(ctx, query,
-		r.ids.New(), e.ServiceID, e.DeviceID, string(e.Role), e.Description, e.UNIPort,
+		r.ids.New(), e.ServiceID, e.DeviceID, string(e.Role), e.UNIPort,
 		e.InstalledAt, e.RemovedAt, now))
 	if err != nil {
 		return serviceequipment.ServiceEquipment{}, translateError("create service equipment", err)
@@ -137,15 +137,15 @@ func (r *ServiceEquipmentRepository) Create(ctx context.Context, e serviceequipm
 func (r *ServiceEquipmentRepository) Update(ctx context.Context, e serviceequipment.ServiceEquipment) (serviceequipment.ServiceEquipment, error) {
 	const query = `
 		UPDATE service_equipment
-		SET service_id = $1, device_id = $2, role = $3, description = $4, uni_port = $5,
-		    installed_at = $6, removed_at = $7, updated_at = $8
-		WHERE id = $9
-		RETURNING id, service_id, device_id, role, description, uni_port,
+		SET service_id = $1, device_id = $2, role = $3, uni_port = $4,
+		    installed_at = $5, removed_at = $6, updated_at = $7
+		WHERE id = $8
+		RETURNING id, service_id, device_id, role, uni_port,
 		          installed_at, removed_at, created_at, updated_at
 	`
 
 	updated, err := scanServiceEquipment(r.db.QueryRow(ctx, query,
-		e.ServiceID, e.DeviceID, string(e.Role), e.Description, e.UNIPort,
+		e.ServiceID, e.DeviceID, string(e.Role), e.UNIPort,
 		e.InstalledAt, e.RemovedAt, r.clock.Now(), e.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -189,7 +189,7 @@ func (r *ServiceEquipmentRepository) Delete(ctx context.Context, equipmentID uui
 // application logic.
 func (r *ServiceEquipmentRepository) GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error) {
 	const query = `
-		SELECT id, service_id, device_id, role, description, uni_port,
+		SELECT id, service_id, device_id, role, uni_port,
 		       installed_at, removed_at, created_at, updated_at
 		FROM service_equipment
 		WHERE device_id = $1 AND removed_at IS NULL
@@ -214,7 +214,7 @@ func (r *ServiceEquipmentRepository) GetActiveByDeviceID(ctx context.Context, de
 // GetActiveByDeviceID.
 func (r *ServiceEquipmentRepository) GetLatestByDeviceID(ctx context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error) {
 	const query = `
-		SELECT id, service_id, device_id, role, description, uni_port,
+		SELECT id, service_id, device_id, role, uni_port,
 		       installed_at, removed_at, created_at, updated_at
 		FROM service_equipment
 		WHERE device_id = $1
@@ -243,7 +243,7 @@ func (r *ServiceEquipmentRepository) GetLatestByDeviceID(ctx context.Context, de
 // Service can legitimately have several active equipment items at once.
 func (r *ServiceEquipmentRepository) ListActiveByServiceID(ctx context.Context, serviceID uuid.UUID) ([]serviceequipment.ServiceEquipment, error) {
 	const query = `
-		SELECT id, service_id, device_id, role, description, uni_port,
+		SELECT id, service_id, device_id, role, uni_port,
 		       installed_at, removed_at, created_at, updated_at
 		FROM service_equipment
 		WHERE service_id = $1 AND removed_at IS NULL
@@ -289,7 +289,7 @@ func scanServiceEquipment(row rowScanner) (serviceequipment.ServiceEquipment, er
 		role string
 	)
 	err := row.Scan(
-		&e.ID, &e.ServiceID, &e.DeviceID, &role, &e.Description, &e.UNIPort,
+		&e.ID, &e.ServiceID, &e.DeviceID, &role, &e.UNIPort,
 		&e.InstalledAt, &e.RemovedAt, &e.CreatedAt, &e.UpdatedAt,
 	)
 	e.Role = serviceequipment.EquipmentRole(role)

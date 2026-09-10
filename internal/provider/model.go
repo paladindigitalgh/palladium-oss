@@ -41,10 +41,9 @@ import (
 // Provider is a retail ISP identity that Products (see internal/product)
 // belong to.
 type Provider struct {
-	ID          uuid.UUID
-	Name        string
-	Status      Status
-	Description string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID        uuid.UUID
+	Name      string
+	Status    Status
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

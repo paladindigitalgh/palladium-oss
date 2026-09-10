@@ -14,5 +14,4 @@ export interface Product {
   name: string
   category: ProductCategory
   status: 'Active' | 'Retired'
-  description: string
 }

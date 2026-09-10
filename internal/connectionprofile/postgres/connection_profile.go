@@ -42,7 +42,7 @@ func NewConnectionProfileRepository(db database.Querier, clock clock.Clock, ids 
 // error if none exists.
 func (r *ConnectionProfileRepository) Get(ctx context.Context, profileID uuid.UUID) (connectionprofile.ConnectionProfile, error) {
 	const query = `
-		SELECT id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, description, created_at, updated_at
+		SELECT id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, created_at, updated_at
 		FROM connection_profiles
 		WHERE id = $1
 	`
@@ -61,7 +61,7 @@ func (r *ConnectionProfileRepository) Get(ctx context.Context, profileID uuid.UU
 // human-useful output.
 func (r *ConnectionProfileRepository) List(ctx context.Context) ([]connectionprofile.ConnectionProfile, error) {
 	const query = `
-		SELECT id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, description, created_at, updated_at
+		SELECT id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, created_at, updated_at
 		FROM connection_profiles
 		ORDER BY name
 	`
@@ -97,14 +97,14 @@ func (r *ConnectionProfileRepository) List(ctx context.Context) ([]connectionpro
 // apperror.KindConflict error (see translateError).
 func (r *ConnectionProfileRepository) Create(ctx context.Context, p connectionprofile.ConnectionProfile) (connectionprofile.ConnectionProfile, error) {
 	const query = `
-		INSERT INTO connection_profiles (id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-		RETURNING id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, description, created_at, updated_at
+		INSERT INTO connection_profiles (id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		RETURNING id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanConnectionProfile(r.db.QueryRow(ctx, query,
-		r.ids.New(), p.Name, p.Protocol, p.Port, p.AuthenticationID, int64(p.Timeout), string(p.HostKeyPolicy), p.Description, now))
+		r.ids.New(), p.Name, p.Protocol, p.Port, p.AuthenticationID, int64(p.Timeout), string(p.HostKeyPolicy), now))
 	if err != nil {
 		return connectionprofile.ConnectionProfile{}, translateError("create connection profile", err)
 	}
@@ -123,13 +123,13 @@ func (r *ConnectionProfileRepository) Update(ctx context.Context, p connectionpr
 	const query = `
 		UPDATE connection_profiles
 		SET name = $1, protocol = $2, port = $3, authentication_id = $4, timeout_ns = $5,
-		    host_key_policy = $6, description = $7, updated_at = $8
-		WHERE id = $9
-		RETURNING id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, description, created_at, updated_at
+		    host_key_policy = $6, updated_at = $7
+		WHERE id = $8
+		RETURNING id, name, protocol, port, authentication_id, timeout_ns, host_key_policy, created_at, updated_at
 	`
 
 	updated, err := scanConnectionProfile(r.db.QueryRow(ctx, query,
-		p.Name, p.Protocol, p.Port, p.AuthenticationID, int64(p.Timeout), string(p.HostKeyPolicy), p.Description, r.clock.Now(), p.ID))
+		p.Name, p.Protocol, p.Port, p.AuthenticationID, int64(p.Timeout), string(p.HostKeyPolicy), r.clock.Now(), p.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return connectionprofile.ConnectionProfile{}, profileNotFound(p.ID)
@@ -173,7 +173,7 @@ func scanConnectionProfile(row rowScanner) (connectionprofile.ConnectionProfile,
 	)
 	err := row.Scan(
 		&p.ID, &p.Name, &p.Protocol, &p.Port, &p.AuthenticationID, &timeoutNS,
-		&hostKeyPolicy, &p.Description, &p.CreatedAt, &p.UpdatedAt,
+		&hostKeyPolicy, &p.CreatedAt, &p.UpdatedAt,
 	)
 	p.HostKeyPolicy = connectionprofile.HostKeyPolicy(hostKeyPolicy)
 	p.Timeout = time.Duration(timeoutNS)

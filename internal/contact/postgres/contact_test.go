@@ -91,13 +91,12 @@ func TestContactRepositoryCreate(t *testing.T) {
 	repo := postgres.NewContactRepository(q, clock.New(), id.New())
 
 	created, err := repo.Create(ctx, contact.Contact{
-		CustomerID:  c.ID,
-		Name:        "Jane Doe",
-		Role:        contact.ContactRolePrimary,
-		Email:       "jane@example.com",
-		Phone:       "555-0100",
-		Status:      contact.ContactStatusActive,
-		Description: "Prefers email over phone",
+		CustomerID: c.ID,
+		Name:       "Jane Doe",
+		Role:       contact.ContactRolePrimary,
+		Email:      "jane@example.com",
+		Phone:      "555-0100",
+		Status:     contact.ContactStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -269,14 +268,13 @@ func TestContactRepositoryUpdate(t *testing.T) {
 	}
 
 	updated, err := repo.Update(ctx, contact.Contact{
-		ID:          created.ID,
-		CustomerID:  otherCustomer.ID,
-		Name:        "New Name",
-		Role:        contact.ContactRoleBilling,
-		Email:       "new@example.com",
-		Phone:       "555-0199",
-		Status:      contact.ContactStatusInactive,
-		Description: "Updated",
+		ID:         created.ID,
+		CustomerID: otherCustomer.ID,
+		Name:       "New Name",
+		Role:       contact.ContactRoleBilling,
+		Email:      "new@example.com",
+		Phone:      "555-0199",
+		Status:     contact.ContactStatusInactive,
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)

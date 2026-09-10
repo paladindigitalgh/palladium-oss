@@ -10,7 +10,6 @@ func TestCustomerTypeValidAcceptsDefinedValues(t *testing.T) {
 	defined := []customer.CustomerType{
 		customer.CustomerTypeResidential,
 		customer.CustomerTypeBusiness,
-		customer.CustomerTypeGovernment,
 		customer.CustomerTypeInternal,
 	}
 
@@ -27,6 +26,7 @@ func TestCustomerTypeValidRejectsUnrecognizedValues(t *testing.T) {
 		"residential", // wrong case
 		"BUSINESS",    // wrong case
 		"Nonprofit",   // not a defined type at all
+		"Government",  // removed: no longer a defined type
 	}
 
 	for _, ct := range cases {

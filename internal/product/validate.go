@@ -11,8 +11,7 @@ import (
 // Validate reports whether p has every required field set: a present
 // CatalogID, a present ProviderID, a present Name, and a Category and
 // Status that are each one of their defined values (see category.go and
-// status.go). Description is optional and is never checked for
-// presence, consistent with location.Location.Validate.
+// status.go).
 func (p Product) Validate() error {
 	errs := validate.New()
 

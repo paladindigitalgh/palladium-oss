@@ -98,7 +98,6 @@ func TestCustomerRepositoryCreatePersistsEachDefinedCustomerTypeAndStatus(t *tes
 	types := []customer.CustomerType{
 		customer.CustomerTypeResidential,
 		customer.CustomerTypeBusiness,
-		customer.CustomerTypeGovernment,
 		customer.CustomerTypeInternal,
 	}
 	statuses := []customer.CustomerStatus{

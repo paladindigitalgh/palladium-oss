@@ -5,6 +5,7 @@ import {
   listActiveCustomerDevicesByCustomerId,
   attachCustomerDevice,
   detachCustomerDevice,
+  setCustomerDeviceLocation,
 } from './customerDeviceRepository'
 
 /** Mirrors serviceEquipmentRepository.test.ts's own doc comment: every list below fetches the same full /customer-devices/ list and filters client-side. */
@@ -17,7 +18,7 @@ function customerDeviceDto(overrides: Partial<Record<string, unknown>> = {}) {
     id: 'cd1',
     customer_id: 'c1',
     device_id: 'd1',
-    description: '',
+    location_id: null,
     attached_at: '2026-01-01T00:00:00Z',
     detached_at: null,
     ...overrides,
@@ -74,7 +75,11 @@ describe('attachCustomerDevice', () => {
   it('sends the request body in the API wire shape, with attachedAt set to now and detachedAt null', async () => {
     apiFetch.mockResolvedValue(customerDeviceDto({ id: 'cd1', customer_id: 'c1', device_id: 'd1' }))
 
-    const result = await attachCustomerDevice({ customerId: 'c1', deviceId: 'd1', description: 'Living room' })
+    const result = await attachCustomerDevice({
+      customerId: 'c1',
+      deviceId: 'd1',
+      locationId: null,
+    })
 
     expect(apiFetch).toHaveBeenCalledTimes(1)
     const [path, options] = apiFetch.mock.calls[0]
@@ -83,11 +88,20 @@ describe('attachCustomerDevice', () => {
     expect(options.body).toMatchObject({
       customer_id: 'c1',
       device_id: 'd1',
-      description: 'Living room',
+      location_id: null,
       detached_at: null,
     })
     expect(typeof options.body.attached_at).toBe('string')
     expect(result.id).toBe('cd1')
+  })
+
+  it('sends a chosen locationId through unchanged', async () => {
+    apiFetch.mockResolvedValue(customerDeviceDto({ location_id: 'l1' }))
+
+    await attachCustomerDevice({ customerId: 'c1', deviceId: 'd1', locationId: 'l1' })
+
+    const [, options] = apiFetch.mock.calls[0]
+    expect(options.body).toMatchObject({ location_id: 'l1' })
   })
 })
 
@@ -97,7 +111,7 @@ describe('detachCustomerDevice', () => {
       id: 'cd1',
       customerId: 'c1',
       deviceId: 'd1',
-      description: 'Living room',
+      locationId: 'l1',
       attachedAt: '2026-01-01T00:00:00Z',
       detachedAt: null,
     }
@@ -112,10 +126,56 @@ describe('detachCustomerDevice', () => {
     expect(options.body).toMatchObject({
       customer_id: 'c1',
       device_id: 'd1',
-      description: 'Living room',
+      location_id: 'l1',
       attached_at: '2026-01-01T00:00:00Z',
     })
     expect(typeof options.body.detached_at).toBe('string')
     expect(result.detachedAt).toBe('2026-03-01T00:00:00Z')
+  })
+})
+
+describe('setCustomerDeviceLocation', () => {
+  it('PUTs the record back with the new locationId and every other field echoed unchanged', async () => {
+    const record = {
+      id: 'cd1',
+      customerId: 'c1',
+      deviceId: 'd1',
+      locationId: null,
+      attachedAt: '2026-01-01T00:00:00Z',
+      detachedAt: null,
+    }
+    apiFetch.mockResolvedValue(customerDeviceDto({ location_id: 'l2' }))
+
+    const result = await setCustomerDeviceLocation(record, 'l2')
+
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+    const [path, options] = apiFetch.mock.calls[0]
+    expect(path).toBe('/customer-devices/cd1')
+    expect(options.method).toBe('PUT')
+    expect(options.body).toMatchObject({
+      customer_id: 'c1',
+      device_id: 'd1',
+      location_id: 'l2',
+      attached_at: '2026-01-01T00:00:00Z',
+      detached_at: null,
+    })
+    expect(result.locationId).toBe('l2')
+  })
+
+  it('sends null to clear a previously-set location', async () => {
+    const record = {
+      id: 'cd1',
+      customerId: 'c1',
+      deviceId: 'd1',
+      locationId: 'l1',
+      attachedAt: '2026-01-01T00:00:00Z',
+      detachedAt: null,
+    }
+    apiFetch.mockResolvedValue(customerDeviceDto({ location_id: null }))
+
+    await setCustomerDeviceLocation(record, null)
+
+    const [, options] = apiFetch.mock.calls[0]
+    expect(options.body).toMatchObject({ location_id: null })
   })
 })

@@ -45,7 +45,6 @@ type connectionProfileRequest struct {
 	AuthenticationID *uuid.UUID `json:"authentication_id"`
 	Timeout          string     `json:"timeout"`
 	HostKeyPolicy    string     `json:"host_key_policy"`
-	Description      string     `json:"description"`
 }
 
 // toConnectionProfile converts a request into a domain
@@ -69,7 +68,6 @@ func (req connectionProfileRequest) toConnectionProfile(id uuid.UUID) connection
 		AuthenticationID: req.AuthenticationID,
 		Timeout:          timeout,
 		HostKeyPolicy:    connectionprofile.HostKeyPolicy(req.HostKeyPolicy),
-		Description:      req.Description,
 	}
 }
 
@@ -86,7 +84,6 @@ type connectionProfileResponse struct {
 	AuthenticationID *uuid.UUID `json:"authentication_id"`
 	Timeout          string     `json:"timeout"`
 	HostKeyPolicy    string     `json:"host_key_policy"`
-	Description      string     `json:"description"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 }
@@ -100,7 +97,6 @@ func newConnectionProfileResponse(p connectionprofile.ConnectionProfile) connect
 		AuthenticationID: p.AuthenticationID,
 		Timeout:          p.Timeout.String(),
 		HostKeyPolicy:    string(p.HostKeyPolicy),
-		Description:      p.Description,
 		CreatedAt:        p.CreatedAt,
 		UpdatedAt:        p.UpdatedAt,
 	}

@@ -11,7 +11,6 @@ function profileDto(overrides: Partial<Record<string, unknown>> = {}) {
     product_id: 'p1',
     vendor: 'Kontron',
     profile_name: 'RES-500M',
-    description: '',
     ...overrides,
   }
 }
@@ -30,8 +29,8 @@ describe('listProvisioningProfiles', () => {
 
     expect(apiFetch).toHaveBeenCalledWith('/provisioning-profiles/')
     expect(result).toEqual([
-      { id: 'pp1', productId: 'p1', vendor: 'Kontron', profileName: 'RES-500M', description: '' },
-      { id: 'pp2', productId: 'p1', vendor: 'Kontron', profileName: 'RES-1000M', description: '' },
+      { id: 'pp1', productId: 'p1', vendor: 'Kontron', profileName: 'RES-500M' },
+      { id: 'pp2', productId: 'p1', vendor: 'Kontron', profileName: 'RES-1000M' },
     ])
   })
 })
@@ -44,7 +43,6 @@ describe('createProvisioningProfile', () => {
       productId: 'p1',
       vendor: 'Kontron',
       profileName: 'RES-500M',
-      description: '500 Mbps residential',
     })
 
     expect(apiFetch).toHaveBeenCalledWith('/provisioning-profiles/', {
@@ -53,7 +51,6 @@ describe('createProvisioningProfile', () => {
         product_id: 'p1',
         vendor: 'Kontron',
         profile_name: 'RES-500M',
-        description: '500 Mbps residential',
       },
     })
   })

@@ -5,7 +5,7 @@
 // ServiceEquipmentService) to enforce a rule beyond "reject invalid
 // input before it reaches the repository."
 //
-// Two such rules apply here:
+// Three such rules apply here:
 //
 //   - "a Device may be attached to at most one Customer at a time" — the
 //     exact shape of ServiceEquipmentService's own
@@ -19,6 +19,12 @@
 //     (e.g. a Location with active Services cannot be removed) rather
 //     than silently tearing down a live Service assignment as a side
 //     effect of a Customer-level action.
+//   - a CustomerDevice's optional LocationID, when set, must name a
+//     Location belonging to the same CustomerID (see
+//     ensureLocationBelongsToCustomer) — the one check here that is not
+//     about Active() at all, since LocationID is inert tracking data,
+//     never itself gating a state transition the way the two rules above
+//     do.
 //
 // Create/Update also carry a Device-status side effect, the same shape
 // ServiceEquipmentService.Create/Update already established one domain
@@ -43,6 +49,7 @@ import (
 
 	"github.com/paladindigitalgh/palladium-oss/internal/customerdevice"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
+	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 )
@@ -74,12 +81,23 @@ type activeServiceEquipmentGetter interface {
 	GetActiveByDeviceID(ctx context.Context, deviceID uuid.UUID) (serviceequipment.ServiceEquipment, error)
 }
 
+// locationGetter is the seam CustomerDeviceService depends on instead of
+// the full location.LocationRepository, satisfied by the real
+// *locationservice.LocationService — the same narrow-interface pattern
+// as deviceGetter above. Backs ensureLocationBelongsToCustomer's check
+// that a CustomerDevice's optional LocationID, when set, actually names
+// one of the same CustomerID's own Locations.
+type locationGetter interface {
+	Get(ctx context.Context, id uuid.UUID) (location.Location, error)
+}
+
 // CustomerDeviceService is the Customer Device domain's business logic.
 type CustomerDeviceService struct {
 	customerDevices customerdevice.CustomerDeviceRepository
 	devices         deviceGetter
 	devicesSvc      deviceUpdater
 	equipment       activeServiceEquipmentGetter
+	locations       locationGetter
 }
 
 // NewCustomerDeviceService builds a CustomerDeviceService.
@@ -88,8 +106,15 @@ func NewCustomerDeviceService(
 	devices deviceGetter,
 	devicesSvc deviceUpdater,
 	equipment activeServiceEquipmentGetter,
+	locations locationGetter,
 ) *CustomerDeviceService {
-	return &CustomerDeviceService{customerDevices: customerDevices, devices: devices, devicesSvc: devicesSvc, equipment: equipment}
+	return &CustomerDeviceService{
+		customerDevices: customerDevices,
+		devices:         devices,
+		devicesSvc:      devicesSvc,
+		equipment:       equipment,
+		locations:       locations,
+	}
 }
 
 // Get retrieves a CustomerDevice record by ID.
@@ -110,12 +135,19 @@ func (s *CustomerDeviceService) List(ctx context.Context) ([]customerdevice.Cust
 // internal/serviceequipment/service.ServiceEquipmentService.Create
 // documents: invalid input should never cost even a single database
 // round trip. Only a well-formed, currently-active attachment
-// (cd.Active(), i.e. DetachedAt == nil) triggers either check at all —
-// a record that is not active by definition cannot violate "attached to
-// only one Customer at a time," nor can it place a Retired Device
-// anywhere real.
+// (cd.Active(), i.e. DetachedAt == nil) triggers the assignment-
+// uniqueness and Retired checks — a record that is not active by
+// definition cannot violate "attached to only one Customer at a time,"
+// nor can it place a Retired Device anywhere real. ensureLocationBelongsToCustomer
+// runs regardless of Active(), though: LocationID is a plain tracking
+// field independent of attachment status (see that field's own doc
+// comment), so a detached record naming a bogus or foreign Location is
+// exactly as wrong as an active one would be.
 func (s *CustomerDeviceService) Create(ctx context.Context, cd customerdevice.CustomerDevice) (customerdevice.CustomerDevice, error) {
 	if err := cd.Validate(); err != nil {
+		return customerdevice.CustomerDevice{}, err
+	}
+	if err := s.ensureLocationBelongsToCustomer(ctx, cd.LocationID, cd.CustomerID); err != nil {
 		return customerdevice.CustomerDevice{}, err
 	}
 	if cd.Active() {
@@ -152,7 +184,7 @@ func (s *CustomerDeviceService) Create(ctx context.Context, cd customerdevice.Cu
 // s.customerDevices.Get), not by inspecting cd alone — the same
 // reasoning ServiceEquipmentService.Update's own doc comment gives:
 // Update is called for every edit to a CustomerDevice record, not only
-// the one that detaches it (e.g. correcting Description), and only an
+// the one that detaches it (e.g. correcting LocationID), and only an
 // active record actually becoming detached here should ever be
 // subject to the block.
 //
@@ -161,6 +193,9 @@ func (s *CustomerDeviceService) Create(ctx context.Context, cd customerdevice.Cu
 // the active attachment GetActiveByDeviceID finds.
 func (s *CustomerDeviceService) Update(ctx context.Context, cd customerdevice.CustomerDevice) (customerdevice.CustomerDevice, error) {
 	if err := cd.Validate(); err != nil {
+		return customerdevice.CustomerDevice{}, err
+	}
+	if err := s.ensureLocationBelongsToCustomer(ctx, cd.LocationID, cd.CustomerID); err != nil {
 		return customerdevice.CustomerDevice{}, err
 	}
 	if cd.Active() {
@@ -227,6 +262,29 @@ func (s *CustomerDeviceService) ensureDeviceNotRetired(ctx context.Context, devi
 	}
 	if device.Status == inventory.DeviceStatusRetired {
 		return apperror.Invalid("a retired device cannot be attached to a customer")
+	}
+	return nil
+}
+
+// ensureLocationBelongsToCustomer is a no-op when locationID is nil —
+// "not recorded" is this field's own common, legitimate state (see
+// CustomerDevice.LocationID's own doc comment), not something to reject.
+// When set, it must name a real Location whose own CustomerID matches
+// customerID: a CustomerDevice's Location is purely operator-facing
+// tracking of where a Device sits (never read by any provisioning or
+// billing logic), but tracking a Customer's Device at a different
+// Customer's address would only be misleading, the same reasoning
+// ensureDeviceNotRetired rejects a Retired Device for.
+func (s *CustomerDeviceService) ensureLocationBelongsToCustomer(ctx context.Context, locationID *uuid.UUID, customerID uuid.UUID) error {
+	if locationID == nil {
+		return nil
+	}
+	loc, err := s.locations.Get(ctx, *locationID)
+	if err != nil {
+		return err
+	}
+	if loc.CustomerID != customerID {
+		return apperror.Invalid(fmt.Sprintf("location %s does not belong to customer %s", *locationID, customerID))
 	}
 	return nil
 }

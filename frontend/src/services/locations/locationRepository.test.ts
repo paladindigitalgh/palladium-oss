@@ -29,7 +29,6 @@ function locationDto(overrides: Partial<Record<string, unknown>> = {}) {
     state: 'IL',
     postal_code: '62704',
     country: 'US',
-    description: '',
     ...overrides,
   }
 }
@@ -97,7 +96,6 @@ describe('createLocation', () => {
       state: 'IL',
       postalCode: '62704',
       country: 'US',
-      description: 'New warehouse',
     })
 
     expect(apiFetch).toHaveBeenCalledWith('/locations/', {
@@ -113,7 +111,6 @@ describe('createLocation', () => {
         state: 'IL',
         postal_code: '62704',
         country: 'US',
-        description: 'New warehouse',
       },
     })
   })
@@ -134,7 +131,6 @@ describe('updateLocation', () => {
       state: 'IL',
       postalCode: '62704',
       country: 'US',
-      description: 'Updated',
     })
 
     expect(apiFetch).toHaveBeenCalledWith('/locations/l1', {
@@ -150,7 +146,6 @@ describe('updateLocation', () => {
         state: 'IL',
         postal_code: '62704',
         country: 'US',
-        description: 'Updated',
       },
     })
   })

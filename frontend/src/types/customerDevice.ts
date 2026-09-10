@@ -13,7 +13,8 @@ export interface CustomerDevice {
   id: string
   customerId: string
   deviceId: string
-  description: string
+  /** Which of customerId's own Locations this Device physically sits at, purely for an operator's own tracking -- null means "not recorded," a common, legitimate state. */
+  locationId: string | null
   attachedAt: string | null
   detachedAt: string | null
 }

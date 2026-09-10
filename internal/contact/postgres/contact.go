@@ -39,7 +39,7 @@ func NewContactRepository(db database.Querier, clock clock.Clock, ids id.Generat
 // none exists.
 func (r *ContactRepository) Get(ctx context.Context, contactID uuid.UUID) (contact.Contact, error) {
 	const query = `
-		SELECT id, customer_id, name, role, email, phone, status, description, created_at, updated_at
+		SELECT id, customer_id, name, role, email, phone, status, created_at, updated_at
 		FROM contacts
 		WHERE id = $1
 	`
@@ -58,7 +58,7 @@ func (r *ContactRepository) Get(ctx context.Context, contactID uuid.UUID) (conta
 // output (see the index added on that column in the migration).
 func (r *ContactRepository) List(ctx context.Context) ([]contact.Contact, error) {
 	const query = `
-		SELECT id, customer_id, name, role, email, phone, status, description, created_at, updated_at
+		SELECT id, customer_id, name, role, email, phone, status, created_at, updated_at
 		FROM contacts
 		ORDER BY name
 	`
@@ -93,14 +93,14 @@ func (r *ContactRepository) List(ctx context.Context) ([]contact.Contact, error)
 // error (see translateError).
 func (r *ContactRepository) Create(ctx context.Context, c contact.Contact) (contact.Contact, error) {
 	const query = `
-		INSERT INTO contacts (id, customer_id, name, role, email, phone, status, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-		RETURNING id, customer_id, name, role, email, phone, status, description, created_at, updated_at
+		INSERT INTO contacts (id, customer_id, name, role, email, phone, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		RETURNING id, customer_id, name, role, email, phone, status, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanContact(r.db.QueryRow(ctx, query,
-		r.ids.New(), c.CustomerID, c.Name, string(c.Role), c.Email, c.Phone, string(c.Status), c.Description, now))
+		r.ids.New(), c.CustomerID, c.Name, string(c.Role), c.Email, c.Phone, string(c.Status), now))
 	if err != nil {
 		return contact.Contact{}, translateError("create contact", err)
 	}
@@ -117,13 +117,13 @@ func (r *ContactRepository) Create(ctx context.Context, c contact.Contact) (cont
 func (r *ContactRepository) Update(ctx context.Context, c contact.Contact) (contact.Contact, error) {
 	const query = `
 		UPDATE contacts
-		SET customer_id = $1, name = $2, role = $3, email = $4, phone = $5, status = $6, description = $7, updated_at = $8
-		WHERE id = $9
-		RETURNING id, customer_id, name, role, email, phone, status, description, created_at, updated_at
+		SET customer_id = $1, name = $2, role = $3, email = $4, phone = $5, status = $6, updated_at = $7
+		WHERE id = $8
+		RETURNING id, customer_id, name, role, email, phone, status, created_at, updated_at
 	`
 
 	updated, err := scanContact(r.db.QueryRow(ctx, query,
-		c.CustomerID, c.Name, string(c.Role), c.Email, c.Phone, string(c.Status), c.Description, r.clock.Now(), c.ID))
+		c.CustomerID, c.Name, string(c.Role), c.Email, c.Phone, string(c.Status), r.clock.Now(), c.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return contact.Contact{}, contactNotFound(c.ID)
@@ -166,7 +166,7 @@ func scanContact(row rowScanner) (contact.Contact, error) {
 		status string
 	)
 	err := row.Scan(
-		&c.ID, &c.CustomerID, &c.Name, &role, &c.Email, &c.Phone, &status, &c.Description, &c.CreatedAt, &c.UpdatedAt,
+		&c.ID, &c.CustomerID, &c.Name, &role, &c.Email, &c.Phone, &status, &c.CreatedAt, &c.UpdatedAt,
 	)
 	c.Role = contact.ContactRole(role)
 	c.Status = contact.ContactStatus(status)

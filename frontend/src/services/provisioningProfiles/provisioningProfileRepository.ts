@@ -13,11 +13,10 @@ interface ProvisioningProfileDto {
   product_id: string
   vendor: string
   profile_name: string
-  description: string
 }
 
 function fromDto(dto: ProvisioningProfileDto): ProvisioningProfile {
-  return { id: dto.id, productId: dto.product_id, vendor: dto.vendor, profileName: dto.profile_name, description: dto.description }
+  return { id: dto.id, productId: dto.product_id, vendor: dto.vendor, profileName: dto.profile_name }
 }
 
 export async function listProvisioningProfiles(): Promise<ProvisioningProfile[]> {
@@ -31,7 +30,6 @@ export interface CreateProvisioningProfileInput {
   productId: string
   vendor: string
   profileName: string
-  description: string
 }
 
 /**
@@ -46,7 +44,6 @@ export async function createProvisioningProfile(input: CreateProvisioningProfile
       product_id: input.productId,
       vendor: input.vendor,
       profile_name: input.profileName,
-      description: input.description,
     },
   })
   return fromDto(dto)

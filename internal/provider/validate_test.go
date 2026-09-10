@@ -69,15 +69,3 @@ func TestProviderValidateRequiresKnownStatus(t *testing.T) {
 		}
 	}
 }
-
-func TestProviderValidateDescriptionIsOptional(t *testing.T) {
-	p := validProvider() // no description set
-	if err := p.Validate(); err != nil {
-		t.Errorf("Validate() (no description) = %v, want nil", err)
-	}
-
-	p.Description = "Retail ISP identity for the wholesale open-access network"
-	if err := p.Validate(); err != nil {
-		t.Errorf("Validate() (with description) = %v, want nil", err)
-	}
-}

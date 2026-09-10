@@ -118,7 +118,6 @@ func TestProvisioningProfileRepositoryCreate(t *testing.T) {
 		ProductID:   p.ID,
 		Vendor:      "Kontron",
 		ProfileName: profileName,
-		Description: "500 Mbps residential rate-limit + VLAN profile",
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -135,9 +134,6 @@ func TestProvisioningProfileRepositoryCreate(t *testing.T) {
 	}
 	if created.ProfileName != profileName {
 		t.Errorf("ProfileName = %q, want %q", created.ProfileName, profileName)
-	}
-	if created.Description != "500 Mbps residential rate-limit + VLAN profile" {
-		t.Errorf("Description = %q, want %q", created.Description, "500 Mbps residential rate-limit + VLAN profile")
 	}
 	if created.CreatedAt.IsZero() {
 		t.Error("CreatedAt was not set")
@@ -308,7 +304,6 @@ func TestProvisioningProfileRepositoryUpdate(t *testing.T) {
 		ProductID:   otherProduct.ID,
 		Vendor:      "Kontron",
 		ProfileName: newProfileName,
-		Description: "New Description",
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
@@ -319,9 +314,6 @@ func TestProvisioningProfileRepositoryUpdate(t *testing.T) {
 	}
 	if updated.ProductID != otherProduct.ID {
 		t.Errorf("ProductID = %v, want %v (ProductID must be mutable via Update)", updated.ProductID, otherProduct.ID)
-	}
-	if updated.Description != "New Description" {
-		t.Errorf("Description = %q, want %q", updated.Description, "New Description")
 	}
 	if !updated.CreatedAt.Equal(created.CreatedAt) {
 		t.Errorf("CreatedAt changed on Update(): was %v, now %v", created.CreatedAt, updated.CreatedAt)

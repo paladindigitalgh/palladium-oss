@@ -22,7 +22,6 @@ interface LocationDto {
   state: string
   postal_code: string
   country: string
-  description: string
 }
 
 function fromDto(dto: LocationDto): Location {
@@ -38,7 +37,6 @@ function fromDto(dto: LocationDto): Location {
     state: dto.state,
     postalCode: dto.postal_code,
     country: dto.country,
-    description: dto.description,
   }
 }
 
@@ -68,7 +66,6 @@ export interface CreateLocationInput {
   state: string
   postalCode: string
   country: string
-  description: string
 }
 
 export async function createLocation(input: CreateLocationInput): Promise<Location> {
@@ -85,7 +82,6 @@ export async function createLocation(input: CreateLocationInput): Promise<Locati
       state: input.state,
       postal_code: input.postalCode,
       country: input.country,
-      description: input.description,
     },
   })
   return fromDto(dto)
@@ -102,7 +98,6 @@ export interface UpdateLocationInput {
   state: string
   postalCode: string
   country: string
-  description: string
 }
 
 export async function updateLocation(id: string, input: UpdateLocationInput): Promise<Location> {
@@ -119,7 +114,6 @@ export async function updateLocation(id: string, input: UpdateLocationInput): Pr
       state: input.state,
       postal_code: input.postalCode,
       country: input.country,
-      description: input.description,
     },
   })
   return fromDto(dto)

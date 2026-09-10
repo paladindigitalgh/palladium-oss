@@ -2,13 +2,13 @@
 import { ref, computed, watch } from 'vue'
 import BaseModal from '@/components/base/BaseModal.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
-import BaseInput from '@/components/base/BaseInput.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import { listDevices } from '@/services/devices/deviceRepository'
 import { listCustomerDevices, attachCustomerDevice } from '@/services/customerDevices/customerDeviceRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { Device } from '@/types/device'
 import type { CustomerDevice } from '@/types/customerDevice'
+import type { Location } from '@/types/location'
 
 /**
  * Attaches an existing Device to a Customer, creating a CustomerDevice
@@ -29,15 +29,25 @@ import type { CustomerDevice } from '@/types/customerDevice'
  * (internal/customerdevice/service.CustomerDeviceService.Create) as the
  * final authority; this is the cheap client-side narrowing that keeps
  * the picker from offering an option that would just be rejected.
+ *
+ * Location is optional tracking only (internal/customerdevice's own doc
+ * comment on CustomerDevice.LocationID): which of the Customer's own
+ * Locations this Device physically sits at, never read by any
+ * provisioning or billing logic. `locations` is the parent's already-
+ * loaded list for this Customer (CustomerDetailView.vue's own `locations`
+ * ref) -- fetched once up there rather than duplicated here, the same
+ * reasoning DeviceFormDialog.vue's Rack picker gives for reusing an
+ * already-loaded list instead of fetching its own copy when one is cheaply
+ * at hand.
  */
-const props = defineProps<{ open: boolean; customerId: string }>()
+const props = defineProps<{ open: boolean; customerId: string; locations: Location[] }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'attached', record: CustomerDevice): void
 }>()
 
 const deviceId = ref('')
-const description = ref('')
+const locationId = ref('')
 const availableDevices = ref<Device[]>([])
 const submitting = ref(false)
 const error = ref<string | null>(null)
@@ -49,9 +59,14 @@ const deviceOptions = computed(() =>
   })),
 )
 
+const locationOptions = computed(() => [
+  { value: '', label: 'Not set' },
+  ...props.locations.map((location) => ({ value: location.id, label: location.name })),
+])
+
 function reset() {
   deviceId.value = ''
-  description.value = ''
+  locationId.value = ''
   error.value = null
 }
 
@@ -82,7 +97,7 @@ async function handleSubmit() {
     const record = await attachCustomerDevice({
       customerId: props.customerId,
       deviceId: deviceId.value,
-      description: description.value,
+      locationId: locationId.value === '' ? null : locationId.value,
     })
     reset()
     emit('attached', record)
@@ -105,7 +120,7 @@ async function handleSubmit() {
       </p>
       <template v-else>
         <BaseSelect v-model="deviceId" label="Device" :options="deviceOptions" />
-        <BaseInput v-model="description" label="Description" />
+        <BaseSelect v-model="locationId" label="Location" :options="locationOptions" />
       </template>
 
       <p v-if="error" class="attach-form__error" role="alert">{{ error }}</p>

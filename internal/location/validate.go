@@ -15,8 +15,7 @@ import (
 // The address fields (Address1, Address2, City, State, PostalCode,
 // Country) and Latitude/Longitude remain optional — goal 1 says so
 // explicitly ("address fields are optional for now", "latitude and
-// longitude are optional") — consistent with how Description is handled
-// everywhere else in this codebase. Deliberately absent: any check that
+// longitude are optional"). Deliberately absent: any check that
 // Latitude/Longitude, if given, fall within a valid range (-90..90,
 // -180..180). That is a real validation a GIS-aware version of this
 // package might add; this milestone's explicit "no GIS" scope means this

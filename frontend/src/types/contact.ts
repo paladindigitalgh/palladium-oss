@@ -19,5 +19,4 @@ export interface Contact {
   email: string
   phone: string
   status: ContactStatus
-  description: string
 }

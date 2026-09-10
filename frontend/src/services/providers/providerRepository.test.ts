@@ -13,8 +13,8 @@ describe('listProviders', () => {
   it('maps every provider from the DTO', async () => {
     apiFetch.mockResolvedValue({
       providers: [
-        { id: 'pv1', name: 'Acme Fiber', status: 'Active', description: '' },
-        { id: 'pv2', name: 'Beta Fiber', status: 'Inactive', description: 'Paused' },
+        { id: 'pv1', name: 'Acme Fiber', status: 'Active' },
+        { id: 'pv2', name: 'Beta Fiber', status: 'Inactive' },
       ],
     })
 
@@ -22,21 +22,21 @@ describe('listProviders', () => {
 
     expect(apiFetch).toHaveBeenCalledWith('/providers/')
     expect(result).toEqual([
-      { id: 'pv1', name: 'Acme Fiber', status: 'Active', description: '' },
-      { id: 'pv2', name: 'Beta Fiber', status: 'Inactive', description: 'Paused' },
+      { id: 'pv1', name: 'Acme Fiber', status: 'Active' },
+      { id: 'pv2', name: 'Beta Fiber', status: 'Inactive' },
     ])
   })
 })
 
 describe('createProvider', () => {
   it('sends the request body in the API wire shape, always as Active', async () => {
-    apiFetch.mockResolvedValue({ id: 'new', name: 'Acme Fiber', status: 'Active', description: 'Retail ISP' })
+    apiFetch.mockResolvedValue({ id: 'new', name: 'Acme Fiber', status: 'Active' })
 
-    const result = await createProvider({ name: 'Acme Fiber', description: 'Retail ISP' })
+    const result = await createProvider({ name: 'Acme Fiber' })
 
     expect(apiFetch).toHaveBeenCalledWith('/providers/', {
       method: 'POST',
-      body: { name: 'Acme Fiber', status: 'Active', description: 'Retail ISP' },
+      body: { name: 'Acme Fiber', status: 'Active' },
     })
     expect(result.id).toBe('new')
   })

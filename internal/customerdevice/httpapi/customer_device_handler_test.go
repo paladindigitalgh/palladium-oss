@@ -229,8 +229,9 @@ func TestCustomerDeviceHandlerUpdate(t *testing.T) {
 	record := customerdevice.CustomerDevice{ID: uuid.New(), CustomerID: uuid.New(), DeviceID: uuid.New()}
 	router := newTestRouter(newFakeCustomerDeviceService(record))
 
+	locationID := uuid.New()
 	req := httptest.NewRequest(http.MethodPut, "/customer-devices/"+record.ID.String(), strings.NewReader(
-		`{"customer_id":"`+record.CustomerID.String()+`","device_id":"`+record.DeviceID.String()+`","description":"Updated"}`))
+		`{"customer_id":"`+record.CustomerID.String()+`","device_id":"`+record.DeviceID.String()+`","location_id":"`+locationID.String()+`"}`))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -239,13 +240,13 @@ func TestCustomerDeviceHandlerUpdate(t *testing.T) {
 	}
 
 	var body struct {
-		Description string `json:"description"`
+		LocationID string `json:"location_id"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Description != "Updated" {
-		t.Errorf("Description = %q, want %q", body.Description, "Updated")
+	if body.LocationID != locationID.String() {
+		t.Errorf("LocationID = %q, want %q", body.LocationID, locationID.String())
 	}
 }
 

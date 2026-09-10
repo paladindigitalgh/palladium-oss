@@ -35,12 +35,11 @@ import (
 // server-assigned (POST) or comes from the URL path (PUT); CreatedAt and
 // UpdatedAt are metadata the repository owns and a caller cannot set.
 type productRequest struct {
-	CatalogID   uuid.UUID `json:"catalog_id"`
-	ProviderID  uuid.UUID `json:"provider_id"`
-	Name        string    `json:"name"`
-	Category    string    `json:"category"`
-	Status      string    `json:"status"`
-	Description string    `json:"description"`
+	CatalogID  uuid.UUID `json:"catalog_id"`
+	ProviderID uuid.UUID `json:"provider_id"`
+	Name       string    `json:"name"`
+	Category   string    `json:"category"`
+	Status     string    `json:"status"`
 }
 
 // toProduct converts a request into a domain product.Product. id is
@@ -48,13 +47,12 @@ type productRequest struct {
 // real one), or the URL path parameter's UUID for Update.
 func (req productRequest) toProduct(id uuid.UUID) product.Product {
 	return product.Product{
-		ID:          id,
-		CatalogID:   req.CatalogID,
-		ProviderID:  req.ProviderID,
-		Name:        req.Name,
-		Category:    product.ProductCategory(req.Category),
-		Status:      product.ProductStatus(req.Status),
-		Description: req.Description,
+		ID:         id,
+		CatalogID:  req.CatalogID,
+		ProviderID: req.ProviderID,
+		Name:       req.Name,
+		Category:   product.ProductCategory(req.Category),
+		Status:     product.ProductStatus(req.Status),
 	}
 }
 
@@ -63,28 +61,26 @@ func (req productRequest) toProduct(id uuid.UUID) product.Product {
 // layout and types means a change to how the domain model is composed
 // internally can never silently change the API's JSON shape.
 type productResponse struct {
-	ID          uuid.UUID `json:"id"`
-	CatalogID   uuid.UUID `json:"catalog_id"`
-	ProviderID  uuid.UUID `json:"provider_id"`
-	Name        string    `json:"name"`
-	Category    string    `json:"category"`
-	Status      string    `json:"status"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         uuid.UUID `json:"id"`
+	CatalogID  uuid.UUID `json:"catalog_id"`
+	ProviderID uuid.UUID `json:"provider_id"`
+	Name       string    `json:"name"`
+	Category   string    `json:"category"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 func newProductResponse(p product.Product) productResponse {
 	return productResponse{
-		ID:          p.ID,
-		CatalogID:   p.CatalogID,
-		ProviderID:  p.ProviderID,
-		Name:        p.Name,
-		Category:    string(p.Category),
-		Status:      string(p.Status),
-		Description: p.Description,
-		CreatedAt:   p.CreatedAt,
-		UpdatedAt:   p.UpdatedAt,
+		ID:         p.ID,
+		CatalogID:  p.CatalogID,
+		ProviderID: p.ProviderID,
+		Name:       p.Name,
+		Category:   string(p.Category),
+		Status:     string(p.Status),
+		CreatedAt:  p.CreatedAt,
+		UpdatedAt:  p.UpdatedAt,
 	}
 }
 

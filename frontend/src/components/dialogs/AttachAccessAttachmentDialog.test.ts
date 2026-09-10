@@ -48,7 +48,7 @@ beforeEach(() => {
 })
 
 it('preselects the first equipment once loaded, and submits it with the accessInterfaceId prop', async () => {
-  listServiceEquipment.mockResolvedValue([{ id: 'se1', serviceId: 's1', deviceId: 'd1', role: 'ONU', description: '', installedAt: null, removedAt: null }])
+  listServiceEquipment.mockResolvedValue([{ id: 'se1', serviceId: 's1', deviceId: 'd1', role: 'ONU', installedAt: null, removedAt: null }])
   createAccessAttachment.mockResolvedValue(newAttachment())
 
   const wrapper = mount(AttachAccessAttachmentDialog, { props: { open: false, accessInterfaceId: 'ai1' } })
@@ -80,7 +80,7 @@ it('shows "no service equipment" and hides the submit button when none exists ye
 })
 
 it('surfaces the API error message on a failed submit, and does not emit created', async () => {
-  listServiceEquipment.mockResolvedValue([{ id: 'se1', serviceId: 's1', deviceId: 'd1', role: 'ONU', description: '', installedAt: null, removedAt: null }])
+  listServiceEquipment.mockResolvedValue([{ id: 'se1', serviceId: 's1', deviceId: 'd1', role: 'ONU', installedAt: null, removedAt: null }])
   createAccessAttachment.mockRejectedValue(new ApiError('this equipment is already attached', 'conflict', 409))
 
   const wrapper = mount(AttachAccessAttachmentDialog, { props: { open: false, accessInterfaceId: 'ai1' } })

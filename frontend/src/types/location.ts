@@ -21,5 +21,4 @@ export interface Location {
   state: string
   postalCode: string
   country: string
-  description: string
 }

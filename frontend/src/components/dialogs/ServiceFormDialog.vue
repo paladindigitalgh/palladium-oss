@@ -214,7 +214,6 @@ async function handleSubmit() {
           serviceId: service.id,
           deviceId: deviceId.value,
           role: 'ONU',
-          description: '',
           uniPort: Number(uniPort.value),
         })
         equipmentId = equipment.id

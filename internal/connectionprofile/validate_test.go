@@ -79,7 +79,7 @@ func TestConnectionProfileValidateRequiresKnownHostKeyPolicy(t *testing.T) {
 // Timeout set is still valid — see validate.go's own doc comment for
 // the full reasoning.
 func TestConnectionProfileValidateDoesNotRequireProtocolPortAuthenticationOrTimeout(t *testing.T) {
-	p := validConnectionProfile() // Protocol, Port, AuthenticationID, Timeout, Description all zero-valued
+	p := validConnectionProfile() // Protocol, Port, AuthenticationID, Timeout all zero-valued
 	if err := p.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil for a profile with only Name and HostKeyPolicy set", err)
 	}
@@ -94,7 +94,6 @@ func TestConnectionProfileValidateAcceptsFullySpecifiedProfile(t *testing.T) {
 		AuthenticationID: &authID,
 		Timeout:          30 * time.Second,
 		HostKeyPolicy:    connectionprofile.HostKeyPolicyStrict,
-		Description:      "Standard SSH profile for lab OLTs",
 	}
 	if err := p.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil", err)

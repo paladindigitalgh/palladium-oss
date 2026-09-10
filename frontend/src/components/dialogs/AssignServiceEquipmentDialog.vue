@@ -2,7 +2,6 @@
 import { ref, computed, watch } from 'vue'
 import BaseModal from '@/components/base/BaseModal.vue'
 import BaseSelect from '@/components/base/BaseSelect.vue'
-import BaseInput from '@/components/base/BaseInput.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import { listDevices } from '@/services/devices/deviceRepository'
 import { createServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
@@ -29,7 +28,6 @@ const emit = defineEmits<{
 
 const deviceId = ref('')
 const role = ref<ServiceEquipment['role']>('ONU')
-const description = ref('')
 const uniPort = ref('1')
 const devices = ref<Device[]>([])
 const submitting = ref(false)
@@ -60,7 +58,6 @@ const roleOptions = [
 function reset() {
   deviceId.value = ''
   role.value = 'ONU'
-  description.value = ''
   uniPort.value = '1'
   error.value = null
 }
@@ -95,7 +92,6 @@ async function handleSubmit() {
       serviceId: props.serviceId,
       deviceId: deviceId.value,
       role: role.value,
-      description: description.value,
       uniPort: showUniPort.value ? Number(uniPort.value) : 0,
     })
     reset()
@@ -117,7 +113,6 @@ async function handleSubmit() {
       <BaseSelect v-model="deviceId" label="Device" :options="deviceOptions" />
       <BaseSelect v-model="role" label="Role" :options="roleOptions" />
       <BaseSelect v-if="showUniPort" v-model="uniPort" label="LAN Port" :options="UNI_PORT_OPTIONS" />
-      <BaseInput v-model="description" label="Description" />
 
       <p v-if="error" class="assign-form__error" role="alert">{{ error }}</p>
 

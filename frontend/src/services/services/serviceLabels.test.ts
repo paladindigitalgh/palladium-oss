@@ -34,13 +34,12 @@ function product(overrides: Partial<Product> = {}): Product {
     name: 'Residential Internet 500 Mbps',
     category: 'Internet',
     status: 'Active',
-    description: '',
     ...overrides,
   }
 }
 
 function provider(overrides: Partial<Provider> = {}): Provider {
-  return { id: 'pv1', name: 'Default Provider', status: 'Active', description: '', ...overrides }
+  return { id: 'pv1', name: 'Default Provider', status: 'Active', ...overrides }
 }
 
 beforeEach(() => {

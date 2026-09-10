@@ -48,7 +48,6 @@ const emit = defineEmits<{
 
 const name = ref('')
 const category = ref<ProductCategory>('Internet')
-const description = ref('')
 const vendor = ref('Kontron')
 const profileName = ref('')
 const providerId = ref('')
@@ -70,7 +69,6 @@ const categoryOptions: { value: ProductCategory; label: string }[] = [
 function reset() {
   name.value = ''
   category.value = 'Internet'
-  description.value = ''
   vendor.value = 'Kontron'
   profileName.value = ''
   providerId.value = props.providers[0]?.id ?? ''
@@ -107,13 +105,11 @@ async function handleSubmit() {
       providerId: providerId.value,
       name: name.value,
       category: category.value,
-      description: description.value,
     })
     const profile = await createProvisioningProfile({
       productId: product.id,
       vendor: vendor.value,
       profileName: profileName.value,
-      description: '',
     })
     reset()
     emit('created', { product, profile })
@@ -134,7 +130,6 @@ async function handleSubmit() {
       <BaseSelect v-if="providers.length > 1" v-model="providerId" label="Provider" :options="providerOptions" />
       <BaseInput v-model="name" label="Name" placeholder="Residential Internet 500/500" required />
       <BaseSelect v-model="category" label="Category" :options="categoryOptions" />
-      <BaseInput v-model="description" label="Description" />
       <BaseInput v-model="vendor" label="OLT Vendor" required />
       <BaseInput v-model="profileName" label="OLT Profile Name" placeholder="RES-500M" required />
 

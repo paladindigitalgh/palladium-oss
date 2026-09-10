@@ -8,8 +8,6 @@ import (
 
 // Validate reports whether c has every required field set: a present
 // Name and a Status that is one of its defined values (see status.go).
-// Description is optional and is never checked for presence, consistent
-// with customer.Customer.Validate.
 func (c ProductCatalog) Validate() error {
 	errs := validate.New()
 

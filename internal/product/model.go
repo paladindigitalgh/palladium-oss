@@ -55,13 +55,12 @@ import (
 // buys it (see the package doc comment for what this deliberately
 // excludes).
 type Product struct {
-	ID          uuid.UUID
-	CatalogID   uuid.UUID
-	ProviderID  uuid.UUID
-	Name        string
-	Category    ProductCategory
-	Status      ProductStatus
-	Description string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID         uuid.UUID
+	CatalogID  uuid.UUID
+	ProviderID uuid.UUID
+	Name       string
+	Category   ProductCategory
+	Status     ProductStatus
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }

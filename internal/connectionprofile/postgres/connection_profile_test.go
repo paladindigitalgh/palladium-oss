@@ -104,7 +104,6 @@ func TestConnectionProfileRepositoryCreate(t *testing.T) {
 		AuthenticationID: &authID,
 		Timeout:          30 * time.Second,
 		HostKeyPolicy:    connectionprofile.HostKeyPolicyStrict,
-		Description:      "Standard SSH profile for lab OLTs",
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -284,7 +283,6 @@ func TestConnectionProfileRepositoryUpdate(t *testing.T) {
 		AuthenticationID: &authID,
 		Timeout:          10 * time.Second,
 		HostKeyPolicy:    connectionprofile.HostKeyPolicyInsecure,
-		Description:      "New Description",
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)

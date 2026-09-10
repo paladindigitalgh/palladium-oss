@@ -113,15 +113,3 @@ func TestProductValidateRequiresKnownStatus(t *testing.T) {
 		}
 	}
 }
-
-func TestProductValidateDescriptionIsOptional(t *testing.T) {
-	p := validProduct() // no description set
-	if err := p.Validate(); err != nil {
-		t.Errorf("Validate() (no description) = %v, want nil", err)
-	}
-
-	p.Description = "100 Mbps down / 20 Mbps up residential internet"
-	if err := p.Validate(); err != nil {
-		t.Errorf("Validate() (with description) = %v, want nil", err)
-	}
-}

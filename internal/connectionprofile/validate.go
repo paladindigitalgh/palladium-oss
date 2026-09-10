@@ -10,8 +10,8 @@ import (
 // Name and a HostKeyPolicy that is one of its defined values (see
 // host_key_policy.go).
 //
-// Protocol, Port, AuthenticationID, Timeout, and Description are all
-// left unvalidated. This is a deliberate reading of this milestone's
+// Protocol, Port, AuthenticationID, and Timeout are all left
+// unvalidated. This is a deliberate reading of this milestone's
 // Rules section for ConnectionProfile, which names exactly one
 // requirement — "Name unique" (the uniqueness half of which belongs to
 // the database, not here; see the same reasoning

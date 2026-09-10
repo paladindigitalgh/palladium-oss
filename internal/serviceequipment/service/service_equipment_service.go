@@ -188,8 +188,8 @@ func (s *ServiceEquipmentService) List(ctx context.Context) ([]serviceequipment.
 // well-formed, currently-active assignment (e.Active(), i.e. RemovedAt ==
 // nil — see internal/serviceequipment/model.go) triggers that check at
 // all: goal 2 explicitly allows creating an already-historical record
-// (Description/InstalledAt/RemovedAt all pre-filled to record equipment
-// that was, say, removed before this system existed), and a record that
+// (InstalledAt/RemovedAt both pre-filled to record equipment that was,
+// say, removed before this system existed), and a record that
 // is not active by definition cannot violate "only one active assignment
 // per device" — nor should it mark its Device Active, since it was never
 // really attached now.
@@ -237,14 +237,14 @@ func (s *ServiceEquipmentService) Create(ctx context.Context, e serviceequipment
 // record as it stood immediately before this write (fetched via
 // s.equipment.Get), not by inspecting e alone: Update is called for
 // every edit to a ServiceEquipment record, not only the one that removes
-// it (e.g. correcting Description on an already-active or
+// it (e.g. correcting UNIPort on an already-active or
 // already-removed row), and only an active record actually becoming
 // removed here should ever push its Device back to Unused.
 //
 // Unlike Create, Update passes e.ID as the excluded ID to
 // ensureNoActiveAssignment: the row already at e.ID is allowed to be the
 // active assignment GetActiveByDeviceID finds — a caller correcting a
-// typo in Description on an already-active row, or reassigning DeviceID
+// mistaken UNIPort on an already-active row, or reassigning DeviceID
 // on the very record whose device is being changed, must not conflict
 // with itself.
 func (s *ServiceEquipmentService) Update(ctx context.Context, e serviceequipment.ServiceEquipment) (serviceequipment.ServiceEquipment, error) {

@@ -11,10 +11,12 @@
 // a question that has to be answerable before a Service exists to ask
 // it about.
 //
-// This package does not import internal/customer or internal/inventory.
-// CustomerID and DeviceID are bare uuid.UUID values, not references to
-// customer.Customer or inventory.Device: the foreign keys to
-// customers(id) and devices(id) are database concepts, enforced by
+// This package does not import internal/customer, internal/inventory, or
+// internal/location. CustomerID, DeviceID, and LocationID are bare
+// uuid.UUID values (LocationID a *uuid.UUID, since it may be unset), not
+// references to customer.Customer, inventory.Device, or
+// location.Location: the foreign keys to customers(id), devices(id), and
+// locations(id) are database concepts, enforced by
 // internal/customerdevice/postgres and its migration, not Go package
 // dependencies — the same reasoning internal/serviceequipment/model.go
 // documents for its own ServiceID/DeviceID.
@@ -49,10 +51,21 @@ import (
 // without risking a genuine 0001-01-01 timestamp being read as a
 // detachment.
 type CustomerDevice struct {
-	ID          uuid.UUID
-	CustomerID  uuid.UUID
-	DeviceID    uuid.UUID
-	Description string
+	ID         uuid.UUID
+	CustomerID uuid.UUID
+	DeviceID   uuid.UUID
+
+	// LocationID names which of CustomerID's Locations this Device
+	// physically sits at, purely for an operator's own tracking -- never
+	// read by any provisioning or billing logic (this package models no
+	// such behavior at all, see this file's own package doc comment). A
+	// nil pointer means "not recorded," a real and common state: a
+	// placement can predate the Customer having any Location at all, or
+	// simply predate an operator bothering to note which one. Never
+	// itself provides the Location a Service ends up using -- that comes
+	// from Service.LocationID once a Service exists, entirely
+	// independently of this field.
+	LocationID *uuid.UUID
 
 	AttachedAt *time.Time
 	DetachedAt *time.Time

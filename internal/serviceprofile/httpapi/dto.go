@@ -30,9 +30,8 @@ import (
 // server-assigned (POST) or comes from the URL path (PUT); CreatedAt and
 // UpdatedAt are metadata the repository owns and a caller cannot set.
 type serviceProfileRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 // toServiceProfile converts a request into a domain
@@ -41,10 +40,9 @@ type serviceProfileRequest struct {
 // parameter's UUID for Update.
 func (req serviceProfileRequest) toServiceProfile(id uuid.UUID) serviceprofile.ServiceProfile {
 	return serviceprofile.ServiceProfile{
-		ID:          id,
-		Name:        req.Name,
-		Description: req.Description,
-		Status:      serviceprofile.Status(req.Status),
+		ID:     id,
+		Name:   req.Name,
+		Status: serviceprofile.Status(req.Status),
 	}
 }
 
@@ -54,22 +52,20 @@ func (req serviceProfileRequest) toServiceProfile(id uuid.UUID) serviceprofile.S
 // change to how the domain model is composed internally can never
 // silently change the API's JSON shape.
 type serviceProfileResponse struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func newServiceProfileResponse(p serviceprofile.ServiceProfile) serviceProfileResponse {
 	return serviceProfileResponse{
-		ID:          p.ID,
-		Name:        p.Name,
-		Description: p.Description,
-		Status:      string(p.Status),
-		CreatedAt:   p.CreatedAt,
-		UpdatedAt:   p.UpdatedAt,
+		ID:        p.ID,
+		Name:      p.Name,
+		Status:    string(p.Status),
+		CreatedAt: p.CreatedAt,
+		UpdatedAt: p.UpdatedAt,
 	}
 }
 

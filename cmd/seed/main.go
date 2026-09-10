@@ -203,10 +203,9 @@ func run() error {
 	}
 
 	demoAssignment, err := serviceEquipment.Create(ctx, serviceequipment.ServiceEquipment{
-		ServiceID:   demoService.ID,
-		DeviceID:    demoDevice.ID,
-		Role:        serviceequipment.EquipmentRoleONU,
-		Description: "Demo ONU assignment",
+		ServiceID: demoService.ID,
+		DeviceID:  demoDevice.ID,
+		Role:      serviceequipment.EquipmentRoleONU,
 	})
 	if err != nil {
 		return fmt.Errorf("create demo service equipment: %w", err)

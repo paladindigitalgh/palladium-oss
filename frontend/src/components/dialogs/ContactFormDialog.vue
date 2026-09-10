@@ -30,7 +30,6 @@ const role = ref<Contact['role']>('Primary')
 const email = ref('')
 const phone = ref('')
 const status = ref<Contact['status']>('Active')
-const description = ref('')
 const submitting = ref(false)
 const error = ref<string | null>(null)
 
@@ -53,7 +52,6 @@ function reset() {
   email.value = ''
   phone.value = ''
   status.value = 'Active'
-  description.value = ''
   error.value = null
 }
 
@@ -63,7 +61,6 @@ function populateFrom(contact: Contact) {
   email.value = contact.email
   phone.value = contact.phone
   status.value = contact.status
-  description.value = contact.description
   error.value = null
 }
 
@@ -96,7 +93,6 @@ async function handleSubmit() {
         email: email.value,
         phone: phone.value,
         status: status.value,
-        description: description.value,
       })
       emit('updated', updated)
     } else {
@@ -107,7 +103,6 @@ async function handleSubmit() {
         email: email.value,
         phone: phone.value,
         status: status.value,
-        description: description.value,
       })
       reset()
       emit('created', contact)
@@ -128,7 +123,6 @@ async function handleSubmit() {
       <BaseInput v-model="email" label="Email" />
       <BaseInput v-model="phone" label="Phone" />
       <BaseSelect v-model="status" label="Status" :options="statusOptions" />
-      <BaseInput v-model="description" label="Description" />
 
       <p v-if="error" class="contact-form__error" role="alert">{{ error }}</p>
 

@@ -31,7 +31,6 @@ const error = ref<string | null>(null)
 const typeOptions = [
   { value: 'Residential', label: 'Residential' },
   { value: 'Business', label: 'Business' },
-  { value: 'Government', label: 'Government' },
   { value: 'Internal', label: 'Internal' },
 ]
 

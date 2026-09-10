@@ -39,7 +39,7 @@ func NewCatalogRepository(db database.Querier, clock clock.Clock, ids id.Generat
 // if none exists.
 func (r *CatalogRepository) Get(ctx context.Context, catalogID uuid.UUID) (catalog.ProductCatalog, error) {
 	const query = `
-		SELECT id, name, description, status, created_at, updated_at
+		SELECT id, name, status, created_at, updated_at
 		FROM catalogs
 		WHERE id = $1
 	`
@@ -59,7 +59,7 @@ func (r *CatalogRepository) Get(ctx context.Context, catalogID uuid.UUID) (catal
 // migration).
 func (r *CatalogRepository) List(ctx context.Context) ([]catalog.ProductCatalog, error) {
 	const query = `
-		SELECT id, name, description, status, created_at, updated_at
+		SELECT id, name, status, created_at, updated_at
 		FROM catalogs
 		ORDER BY name
 	`
@@ -93,21 +93,21 @@ func (r *CatalogRepository) List(ctx context.Context) ([]catalog.ProductCatalog,
 // given; the repository has no business logic and does not decide it.
 func (r *CatalogRepository) Create(ctx context.Context, c catalog.ProductCatalog) (catalog.ProductCatalog, error) {
 	const query = `
-		INSERT INTO catalogs (id, name, description, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $5)
-		RETURNING id, name, description, status, created_at, updated_at
+		INSERT INTO catalogs (id, name, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $4)
+		RETURNING id, name, status, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanCatalog(r.db.QueryRow(ctx, query,
-		r.ids.New(), c.Name, c.Description, string(c.Status), now))
+		r.ids.New(), c.Name, string(c.Status), now))
 	if err != nil {
 		return catalog.ProductCatalog{}, translateError("create catalog", err)
 	}
 	return created, nil
 }
 
-// Update overwrites the mutable fields (Name, Description, Status) of the
+// Update overwrites the mutable fields (Name, Status) of the
 // ProductCatalog identified by c.ID and returns the persisted record, or
 // an apperror.KindNotFound error if it does not exist.
 //
@@ -117,13 +117,13 @@ func (r *CatalogRepository) Create(ctx context.Context, c catalog.ProductCatalog
 func (r *CatalogRepository) Update(ctx context.Context, c catalog.ProductCatalog) (catalog.ProductCatalog, error) {
 	const query = `
 		UPDATE catalogs
-		SET name = $1, description = $2, status = $3, updated_at = $4
-		WHERE id = $5
-		RETURNING id, name, description, status, created_at, updated_at
+		SET name = $1, status = $2, updated_at = $3
+		WHERE id = $4
+		RETURNING id, name, status, created_at, updated_at
 	`
 
 	updated, err := scanCatalog(r.db.QueryRow(ctx, query,
-		c.Name, c.Description, string(c.Status), r.clock.Now(), c.ID))
+		c.Name, string(c.Status), r.clock.Now(), c.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return catalog.ProductCatalog{}, catalogNotFound(c.ID)
@@ -167,7 +167,7 @@ func scanCatalog(row rowScanner) (catalog.ProductCatalog, error) {
 		c      catalog.ProductCatalog
 		status string
 	)
-	err := row.Scan(&c.ID, &c.Name, &c.Description, &status, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.Name, &status, &c.CreatedAt, &c.UpdatedAt)
 	c.Status = catalog.CatalogStatus(status)
 	return c, err
 }

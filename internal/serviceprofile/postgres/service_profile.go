@@ -41,7 +41,7 @@ func NewServiceProfileRepository(db database.Querier, clock clock.Clock, ids id.
 // error if none exists.
 func (r *ServiceProfileRepository) Get(ctx context.Context, profileID uuid.UUID) (serviceprofile.ServiceProfile, error) {
 	const query = `
-		SELECT id, name, description, status, created_at, updated_at
+		SELECT id, name, status, created_at, updated_at
 		FROM service_profiles
 		WHERE id = $1
 	`
@@ -61,7 +61,7 @@ func (r *ServiceProfileRepository) Get(ctx context.Context, profileID uuid.UUID)
 // migration).
 func (r *ServiceProfileRepository) List(ctx context.Context) ([]serviceprofile.ServiceProfile, error) {
 	const query = `
-		SELECT id, name, description, status, created_at, updated_at
+		SELECT id, name, status, created_at, updated_at
 		FROM service_profiles
 		ORDER BY name
 	`
@@ -96,23 +96,23 @@ func (r *ServiceProfileRepository) List(ctx context.Context) ([]serviceprofile.S
 // not decide it.
 func (r *ServiceProfileRepository) Create(ctx context.Context, p serviceprofile.ServiceProfile) (serviceprofile.ServiceProfile, error) {
 	const query = `
-		INSERT INTO service_profiles (id, name, description, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $5)
-		RETURNING id, name, description, status, created_at, updated_at
+		INSERT INTO service_profiles (id, name, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $4)
+		RETURNING id, name, status, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanServiceProfile(r.db.QueryRow(ctx, query,
-		r.ids.New(), p.Name, p.Description, string(p.Status), now))
+		r.ids.New(), p.Name, string(p.Status), now))
 	if err != nil {
 		return serviceprofile.ServiceProfile{}, translateError("create service profile", err)
 	}
 	return created, nil
 }
 
-// Update overwrites the mutable fields (Name, Description, Status) of
-// the ServiceProfile identified by p.ID and returns the persisted
-// record, or an apperror.KindNotFound error if it does not exist.
+// Update overwrites the mutable fields (Name, Status) of the
+// ServiceProfile identified by p.ID and returns the persisted record, or
+// an apperror.KindNotFound error if it does not exist.
 //
 // CreatedAt cannot be altered through this method: the UPDATE statement
 // below never assigns that column, and the RETURNING clause reports its
@@ -121,13 +121,13 @@ func (r *ServiceProfileRepository) Create(ctx context.Context, p serviceprofile.
 func (r *ServiceProfileRepository) Update(ctx context.Context, p serviceprofile.ServiceProfile) (serviceprofile.ServiceProfile, error) {
 	const query = `
 		UPDATE service_profiles
-		SET name = $1, description = $2, status = $3, updated_at = $4
-		WHERE id = $5
-		RETURNING id, name, description, status, created_at, updated_at
+		SET name = $1, status = $2, updated_at = $3
+		WHERE id = $4
+		RETURNING id, name, status, created_at, updated_at
 	`
 
 	updated, err := scanServiceProfile(r.db.QueryRow(ctx, query,
-		p.Name, p.Description, string(p.Status), r.clock.Now(), p.ID))
+		p.Name, string(p.Status), r.clock.Now(), p.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return serviceprofile.ServiceProfile{}, profileNotFound(p.ID)
@@ -171,7 +171,7 @@ func scanServiceProfile(row rowScanner) (serviceprofile.ServiceProfile, error) {
 		p      serviceprofile.ServiceProfile
 		status string
 	)
-	err := row.Scan(&p.ID, &p.Name, &p.Description, &status, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.Name, &status, &p.CreatedAt, &p.UpdatedAt)
 	p.Status = serviceprofile.Status(status)
 	return p, err
 }

@@ -36,7 +36,6 @@ type Contact struct {
 	Phone      string
 	Status     ContactStatus
 
-	Description string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

@@ -16,7 +16,6 @@ interface ContactDto {
   email: string
   phone: string
   status: Contact['status']
-  description: string
 }
 
 function fromDto(dto: ContactDto): Contact {
@@ -28,7 +27,6 @@ function fromDto(dto: ContactDto): Contact {
     email: dto.email,
     phone: dto.phone,
     status: dto.status,
-    description: dto.description,
   }
 }
 
@@ -54,7 +52,6 @@ export interface CreateContactInput {
   email: string
   phone: string
   status: Contact['status']
-  description: string
 }
 
 export async function createContact(input: CreateContactInput): Promise<Contact> {
@@ -67,7 +64,6 @@ export async function createContact(input: CreateContactInput): Promise<Contact>
       email: input.email,
       phone: input.phone,
       status: input.status,
-      description: input.description,
     },
   })
   return fromDto(dto)
@@ -80,7 +76,6 @@ export interface UpdateContactInput {
   email: string
   phone: string
   status: Contact['status']
-  description: string
 }
 
 export async function updateContact(id: string, input: UpdateContactInput): Promise<Contact> {
@@ -93,7 +88,6 @@ export async function updateContact(id: string, input: UpdateContactInput): Prom
       email: input.email,
       phone: input.phone,
       status: input.status,
-      description: input.description,
     },
   })
   return fromDto(dto)

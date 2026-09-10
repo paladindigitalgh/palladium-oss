@@ -126,18 +126,6 @@ func TestServiceEquipmentValidateRequiresUNIPortForONUAndONT(t *testing.T) {
 	}
 }
 
-func TestServiceEquipmentValidateDescriptionIsOptional(t *testing.T) {
-	e := validServiceEquipment() // no description set
-	if err := e.Validate(); err != nil {
-		t.Errorf("Validate() (no description) = %v, want nil", err)
-	}
-
-	e.Description = "Installed in the network closet"
-	if err := e.Validate(); err != nil {
-		t.Errorf("Validate() (with description) = %v, want nil", err)
-	}
-}
-
 func TestServiceEquipmentValidateLifecycleTimestampsAreOptional(t *testing.T) {
 	e := validServiceEquipment() // no lifecycle timestamps set
 	if err := e.Validate(); err != nil {

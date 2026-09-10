@@ -8,8 +8,6 @@ import (
 
 // Validate reports whether p has every required field set: a present
 // Name and a Status that is one of its defined values (see status.go).
-// Description is optional and is never checked for presence, consistent
-// with serviceprofile.ServiceProfile.Validate.
 func (p Provider) Validate() error {
 	errs := validate.New()
 

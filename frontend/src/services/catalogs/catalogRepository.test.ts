@@ -13,8 +13,8 @@ describe('listCatalogs', () => {
   it('maps every catalog from the DTO', async () => {
     apiFetch.mockResolvedValue({
       catalogs: [
-        { id: 'c1', name: 'Residential Internet', description: '', status: 'Active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
-        { id: 'c2', name: 'Business Internet', description: '', status: 'Active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'c1', name: 'Residential Internet', status: 'Active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'c2', name: 'Business Internet', status: 'Active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
       ],
     })
 

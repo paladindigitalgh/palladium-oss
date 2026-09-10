@@ -52,7 +52,6 @@ type ProvisioningProfile struct {
 	ProductID   uuid.UUID
 	Vendor      string
 	ProfileName string
-	Description string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

@@ -36,10 +36,9 @@ import (
 // ProductCatalog groups the ISP's Products (see internal/product) under a
 // single named, independently-lifecycled collection.
 type ProductCatalog struct {
-	ID          uuid.UUID
-	Name        string
-	Description string
-	Status      CatalogStatus
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID        uuid.UUID
+	Name      string
+	Status    CatalogStatus
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

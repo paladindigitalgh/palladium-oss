@@ -173,10 +173,9 @@ func TestCustomerDeviceRepositoryCreate(t *testing.T) {
 
 	attachedAt := time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC)
 	created, err := repo.Create(ctx, customerdevice.CustomerDevice{
-		CustomerID:  c.ID,
-		DeviceID:    d.ID,
-		Description: "In the basement network closet",
-		AttachedAt:  &attachedAt,
+		CustomerID: c.ID,
+		DeviceID:   d.ID,
+		AttachedAt: &attachedAt,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -190,9 +189,6 @@ func TestCustomerDeviceRepositoryCreate(t *testing.T) {
 	}
 	if created.DeviceID != d.ID {
 		t.Errorf("DeviceID = %v, want %v", created.DeviceID, d.ID)
-	}
-	if created.Description != "In the basement network closet" {
-		t.Errorf("Description = %q, want %q", created.Description, "In the basement network closet")
 	}
 	if created.AttachedAt == nil || !created.AttachedAt.Equal(attachedAt) {
 		t.Errorf("AttachedAt = %v, want %v", created.AttachedAt, attachedAt)

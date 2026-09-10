@@ -18,7 +18,6 @@ export interface ServiceEquipment {
   serviceId: string
   deviceId: string
   role: EquipmentRole
-  description: string
   uniPort: number
   installedAt: string | null
   removedAt: string | null
