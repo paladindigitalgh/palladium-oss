@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import BaseIcon from '@/components/base/BaseIcon.vue'
 import { NAV_ITEMS, type NavItem } from '@/router/navigation'
 import { useSidebar } from '@/composables/useSidebar'
+import { useTheme } from '@/composables/useTheme'
 
 /**
  * docs' this-milestone goal 5: active state, icons, responsive behavior.
@@ -22,6 +23,18 @@ import { useSidebar } from '@/composables/useSidebar'
  * unrelated things, one per-item and one for the whole sidebar.
  */
 const { collapsed, toggleCollapsed, mobileOpen, closeMobile, isMobileViewport } = useSidebar()
+const { theme } = useTheme()
+
+// The horizontal wordmark and the collapsed-rail symbol are each a
+// single flat color, so neither can survive both a light and a dark
+// sidebar on its own -- the "-dark" variants are the near-white-on-navy
+// versions made specifically for dark mode.
+const brandLogo = computed(() =>
+  theme.value === 'dark' ? '/palladium-logo-horizontal-dark.png' : '/palladium-logo-horizontal.png',
+)
+const brandMark = computed(() =>
+  theme.value === 'dark' ? '/palladium-logo-symbol-dark.png' : '/palladium-favicon-512.png',
+)
 
 const route = useRoute()
 const expandedIds = ref<Set<string>>(new Set())
@@ -69,8 +82,8 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
     :inert="hidden()"
   >
     <div class="app-sidebar__brand">
-      <span class="app-sidebar__brand-mark" aria-hidden="true">P</span>
-      <span v-if="!collapsed" class="app-sidebar__brand-name">Palladium</span>
+      <img v-if="collapsed" :src="brandMark" alt="Palladium" class="app-sidebar__brand-mark" />
+      <img v-else :src="brandLogo" alt="Palladium" class="app-sidebar__brand-logo" />
     </div>
 
     <nav class="app-sidebar__nav" aria-label="Primary">
@@ -167,22 +180,23 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
   flex-shrink: 0;
 }
 
-.app-sidebar__brand-mark {
-  display: flex;
-  align-items: center;
+.app-sidebar--collapsed .app-sidebar__brand {
+  padding: 0 var(--space-2);
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background-color: var(--color-brand);
-  color: var(--color-brand-contrast);
-  font-weight: var(--font-weight-semibold);
+}
+
+.app-sidebar__brand-mark {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
-.app-sidebar__brand-name {
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
+.app-sidebar__brand-logo {
+  height: 40px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
 }
 
 .app-sidebar__nav {
@@ -191,6 +205,11 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
   gap: var(--space-1);
   padding: var(--space-3);
   overflow-y: auto;
+  /* Labels unmount instantly on collapse (v-if) but the sidebar's width
+     keeps animating for --motion-normal, so on expand the full-width
+     text is briefly wider than the still-narrow container -- without
+     this, that transient overflow triggers a horizontal scrollbar. */
+  overflow-x: hidden;
   flex: 1;
 }
 

@@ -2,11 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- These follow the OS/browser's prefers-color-scheme, which is
+         independent of the app's own in-app theme toggle (useTheme.ts) --
+         there is no way for a <link> favicon to react to page-level
+         theme state, only to the system setting. -->
+    <link rel="icon" href="/palladium-favicon.ico" sizes="any" media="(prefers-color-scheme: light)" />
     <link
       rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23205ce5'/%3E%3Cpath d='M7 16V8l5 8V8' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+      type="image/png"
+      sizes="512x512"
+      href="/palladium-favicon-512.png"
+      media="(prefers-color-scheme: light)"
     />
+    <link rel="icon" href="/palladium-favicon-dark.ico" sizes="any" media="(prefers-color-scheme: dark)" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="512x512"
+      href="/palladium-favicon-512-dark.png"
+      media="(prefers-color-scheme: dark)"
+    />
+    <link rel="apple-touch-icon" href="/palladium-favicon-512.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Palladium OSS</title>
   </head>
