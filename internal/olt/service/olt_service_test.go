@@ -13,10 +13,9 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/ponport"
 )
 
-// fakeOLTRepository is an in-memory olt.OLTRepository. Like
-// internal/accessnetwork/service/access_network_service_test.go's
-// fakeAccessNetworkRepository, it exists so OLTService's business logic
-// — validate, then delegate — is tested without a real database;
+// fakeOLTRepository is an in-memory olt.OLTRepository. It exists so
+// OLTService's business logic — validate, then delegate — is tested
+// without a real database;
 // internal/olt/postgres/olt_test.go already covers the repository itself
 // against real PostgreSQL. It tracks whether Create/Update were actually
 // invoked, which is what lets
@@ -191,9 +190,8 @@ var _ ponport.PONPortRepository = (*fakePONPortRepository)(nil)
 
 func validOLT() olt.OLT {
 	return olt.OLT{
-		AccessNetworkID: uuid.New(),
-		Name:            "OLT-01",
-		OLTModelID:      uuid.New(),
+		Name:       "OLT-01",
+		OLTModelID: uuid.New(),
 	}
 }
 
@@ -307,7 +305,7 @@ func TestOLTServiceCreateReturnsErrorWhenPortCreationFailsPartway(t *testing.T) 
 func TestOLTServiceCreateRejectsInvalidOLTWithoutPersisting(t *testing.T) {
 	svc, oltRepo, _ := newOLTServiceWithModel(uuid.New(), 16)
 
-	_, err := svc.Create(context.Background(), olt.OLT{}) // no AccessNetworkID, Name, OLTModelID
+	_, err := svc.Create(context.Background(), olt.OLT{}) // no Name, OLTModelID
 
 	if !apperror.Is(err, apperror.KindInvalid) {
 		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindInvalid)

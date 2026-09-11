@@ -17,6 +17,7 @@ import PONPortFormDialog from '@/components/dialogs/PONPortFormDialog.vue'
 import AccessInterfaceFormDialog from '@/components/dialogs/AccessInterfaceFormDialog.vue'
 import { getPONPortById, deletePONPort } from '@/services/ponPorts/ponPortRepository'
 import { getOLTById } from '@/services/olts/oltRepository'
+import { setBreadcrumb } from '@/composables/useBreadcrumb'
 import { getOLTModelById } from '@/services/oltModels/oltModelRepository'
 import { listAccessInterfacesByPONPortId, deleteAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
 import { listEvents } from '@/services/events/eventRepository'
@@ -73,6 +74,14 @@ async function load(id: string) {
   olt.value = relatedOLT
   accessInterfaces.value = ponPortAccessInterfaces
   timeline.value = events
+
+  if (relatedOLT) {
+    setBreadcrumb([
+      { label: 'Network', to: '/network' },
+      { label: 'OLT Details', to: `/network/olts/${relatedOLT.id}` },
+      { label: 'PON Port Details' },
+    ])
+  }
 
   // Fetched only once relatedOLT is known -- its oltModelId is the input
   // this call needs -- the same reasoning OLTDetailView.vue's own

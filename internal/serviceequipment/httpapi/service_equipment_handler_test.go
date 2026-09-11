@@ -12,9 +12,89 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
+	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
+	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
+	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
+)
+
+// fakeDeviceGetter is the seam httpapi.ServiceEquipmentHandler uses to
+// resolve the attached Device's Name for its Event message.
+type fakeDeviceGetter struct {
+	devices map[uuid.UUID]inventory.Device
+}
+
+func (f *fakeDeviceGetter) Get(_ context.Context, id uuid.UUID) (inventory.Device, error) {
+	d, ok := f.devices[id]
+	if !ok {
+		return inventory.Device{}, apperror.NotFound("device not found")
+	}
+	return d, nil
+}
+
+// fakeServiceGetter is the seam httpapi.ServiceEquipmentHandler uses to
+// resolve the owning Service's LocationID.
+type fakeServiceGetter struct {
+	services map[uuid.UUID]domainservice.Service
+}
+
+func (f *fakeServiceGetter) Get(_ context.Context, id uuid.UUID) (domainservice.Service, error) {
+	s, ok := f.services[id]
+	if !ok {
+		return domainservice.Service{}, apperror.NotFound("service not found")
+	}
+	return s, nil
+}
+
+// fakeLocationGetter is the seam httpapi.ServiceEquipmentHandler uses to
+// resolve a Service's Location, one hop toward its Customer.
+type fakeLocationGetter struct {
+	locations map[uuid.UUID]location.Location
+}
+
+func (f *fakeLocationGetter) Get(_ context.Context, id uuid.UUID) (location.Location, error) {
+	l, ok := f.locations[id]
+	if !ok {
+		return location.Location{}, apperror.NotFound("location not found")
+	}
+	return l, nil
+}
+
+// fakeCustomerGetter is the seam httpapi.ServiceEquipmentHandler uses to
+// resolve the final Customer Name.
+type fakeCustomerGetter struct {
+	customers map[uuid.UUID]customer.Customer
+}
+
+func (f *fakeCustomerGetter) Get(_ context.Context, id uuid.UUID) (customer.Customer, error) {
+	c, ok := f.customers[id]
+	if !ok {
+		return customer.Customer{}, apperror.NotFound("customer not found")
+	}
+	return c, nil
+}
+
+// fakeEventRecorder is the seam httpapi.ServiceEquipmentHandler uses to
+// record an Event after a successful Create or Delete. Records every
+// Event it's given so tests can assert on the exact message written.
+type fakeEventRecorder struct {
+	created []event.Event
+}
+
+func (f *fakeEventRecorder) Create(_ context.Context, e event.Event) (event.Event, error) {
+	f.created = append(f.created, e)
+	return e, nil
+}
+
+var (
+	validServiceID  = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	validDeviceID   = uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	validLocationID = uuid.New()
+	validCustomerID = uuid.New()
 )
 
 // fakeServiceEquipmentService is the seam
@@ -97,9 +177,26 @@ func (f *fakeServiceEquipmentService) Delete(_ context.Context, id uuid.UUID) er
 // newTestRouter mounts a ServiceEquipmentHandler backed by svc on a real
 // chi.Router, so tests that need a URL path parameter (Get/Update/
 // Delete's {id}) get one populated the same way production code does,
-// rather than faking chi's route context by hand.
-func newTestRouter(svc *fakeServiceEquipmentService) http.Handler {
-	handler := httpapi.NewServiceEquipmentHandler(svc)
+// rather than faking chi's route context by hand. Returns the
+// fakeEventRecorder alongside the router so tests that care about the
+// Event written on Create/Delete can inspect it; most tests discard it.
+// The seeded *Getters always resolve validDeviceID -> "ONT-Main-01" and
+// validServiceID -> validLocationID -> validCustomerID -> "Acme Corp".
+func newTestRouter(svc *fakeServiceEquipmentService) (http.Handler, *fakeEventRecorder) {
+	devices := &fakeDeviceGetter{devices: map[uuid.UUID]inventory.Device{
+		validDeviceID: {Metadata: inventory.Metadata{ID: validDeviceID, Name: "ONT-Main-01"}},
+	}}
+	services := &fakeServiceGetter{services: map[uuid.UUID]domainservice.Service{
+		validServiceID: {ID: validServiceID, LocationID: validLocationID},
+	}}
+	locations := &fakeLocationGetter{locations: map[uuid.UUID]location.Location{
+		validLocationID: {ID: validLocationID, CustomerID: validCustomerID},
+	}}
+	customers := &fakeCustomerGetter{customers: map[uuid.UUID]customer.Customer{
+		validCustomerID: {ID: validCustomerID, Name: "Acme Corp"},
+	}}
+	events := &fakeEventRecorder{}
+	handler := httpapi.NewServiceEquipmentHandler(svc, devices, services, locations, customers, events)
 
 	r := chi.NewRouter()
 	r.Post("/service-equipment", handler.Create)
@@ -107,13 +204,13 @@ func newTestRouter(svc *fakeServiceEquipmentService) http.Handler {
 	r.Get("/service-equipment/{id}", handler.Get)
 	r.Put("/service-equipment/{id}", handler.Update)
 	r.Delete("/service-equipment/{id}", handler.Delete)
-	return r
+	return r, events
 }
 
 const validBody = `{"service_id":"11111111-1111-1111-1111-111111111111","device_id":"22222222-2222-2222-2222-222222222222","role":"ONU"}`
 
 func TestServiceEquipmentHandlerCreate(t *testing.T) {
-	router := newTestRouter(newFakeServiceEquipmentService())
+	router, events := newTestRouter(newFakeServiceEquipmentService())
 
 	req := httptest.NewRequest(http.MethodPost, "/service-equipment", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -144,10 +241,24 @@ func TestServiceEquipmentHandlerCreate(t *testing.T) {
 	if body.Role != "ONU" {
 		t.Errorf("role = %q, want %q", body.Role, "ONU")
 	}
+
+	if len(events.created) != 1 {
+		t.Fatalf("len(events.created) = %d, want 1", len(events.created))
+	}
+	got := events.created[0]
+	if got.EntityType != "service_equipment" || got.EntityID.String() != body.ID {
+		t.Errorf("event EntityType/EntityID = %q/%v, want \"service_equipment\"/%s", got.EntityType, got.EntityID, body.ID)
+	}
+	if got.Type != "service_equipment.attached" {
+		t.Errorf("event Type = %q, want %q", got.Type, "service_equipment.attached")
+	}
+	if got.Message != "Attached device ONT-Main-01 to Acme Corp's service" {
+		t.Errorf("event Message = %q, want %q", got.Message, "Attached device ONT-Main-01 to Acme Corp's service")
+	}
 }
 
 func TestServiceEquipmentHandlerCreateRejectsMalformedJSON(t *testing.T) {
-	router := newTestRouter(newFakeServiceEquipmentService())
+	router, _ := newTestRouter(newFakeServiceEquipmentService())
 
 	req := httptest.NewRequest(http.MethodPost, "/service-equipment", strings.NewReader(`{not json`))
 	rec := httptest.NewRecorder()
@@ -161,7 +272,7 @@ func TestServiceEquipmentHandlerCreateRejectsMalformedJSON(t *testing.T) {
 func TestServiceEquipmentHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 	svc := newFakeServiceEquipmentService()
 	svc.err = apperror.Invalid("role: is required")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/service-equipment", strings.NewReader(`{"role":""}`))
 	rec := httptest.NewRecorder()
@@ -175,7 +286,7 @@ func TestServiceEquipmentHandlerCreatePropagatesServiceValidationError(t *testin
 func TestServiceEquipmentHandlerCreatePropagatesConflictOnUnknownServiceOrDevice(t *testing.T) {
 	svc := newFakeServiceEquipmentService()
 	svc.err = apperror.Conflict("create service equipment: violates a foreign key relationship")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/service-equipment", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -194,7 +305,7 @@ func TestServiceEquipmentHandlerCreatePropagatesConflictOnUnknownServiceOrDevice
 func TestServiceEquipmentHandlerCreatePropagatesConflictOnAlreadyActiveDevice(t *testing.T) {
 	svc := newFakeServiceEquipmentService()
 	svc.err = apperror.Conflict("device already has an active service equipment assignment")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/service-equipment", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -208,7 +319,7 @@ func TestServiceEquipmentHandlerCreatePropagatesConflictOnAlreadyActiveDevice(t 
 func TestServiceEquipmentHandlerList(t *testing.T) {
 	a := serviceequipment.ServiceEquipment{ID: uuid.New(), ServiceID: uuid.New(), DeviceID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
 	b := serviceequipment.ServiceEquipment{ID: uuid.New(), ServiceID: uuid.New(), DeviceID: uuid.New(), Role: serviceequipment.EquipmentRoleRouter}
-	router := newTestRouter(newFakeServiceEquipmentService(a, b))
+	router, _ := newTestRouter(newFakeServiceEquipmentService(a, b))
 
 	req := httptest.NewRequest(http.MethodGet, "/service-equipment", nil)
 	rec := httptest.NewRecorder()
@@ -233,7 +344,7 @@ func TestServiceEquipmentHandlerList(t *testing.T) {
 
 func TestServiceEquipmentHandlerGet(t *testing.T) {
 	e := serviceequipment.ServiceEquipment{ID: uuid.New(), ServiceID: uuid.New(), DeviceID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
-	router := newTestRouter(newFakeServiceEquipmentService(e))
+	router, _ := newTestRouter(newFakeServiceEquipmentService(e))
 
 	req := httptest.NewRequest(http.MethodGet, "/service-equipment/"+e.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -245,7 +356,7 @@ func TestServiceEquipmentHandlerGet(t *testing.T) {
 }
 
 func TestServiceEquipmentHandlerGetNotFound(t *testing.T) {
-	router := newTestRouter(newFakeServiceEquipmentService())
+	router, _ := newTestRouter(newFakeServiceEquipmentService())
 
 	req := httptest.NewRequest(http.MethodGet, "/service-equipment/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
@@ -257,7 +368,7 @@ func TestServiceEquipmentHandlerGetNotFound(t *testing.T) {
 }
 
 func TestServiceEquipmentHandlerGetRejectsMalformedID(t *testing.T) {
-	router := newTestRouter(newFakeServiceEquipmentService())
+	router, _ := newTestRouter(newFakeServiceEquipmentService())
 
 	req := httptest.NewRequest(http.MethodGet, "/service-equipment/not-a-uuid", nil)
 	rec := httptest.NewRecorder()
@@ -270,7 +381,7 @@ func TestServiceEquipmentHandlerGetRejectsMalformedID(t *testing.T) {
 
 func TestServiceEquipmentHandlerUpdate(t *testing.T) {
 	e := serviceequipment.ServiceEquipment{ID: uuid.New(), ServiceID: uuid.New(), DeviceID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
-	router := newTestRouter(newFakeServiceEquipmentService(e))
+	router, _ := newTestRouter(newFakeServiceEquipmentService(e))
 
 	req := httptest.NewRequest(http.MethodPut, "/service-equipment/"+e.ID.String(),
 		strings.NewReader(`{"service_id":"`+e.ServiceID.String()+`","device_id":"`+e.DeviceID.String()+`","role":"Router"}`))
@@ -293,7 +404,7 @@ func TestServiceEquipmentHandlerUpdate(t *testing.T) {
 }
 
 func TestServiceEquipmentHandlerUpdateNotFound(t *testing.T) {
-	router := newTestRouter(newFakeServiceEquipmentService())
+	router, _ := newTestRouter(newFakeServiceEquipmentService())
 
 	req := httptest.NewRequest(http.MethodPut, "/service-equipment/"+uuid.New().String(), strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -305,8 +416,8 @@ func TestServiceEquipmentHandlerUpdateNotFound(t *testing.T) {
 }
 
 func TestServiceEquipmentHandlerDelete(t *testing.T) {
-	e := serviceequipment.ServiceEquipment{ID: uuid.New(), ServiceID: uuid.New(), DeviceID: uuid.New(), Role: serviceequipment.EquipmentRoleONU}
-	router := newTestRouter(newFakeServiceEquipmentService(e))
+	e := serviceequipment.ServiceEquipment{ID: uuid.New(), ServiceID: validServiceID, DeviceID: validDeviceID, Role: serviceequipment.EquipmentRoleONU}
+	router, events := newTestRouter(newFakeServiceEquipmentService(e))
 
 	req := httptest.NewRequest(http.MethodDelete, "/service-equipment/"+e.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -318,10 +429,24 @@ func TestServiceEquipmentHandlerDelete(t *testing.T) {
 	if rec.Body.Len() != 0 {
 		t.Errorf("body = %q, want empty for 204 No Content", rec.Body.String())
 	}
+
+	if len(events.created) != 1 {
+		t.Fatalf("len(events.created) = %d, want 1", len(events.created))
+	}
+	got := events.created[0]
+	if got.EntityType != "service_equipment" || got.EntityID != e.ID {
+		t.Errorf("event EntityType/EntityID = %q/%v, want \"service_equipment\"/%v", got.EntityType, got.EntityID, e.ID)
+	}
+	if got.Type != "service_equipment.detached" {
+		t.Errorf("event Type = %q, want %q", got.Type, "service_equipment.detached")
+	}
+	if got.Message != "Detached device ONT-Main-01 from Acme Corp's service" {
+		t.Errorf("event Message = %q, want %q", got.Message, "Detached device ONT-Main-01 from Acme Corp's service")
+	}
 }
 
 func TestServiceEquipmentHandlerDeleteNotFound(t *testing.T) {
-	router := newTestRouter(newFakeServiceEquipmentService())
+	router, _ := newTestRouter(newFakeServiceEquipmentService())
 
 	req := httptest.NewRequest(http.MethodDelete, "/service-equipment/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()

@@ -17,6 +17,7 @@ import RoomFormDialog from '@/components/dialogs/RoomFormDialog.vue'
 import RackFormDialog from '@/components/dialogs/RackFormDialog.vue'
 import { getRoomById, deleteRoom } from '@/services/rooms/roomRepository'
 import { getBuildingById } from '@/services/buildings/buildingRepository'
+import { setBreadcrumb } from '@/composables/useBreadcrumb'
 import { listRacksByRoomId, deleteRack } from '@/services/racks/rackRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
@@ -66,6 +67,15 @@ async function load(id: string) {
   building.value = relatedBuilding
   racks.value = roomRacks
   timeline.value = events
+
+  if (relatedBuilding) {
+    setBreadcrumb([
+      { label: 'Administration' },
+      { label: 'Inventory', to: '/administration/inventory' },
+      { label: 'Building Details', to: `/administration/inventory/buildings/${relatedBuilding.id}` },
+      { label: 'Room Details' },
+    ])
+  }
 
   loading.value = false
 }

@@ -8,10 +8,10 @@ import { ApiError } from '@/services/api/httpClient'
 import type { Site } from '@/types/site'
 
 /**
- * Dual-mode: create when `site` is absent, edit when present -- mirrors
- * AccessNetworkFormDialog.vue, minus the status field (Site has none).
- * No parent id or hidden-field passthrough concerns -- Site is the root
- * of the Inventory hierarchy.
+ * Dual-mode: create when `site` is absent, edit when present. Site has
+ * no status field, so this form is just Name/Description. No parent id
+ * or hidden-field passthrough concerns -- Site is the root of the
+ * Inventory hierarchy.
  */
 const props = defineProps<{ open: boolean; site?: Site | null }>()
 const emit = defineEmits<{

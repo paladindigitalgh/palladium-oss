@@ -2,12 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpx"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 )
@@ -28,6 +31,14 @@ type customerService interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
+// eventRecorder is the seam CustomerHandler uses to write an
+// operational Event after a successful Create — see
+// internal/inventory/httpapi.DeviceHandler's own eventRecorder for why
+// this lives in the handler, not service.CustomerService.
+type eventRecorder interface {
+	Create(ctx context.Context, e event.Event) (event.Event, error)
+}
+
 // CustomerHandler serves the Customer REST endpoints:
 //
 //	POST   /api/v1/customers
@@ -42,11 +53,12 @@ type customerService interface {
 // logic: that is CustomerService's job (goal 4).
 type CustomerHandler struct {
 	customers customerService
+	events    eventRecorder
 }
 
 // NewCustomerHandler builds a CustomerHandler.
-func NewCustomerHandler(customers customerService) *CustomerHandler {
-	return &CustomerHandler{customers: customers}
+func NewCustomerHandler(customers customerService, events eventRecorder) *CustomerHandler {
+	return &CustomerHandler{customers: customers, events: events}
 }
 
 // Create handles POST /api/v1/customers.
@@ -59,6 +71,21 @@ func (h *CustomerHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.customers.Create(r.Context(), req.toCustomer(uuid.Nil))
 	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	var actorUserID *uuid.UUID
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		actorUserID = &claims.UserID
+	}
+	if _, err := h.events.Create(r.Context(), event.Event{
+		EntityType:  "customer",
+		EntityID:    created.ID,
+		Type:        "customer.created",
+		Message:     fmt.Sprintf("Created customer %s", created.Name),
+		ActorUserID: actorUserID,
+	}); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}

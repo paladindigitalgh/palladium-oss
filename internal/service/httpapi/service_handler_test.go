@@ -12,9 +12,58 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
+	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
+)
+
+// fakeLocationGetter is the seam httpapi.ServiceHandler uses to resolve
+// a Service's Location (and, through it, its owning Customer) for its
+// Event message.
+type fakeLocationGetter struct {
+	locations map[uuid.UUID]location.Location
+}
+
+func (f *fakeLocationGetter) Get(_ context.Context, id uuid.UUID) (location.Location, error) {
+	l, ok := f.locations[id]
+	if !ok {
+		return location.Location{}, apperror.NotFound("location not found")
+	}
+	return l, nil
+}
+
+// fakeCustomerGetter is the seam httpapi.ServiceHandler uses to resolve
+// a Location's owning Customer Name.
+type fakeCustomerGetter struct {
+	customers map[uuid.UUID]customer.Customer
+}
+
+func (f *fakeCustomerGetter) Get(_ context.Context, id uuid.UUID) (customer.Customer, error) {
+	c, ok := f.customers[id]
+	if !ok {
+		return customer.Customer{}, apperror.NotFound("customer not found")
+	}
+	return c, nil
+}
+
+// fakeEventRecorder is the seam httpapi.ServiceHandler uses to record an
+// Event after a successful Create or Delete. Records every Event it's
+// given so tests can assert on the exact message written.
+type fakeEventRecorder struct {
+	created []event.Event
+}
+
+func (f *fakeEventRecorder) Create(_ context.Context, e event.Event) (event.Event, error) {
+	f.created = append(f.created, e)
+	return e, nil
+}
+
+var (
+	validLocationID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	validCustomerID = uuid.New()
 )
 
 // fakeServiceService is the seam httpapi.ServiceHandler depends on (see
@@ -94,9 +143,20 @@ func (f *fakeServiceService) Delete(_ context.Context, id uuid.UUID) error {
 // newTestRouter mounts a ServiceHandler backed by svc on a real
 // chi.Router, so tests that need a URL path parameter (Get/Update/
 // Delete's {id}) get one populated the same way production code does,
-// rather than faking chi's route context by hand.
-func newTestRouter(svc *fakeServiceService) http.Handler {
-	handler := httpapi.NewServiceHandler(svc)
+// rather than faking chi's route context by hand. Returns the
+// fakeEventRecorder alongside the router so tests that care about the
+// Event written on Create/Delete can inspect it; most tests discard it.
+// The seeded locationGetter/customerGetter always resolve validLocationID
+// to a Location owned by validCustomerID, named "Acme Corp".
+func newTestRouter(svc *fakeServiceService) (http.Handler, *fakeEventRecorder) {
+	locations := &fakeLocationGetter{locations: map[uuid.UUID]location.Location{
+		validLocationID: {ID: validLocationID, CustomerID: validCustomerID},
+	}}
+	customers := &fakeCustomerGetter{customers: map[uuid.UUID]customer.Customer{
+		validCustomerID: {ID: validCustomerID, Name: "Acme Corp"},
+	}}
+	events := &fakeEventRecorder{}
+	handler := httpapi.NewServiceHandler(svc, locations, customers, events)
 
 	r := chi.NewRouter()
 	r.Post("/services", handler.Create)
@@ -104,13 +164,13 @@ func newTestRouter(svc *fakeServiceService) http.Handler {
 	r.Get("/services/{id}", handler.Get)
 	r.Put("/services/{id}", handler.Update)
 	r.Delete("/services/{id}", handler.Delete)
-	return r
+	return r, events
 }
 
 const validBody = `{"location_id":"11111111-1111-1111-1111-111111111111","product_id":"22222222-2222-2222-2222-222222222222","service_profile_id":"33333333-3333-3333-3333-333333333333","status":"Pending"}`
 
 func TestServiceHandlerCreate(t *testing.T) {
-	router := newTestRouter(newFakeServiceService())
+	router, events := newTestRouter(newFakeServiceService())
 
 	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -145,10 +205,24 @@ func TestServiceHandlerCreate(t *testing.T) {
 	if body.Status != "Pending" {
 		t.Errorf("status = %q, want %q", body.Status, "Pending")
 	}
+
+	if len(events.created) != 1 {
+		t.Fatalf("len(events.created) = %d, want 1", len(events.created))
+	}
+	got := events.created[0]
+	if got.EntityType != "service" || got.EntityID.String() != body.ID {
+		t.Errorf("event EntityType/EntityID = %q/%v, want \"service\"/%s", got.EntityType, got.EntityID, body.ID)
+	}
+	if got.Type != "service.created" {
+		t.Errorf("event Type = %q, want %q", got.Type, "service.created")
+	}
+	if got.Message != "Added service for Acme Corp" {
+		t.Errorf("event Message = %q, want %q", got.Message, "Added service for Acme Corp")
+	}
 }
 
 func TestServiceHandlerCreateRejectsMalformedJSON(t *testing.T) {
-	router := newTestRouter(newFakeServiceService())
+	router, _ := newTestRouter(newFakeServiceService())
 
 	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(`{not json`))
 	rec := httptest.NewRecorder()
@@ -162,7 +236,7 @@ func TestServiceHandlerCreateRejectsMalformedJSON(t *testing.T) {
 func TestServiceHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 	svc := newFakeServiceService()
 	svc.err = apperror.Invalid("status: is required")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(`{"status":""}`))
 	rec := httptest.NewRecorder()
@@ -176,7 +250,7 @@ func TestServiceHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 func TestServiceHandlerCreatePropagatesConflictOnUnknownLocationOrProduct(t *testing.T) {
 	svc := newFakeServiceService()
 	svc.err = apperror.Conflict("create service: violates a foreign key relationship")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -190,7 +264,7 @@ func TestServiceHandlerCreatePropagatesConflictOnUnknownLocationOrProduct(t *tes
 func TestServiceHandlerList(t *testing.T) {
 	a := domainservice.Service{ID: uuid.New(), LocationID: uuid.New(), ProductID: uuid.New(), Status: domainservice.ServiceStatusPending}
 	b := domainservice.Service{ID: uuid.New(), LocationID: uuid.New(), ProductID: uuid.New(), Status: domainservice.ServiceStatusActive}
-	router := newTestRouter(newFakeServiceService(a, b))
+	router, _ := newTestRouter(newFakeServiceService(a, b))
 
 	req := httptest.NewRequest(http.MethodGet, "/services", nil)
 	rec := httptest.NewRecorder()
@@ -215,7 +289,7 @@ func TestServiceHandlerList(t *testing.T) {
 
 func TestServiceHandlerGet(t *testing.T) {
 	s := domainservice.Service{ID: uuid.New(), LocationID: uuid.New(), ProductID: uuid.New(), Status: domainservice.ServiceStatusPending}
-	router := newTestRouter(newFakeServiceService(s))
+	router, _ := newTestRouter(newFakeServiceService(s))
 
 	req := httptest.NewRequest(http.MethodGet, "/services/"+s.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -227,7 +301,7 @@ func TestServiceHandlerGet(t *testing.T) {
 }
 
 func TestServiceHandlerGetNotFound(t *testing.T) {
-	router := newTestRouter(newFakeServiceService())
+	router, _ := newTestRouter(newFakeServiceService())
 
 	req := httptest.NewRequest(http.MethodGet, "/services/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
@@ -239,7 +313,7 @@ func TestServiceHandlerGetNotFound(t *testing.T) {
 }
 
 func TestServiceHandlerGetRejectsMalformedID(t *testing.T) {
-	router := newTestRouter(newFakeServiceService())
+	router, _ := newTestRouter(newFakeServiceService())
 
 	req := httptest.NewRequest(http.MethodGet, "/services/not-a-uuid", nil)
 	rec := httptest.NewRecorder()
@@ -252,7 +326,7 @@ func TestServiceHandlerGetRejectsMalformedID(t *testing.T) {
 
 func TestServiceHandlerUpdate(t *testing.T) {
 	s := domainservice.Service{ID: uuid.New(), LocationID: uuid.New(), ProductID: uuid.New(), Status: domainservice.ServiceStatusPending}
-	router := newTestRouter(newFakeServiceService(s))
+	router, _ := newTestRouter(newFakeServiceService(s))
 
 	req := httptest.NewRequest(http.MethodPut, "/services/"+s.ID.String(),
 		strings.NewReader(`{"location_id":"`+s.LocationID.String()+`","product_id":"`+s.ProductID.String()+`","status":"Active"}`))
@@ -275,7 +349,7 @@ func TestServiceHandlerUpdate(t *testing.T) {
 }
 
 func TestServiceHandlerUpdateNotFound(t *testing.T) {
-	router := newTestRouter(newFakeServiceService())
+	router, _ := newTestRouter(newFakeServiceService())
 
 	req := httptest.NewRequest(http.MethodPut, "/services/"+uuid.New().String(), strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -287,8 +361,8 @@ func TestServiceHandlerUpdateNotFound(t *testing.T) {
 }
 
 func TestServiceHandlerDelete(t *testing.T) {
-	s := domainservice.Service{ID: uuid.New(), LocationID: uuid.New(), ProductID: uuid.New(), Status: domainservice.ServiceStatusPending}
-	router := newTestRouter(newFakeServiceService(s))
+	s := domainservice.Service{ID: uuid.New(), LocationID: validLocationID, ProductID: uuid.New(), Status: domainservice.ServiceStatusPending}
+	router, events := newTestRouter(newFakeServiceService(s))
 
 	req := httptest.NewRequest(http.MethodDelete, "/services/"+s.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -300,10 +374,24 @@ func TestServiceHandlerDelete(t *testing.T) {
 	if rec.Body.Len() != 0 {
 		t.Errorf("body = %q, want empty for 204 No Content", rec.Body.String())
 	}
+
+	if len(events.created) != 1 {
+		t.Fatalf("len(events.created) = %d, want 1", len(events.created))
+	}
+	got := events.created[0]
+	if got.EntityType != "service" || got.EntityID != s.ID {
+		t.Errorf("event EntityType/EntityID = %q/%v, want \"service\"/%v", got.EntityType, got.EntityID, s.ID)
+	}
+	if got.Type != "service.removed" {
+		t.Errorf("event Type = %q, want %q", got.Type, "service.removed")
+	}
+	if got.Message != "Removed service for Acme Corp" {
+		t.Errorf("event Message = %q, want %q", got.Message, "Removed service for Acme Corp")
+	}
 }
 
 func TestServiceHandlerDeleteNotFound(t *testing.T) {
-	router := newTestRouter(newFakeServiceService())
+	router, _ := newTestRouter(newFakeServiceService())
 
 	req := httptest.NewRequest(http.MethodDelete, "/services/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()

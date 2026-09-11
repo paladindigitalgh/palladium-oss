@@ -8,10 +8,9 @@ const PAGE_SIZE = 15
 
 /**
  * Owns every piece of state the Inventory Collection Workspace needs and
- * the query orchestration around it -- mirrors useAccessNetworkCollection.ts,
- * trimmed to what Site actually supports: no status filter, no sortKey
- * (Site has only one sortable field, name, so there is nothing to
- * toggle between).
+ * the query orchestration around it. Site has no status filter and only
+ * one sortable field, name, so there is no sortKey -- nothing to toggle
+ * between.
  */
 export function useSiteCollection() {
   const search = ref('')

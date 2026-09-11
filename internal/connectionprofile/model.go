@@ -20,7 +20,7 @@
 // the foreign key to authentication_methods(id) is a database concept,
 // enforced by internal/connectionprofile/postgres and its migration, not
 // a Go package dependency — the same reasoning internal/olt/model.go
-// documents for why OLT does not import internal/accessnetwork.
+// documents for why OLT does not import internal/oltmodel.
 //
 // # What this package deliberately does not validate
 //

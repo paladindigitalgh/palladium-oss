@@ -17,6 +17,7 @@ import BuildingFormDialog from '@/components/dialogs/BuildingFormDialog.vue'
 import RoomFormDialog from '@/components/dialogs/RoomFormDialog.vue'
 import { getBuildingById, deleteBuilding } from '@/services/buildings/buildingRepository'
 import { getSiteById } from '@/services/sites/siteRepository'
+import { setBreadcrumb } from '@/composables/useBreadcrumb'
 import { listRoomsByBuildingId, deleteRoom } from '@/services/rooms/roomRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
@@ -66,6 +67,15 @@ async function load(id: string) {
   site.value = relatedSite
   rooms.value = buildingRooms
   timeline.value = events
+
+  if (relatedSite) {
+    setBreadcrumb([
+      { label: 'Administration' },
+      { label: 'Inventory', to: '/administration/inventory' },
+      { label: 'Site Details', to: `/administration/inventory/${relatedSite.id}` },
+      { label: 'Building Details' },
+    ])
+  }
 
   loading.value = false
 }

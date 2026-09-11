@@ -1,7 +1,7 @@
 ---
 title: Implementation Plan
 document: 10-IMPLEMENTATION-PLAN
-version: 2.1
+version: 2.2
 status: Current
 ---
 
@@ -109,7 +109,7 @@ Every domain follows the same three-layer chain, wired together in `cmd/server/m
 5. **`internal/customer/httpapi`** is the REST surface: request/response DTOs distinct from the domain type (so the wire format never leaks internal field layout), a handler per verb, depending on a small local interface satisfied structurally by `*service.CustomerService`.
 6. **`internal/server/router.go`** mounts `/customers` behind `auth.Middleware` (valid JWT required) and then `authz.Middleware`'s per-verb capability check (`RequireCustomerRead()` for GET, `RequireCustomerWrite()` for POST/PUT/DELETE).
 
-Every other domain — Service, Location, Device (via `internal/inventory`), Workflow, Event, AccessNetwork, and so on — repeats this exact chain. Reading one domain end to end is reading all of them.
+Every other domain — Service, Location, Device (via `internal/inventory`), Workflow, Event, OLT, and so on — repeats this exact chain. Reading one domain end to end is reading all of them.
 
 ## 5. Frontend Architectural Pattern
 
@@ -125,7 +125,7 @@ A handful of domains (Location, Service, when managed as a nested resource insid
 ## 6. Authentication & Authorization
 
 - **Authentication**: JWT access tokens only, issued by `POST /auth/login` (see `internal/auth`). There is no refresh token, no logout endpoint, and no password-reset flow yet — those are explicitly out of scope for the current milestone, not an oversight (see `internal/server/router.go`'s own comment on the `/auth` route group). On the frontend, `useAuth.ts` holds the token as module-scope singleton state, decodes its claims client-side for display, and `services/api/httpClient.ts` attaches it as a Bearer header to every request except `/auth/login` itself, clearing it on a 401.
-- **Authorization**: Role-Based Access Control via `internal/authz`, one capability pair per domain (or closely related group of domains — e.g. AccessNetwork+OLT+PONPort share one pair since "who can read/write" is the same question at three nested levels of one domain). Enforced per-route in `internal/server/router.go` as middleware, always after `auth.Middleware`, never instead of it.
+- **Authorization**: Role-Based Access Control via `internal/authz`, one capability pair per domain (or closely related group of domains — e.g. OLT+OLTModel+PONPort share one pair since "who can read/write" is the same question at nested levels of one domain). Enforced per-route in `internal/server/router.go` as middleware, always after `auth.Middleware`, never instead of it.
 - **CORS**: a single configurable `AllowedOrigin` (`internal/config`), since the frontend and API run on different ports in local development.
 
 OIDC/OAuth2, external identity providers (LDAP/Active Directory/Entra), and ABAC are real future directions (CLAUDE.md's Architecture section implies growth room here) but are not implemented — do not assume they exist when reading code or writing docs.
@@ -189,6 +189,7 @@ Other Makefile targets: `make build` (builds all four `cmd/` binaries into `bin/
 | 1.0 Draft | 2026-07-29 | Initial implementation roadmap |
 | 2.0 | 2026-09-03 | Full rewrite to describe the actual stack, structure, and patterns in use, after the original draft's proposed stack/structure/roadmap diverged from what was actually built |
 | 2.1 | 2026-09-09 | Corrected a factual error: workflow execution is asynchronous (a polling background worker), not synchronous, matching what `05-WORKFLOW-ENGINE.md` already documented |
+| 2.2 | 2026-09-11 | Removed two stale AccessNetwork example references (section 4's domain list, section 6's shared-capability example) now that Access Network has been removed as a domain concept -- see `03-DOMAIN-MODEL.md`'s Revision History |
 
 ---
 

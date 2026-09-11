@@ -2,7 +2,7 @@
 document: 03-DOMAIN-MODEL
 status: Draft
 title: Domain Model
-version: 1.7-draft
+version: 1.9-draft
 ---
 
 # Domain Model
@@ -191,8 +191,8 @@ ports, splitters, ...) are out of scope for Device itself; they are
 either their own domain (see OLT below) or belong to a future,
 more-specific model layered on top of Device once one is needed.
 
-Note: OLT is **not** a kind of Device. It is a separate domain rooted at
-Access Network (Access Network → OLT → PON Port → Access Interface →
+Note: OLT is **not** a kind of Device. It is a separate domain, itself
+the root of the Network hierarchy (OLT → PON Port → Access Interface →
 Access Attachment) with no relationship to Device or Site at all — see
 the Site section below.
 
@@ -343,8 +343,8 @@ A Site may contain:
 -   Supporting equipment
 
 Note: OLT does not belong to this hierarchy at all. It lives in a
-separate domain rooted at Access Network, with no relationship to Site
-— see the Device section above.
+separate domain, itself the root of the Network hierarchy, with no
+relationship to Site — see the Device section above.
 
 Customers are not located at Sites.
 
@@ -376,8 +376,8 @@ This structure separates business relationships from physical
 infrastructure, allowing equipment to be reassigned without altering
 customer or service history.
 
-Note: OLT has no place in this relationship chain — it belongs to its
-own Access Network hierarchy, never to a Site, and is never referenced
+Note: OLT has no place in this relationship chain — it roots its own
+Network hierarchy, never belongs to a Site, and is never referenced
 by Service Equipment (that always references a Device).
 
 ------------------------------------------------------------------------
@@ -478,6 +478,17 @@ Instead, they describe facts.
 Future automation, reporting, timelines, and auditing all depend upon a
 complete and trustworthy event history.
 
+As of 2026-09-11, most of the examples above are real: Customer created,
+Device created, Device retired ("assigned"/"unassigned" in practice means
+attached to or detached from a Customer or a Service, not a status field
+of its own), Contact added, Location added, Service added/removed, and
+Service Equipment attached/detached each write a real Event today (see
+`internal/event`'s own package doc comment for the full call-site list).
+ONU discovered and Router synchronized remain aspirational — nothing in
+this codebase talks to vendor hardware closely enough yet to emit either.
+The Explorer Activity page (docs/09-WORKSPACE-SPECIFICATIONS.md section
+15) is the operator-facing, searchable view of this same history.
+
 ------------------------------------------------------------------------
 
 # Architectural Principle
@@ -487,7 +498,12 @@ Workflows create Events.
 Events do not execute Workflows.
 
 This one-way relationship keeps execution separate from historical
-record and avoids circular dependencies.
+record and avoids circular dependencies. It describes Workflow's own
+relationship to Event specifically, not an exclusivity claim — other
+domains (Customer, Device, Contact, Location, Service, Service
+Equipment) write their own Events directly too, from their own httpapi
+handlers rather than through a Workflow, for actions a Workflow was
+never involved in creating in the first place.
 
 ------------------------------------------------------------------------
 
@@ -1126,6 +1142,8 @@ understandable, extensible, and maintainable as it grows.
   1.5 Draft   2026-09-10   Added section 7 coverage of the new Access Attachment auto-sync: authorizing a Device via the OLT blacklist flow now also finds-or-creates its PON Port/Access Interface (`internal/provisioning/kontron/service`), and creating its Service Equipment record auto-creates the matching Access Attachment (`ServiceEquipmentService.syncAccessAttachment`) when both are on file -- closing the gap flagged in 1.4's docs-sync pass where this was manual-only
   1.6 Draft   2026-09-10   Added section 27 (Note), documenting the new `internal/note` domain. Added a Location field to section 26 (Customer Device) and an "Interaction with Location" subsection covering why a Location with any Device placement history can never be hard-deleted; removed section 26's Description field, and the stale Description bullet from sections 20-24 (Product Catalog, Product, Service Profile, Provider, Provisioning Profile) -- Description was removed from all ten domains for never displaying anywhere but a create modal (CustomerType's "Government" value was removed for the same reason: modeled but never used). Added section 17 invariants for Note immutability and the Location-delete restriction
   1.7 Draft   2026-09-11   Added optional First Name/Last Name to section 25 (User & Role), and documented that a User edits their own name/password through a self-service Profile screen, not the Administrator-only User Management flow. Added section 28 (Report), documenting the new `internal/report` domain backing Explorer (docs/09-WORKSPACE-SPECIFICATIONS.md section 15): three curated cross-domain reports (Customers & Contacts, Devices, Customers & Devices), not a dynamic ad hoc query builder
+  1.8 Draft   2026-09-11   Removed Access Network as a domain concept: Palladium only ever manages a single physical network per instance, so requiring every OLT to belong to a named Access Network grouping was an unused layer of indirection nothing else in the domain model ever referenced. OLT is now the root of the Network hierarchy (OLT → PON Port → Access Interface → Access Attachment). Corrected the Device, Site, and Relationship Overview sections' "Access Network" callouts accordingly
+  1.9 Draft   2026-09-11   Corrected section 12 (Event): most of its example Events are now real (Customer/Device/Contact/Location created, Device retired, Service added/removed, Service Equipment attached/detached), each written directly from its own domain's httpapi handler rather than through a Workflow -- corrected the Architectural Principle's "Workflows create Events" to describe Workflow's own relationship to Event specifically, not an exclusivity claim. ONU discovered and Router synchronized remain aspirational
 
 ------------------------------------------------------------------------
 

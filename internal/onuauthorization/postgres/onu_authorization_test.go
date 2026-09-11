@@ -10,8 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
-	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer"
 	devicemanufacturerpostgres "github.com/paladindigitalgh/palladium-oss/internal/devicemanufacturer/postgres"
@@ -34,8 +32,8 @@ import (
 // rolled back automatically on cleanup — the same pattern as
 // internal/ponport/postgres/pon_port_test.go. Every OnuAuthorization test
 // needs both a fixture Device (itself needing a DeviceModel ->
-// DeviceManufacturer) and a fixture OLT (itself needing an
-// AccessNetwork), to satisfy the required DeviceID/OLTID foreign keys.
+// DeviceManufacturer) and a fixture OLT, to satisfy the required
+// DeviceID/OLTID foreign keys.
 func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	t.Helper()
 
@@ -61,20 +59,11 @@ func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	return tx, ctx
 }
 
-// createTestOLT creates a real OLT row (and the fixture AccessNetwork it
-// requires), mirroring internal/ponport/postgres/pon_port_test.go's own
-// createTestOLT exactly.
+// createTestOLT creates a real OLT row, mirroring
+// internal/ponport/postgres/pon_port_test.go's own createTestOLT
+// exactly.
 func createTestOLT(t *testing.T, ctx context.Context, q database.Querier) olt.OLT {
 	t.Helper()
-
-	accessNetworkRepo := accessnetworkpostgres.NewAccessNetworkRepository(q, clock.New(), id.New())
-	a, err := accessNetworkRepo.Create(ctx, accessnetwork.AccessNetwork{
-		Name:   "Fixture Access Network " + uuid.NewString(),
-		Status: accessnetwork.AccessNetworkStatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create access network: %v", err)
-	}
 
 	oltModelRepo := oltmodelpostgres.NewOLTModelRepository(q, clock.New(), id.New())
 	m, err := oltModelRepo.Create(ctx, oltmodel.OLTModel{
@@ -88,9 +77,8 @@ func createTestOLT(t *testing.T, ctx context.Context, q database.Querier) olt.OL
 
 	oltRepo := oltpostgres.NewOLTRepository(q, clock.New(), id.New())
 	o, err := oltRepo.Create(ctx, olt.OLT{
-		AccessNetworkID: a.ID,
-		Name:            "Fixture OLT " + uuid.NewString(),
-		OLTModelID:      m.ID,
+		Name:       "Fixture OLT " + uuid.NewString(),
+		OLTModelID: m.ID,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create olt: %v", err)

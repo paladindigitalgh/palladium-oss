@@ -94,7 +94,7 @@ func authorizeONURequestBody() string {
 // internal/server/router.go wires
 // /api/v1/provisioning/devices/{deviceId}/... in production.
 func newDeauthorizationAuthenticatedTestRouter(svc *fakeDeauthorizationService, tokens *auth.TokenIssuer, role auth.Role) http.Handler {
-	handler := httpapi.NewDeauthorizationHandler(svc)
+	handler := httpapi.NewDeauthorizationHandler(svc, &fakeDeviceGetter{}, &fakeEventRecorder{})
 	authzMiddleware := authz.NewMiddleware(stubUserRepository{role: role})
 
 	r := chi.NewRouter()

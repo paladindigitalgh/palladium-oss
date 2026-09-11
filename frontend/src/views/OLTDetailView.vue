@@ -8,7 +8,6 @@ import SectionCard from '@/components/data-display/SectionCard.vue'
 import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/SimpleTable.vue'
 import TimelineEntries from '@/components/data-display/TimelineEntries.vue'
 import FactGrid, { type Fact } from '@/components/data-display/FactGrid.vue'
-import RelationshipCard from '@/components/data-display/RelationshipCard.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import BaseErrorState from '@/components/base/BaseErrorState.vue'
@@ -17,7 +16,6 @@ import OLTFormDialog from '@/components/dialogs/OLTFormDialog.vue'
 import PONPortFormDialog from '@/components/dialogs/PONPortFormDialog.vue'
 import { getOLTById, deleteOLT } from '@/services/olts/oltRepository'
 import { getOLTModelById } from '@/services/oltModels/oltModelRepository'
-import { getAccessNetworkById } from '@/services/accessNetworks/accessNetworkRepository'
 import { listPONPortsByOLTId, deletePONPort } from '@/services/ponPorts/ponPortRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { runONUSummary, runONUStatusSummary } from '@/services/diagnostics/diagnosticsRepository'
@@ -25,17 +23,15 @@ import { formatDisplayDate as formatDate } from '@/lib/dates'
 import { ApiError } from '@/services/api/httpClient'
 import type { OLT } from '@/types/olt'
 import type { OLTModel } from '@/types/oltModel'
-import type { AccessNetwork } from '@/types/accessNetwork'
 import type { PONPort } from '@/types/ponPort'
 import type { TimelineEvent } from '@/types/timelineEvent'
 
 /**
- * The OLT Detail Workspace. Mirrors ServiceDetailView.vue's shape for the
- * single-relation Access Network section (a RelationshipCard, resolved
- * on demand) and CustomerDetailView.vue's shape for the nested PON Ports
- * section (add/remove/open), delete-with-conflict-handling, and the ONU
- * Status section's raw-output rendering (no parsing anywhere in this
- * stack -- see internal/diagnostics/kontron's own doc comment).
+ * The OLT Detail Workspace, root of the Network hierarchy. Mirrors
+ * CustomerDetailView.vue's shape for the nested PON Ports section
+ * (add/remove/open), delete-with-conflict-handling, and the ONU Status
+ * section's raw-output rendering (no parsing anywhere in this stack --
+ * see internal/diagnostics/kontron's own doc comment).
  *
  * Unlike Customer Detail's per-equipment "Check ONU Status" (four/five
  * commands run against one known interface), this runs the OLT's own
@@ -50,7 +46,6 @@ const router = useRouter()
 
 const olt = ref<OLT | null>(null)
 const oltModel = ref<OLTModel | null>(null)
-const accessNetwork = ref<AccessNetwork | null>(null)
 const ponPorts = ref<PONPort[]>([])
 const timeline = ref<TimelineEvent[]>([])
 const loading = ref(true)
@@ -61,7 +56,6 @@ async function load(id: string) {
   notFound.value = false
   olt.value = null
   oltModel.value = null
-  accessNetwork.value = null
   ponPorts.value = []
   timeline.value = []
   onuStatusResults.value = null
@@ -74,13 +68,11 @@ async function load(id: string) {
   }
   olt.value = result
 
-  const [relatedAccessNetwork, relatedOLTModel, oltPONPorts, events] = await Promise.all([
-    getAccessNetworkById(result.accessNetworkId),
+  const [relatedOLTModel, oltPONPorts, events] = await Promise.all([
     getOLTModelById(result.oltModelId),
     listPONPortsByOLTId(id),
     listEvents('olt', id),
   ])
-  accessNetwork.value = relatedAccessNetwork
   oltModel.value = relatedOLTModel
   ponPorts.value = oltPONPorts
   timeline.value = events
@@ -183,7 +175,7 @@ async function confirmDeleteOLT() {
   deleteError.value = null
   try {
     await deleteOLT(olt.value.id)
-    router.push(accessNetwork.value ? `/network/${accessNetwork.value.id}` : '/network')
+    router.push('/network')
   } catch (err) {
     // A conflict here can come from more than one foreign key (PON ports
     // still attached, or ONU authorization history still pointing at
@@ -257,7 +249,6 @@ async function checkONUStatus() {
 
     <OLTFormDialog
       :open="showEditDialog"
-      :access-network-id="olt.accessNetworkId"
       :olt="olt"
       @close="showEditDialog = false"
       @updated="handleOLTUpdated"
@@ -278,18 +269,6 @@ async function checkONUStatus() {
     <SectionCard title="Summary" icon="network">
       <FactGrid :facts="summaryFacts" />
       <p v-if="olt.description" class="olt-description">{{ olt.description }}</p>
-    </SectionCard>
-
-    <SectionCard title="Access Network" icon="network">
-      <RelationshipCard
-        v-if="accessNetwork"
-        eyebrow="Access Network"
-        :title="accessNetwork.name"
-        :meta="accessNetwork.status"
-        :to="`/network/${accessNetwork.id}`"
-        action-label="View Access Network"
-      />
-      <p v-else class="no-relationship">No access network on file for this OLT.</p>
     </SectionCard>
 
     <SectionCard title="PON Ports" icon="network" :badge="ponPorts.length">

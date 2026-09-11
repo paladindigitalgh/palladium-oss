@@ -60,8 +60,8 @@ function fromDto(dto: DeviceDto, modelsById: Map<string, DeviceModel>, manufactu
  * small (Administration-managed reference data, not per-device rows),
  * so fetching them fresh alongside every Device read is the same
  * "no server-side filtering, join client-side" tradeoff this codebase
- * makes throughout (see e.g. oltRepository.ts's
- * listOLTsByAccessNetworkId) rather than a real cost.
+ * makes throughout (see e.g. useOLTCollection.ts's client-side
+ * search/sort/paginate over listOLTs()) rather than a real cost.
  */
 async function fetchDeviceCatalogs(): Promise<{
   modelsById: Map<string, DeviceModel>

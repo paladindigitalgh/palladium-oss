@@ -20,6 +20,7 @@ import { getServiceById, deleteService } from '@/services/services/serviceReposi
 import { resolveServiceLabels } from '@/services/services/serviceLabels'
 import { getLocationById } from '@/services/locations/locationRepository'
 import { getCustomerById } from '@/services/customers/customerRepository'
+import { setBreadcrumb } from '@/composables/useBreadcrumb'
 import { listServiceEquipmentByServiceId, deleteServiceEquipment } from '@/services/serviceEquipment/serviceEquipmentRepository'
 import { getDeviceById } from '@/services/devices/deviceRepository'
 import { getActiveAccessAttachmentByServiceEquipmentId } from '@/services/accessAttachments/accessAttachmentRepository'
@@ -116,6 +117,13 @@ async function load(id: string) {
 
   if (relatedLocation) {
     customer.value = await getCustomerById(relatedLocation.customerId)
+    if (customer.value) {
+      setBreadcrumb([
+        { label: 'Customers', to: '/customers' },
+        { label: 'Customer Details', to: `/customers/${customer.value.id}` },
+        { label: 'Service Details' },
+      ])
+    }
   }
 
   const uniqueDeviceIds = [...new Set(relatedEquipment.map((item) => item.deviceId))]

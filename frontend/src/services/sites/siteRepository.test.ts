@@ -2,10 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApiError } from '@/services/api/httpClient'
 import { listSites, getSiteById, createSite, updateSite, deleteSite } from './siteRepository'
 
-/**
- * Mirrors accessNetworkRepository.test.ts's shape, trimmed to what Site
- * actually supports: no status field, so no status-filter test.
- */
+/** Site has no status field, so there is no status-filter test here. */
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 
 vi.mock('@/services/api/httpClient', async (importOriginal) => {

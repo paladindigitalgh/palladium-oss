@@ -70,7 +70,6 @@ const activityEntries = computed(() =>
 )
 
 const networkProperties = computed(() => [
-  { label: 'Access Networks', value: String(networkOverview.value.accessNetworks) },
   { label: 'OLTs', value: String(networkOverview.value.olts) },
   { label: 'PON Ports', value: String(networkOverview.value.ponPorts) },
   { label: 'Access Interfaces (Active)', value: String(networkOverview.value.activeInterfaces) },
@@ -104,7 +103,7 @@ const networkProperties = computed(() => [
     </div>
 
     <div class="dashboard-view__widgets">
-      <DashboardWidget title="Recent Activity" icon="clock" view-all-to="/explorer">
+      <DashboardWidget title="Recent Activity" icon="clock" view-all-to="/explorer/activity">
         <ActivityList :entries="activityEntries" />
       </DashboardWidget>
 

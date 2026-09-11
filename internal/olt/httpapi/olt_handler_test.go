@@ -109,7 +109,7 @@ func newTestRouter(svc *fakeOLTService) http.Handler {
 
 const (
 	fixtureOLTModelID = "22222222-2222-2222-2222-222222222222"
-	validBody         = `{"access_network_id":"11111111-1111-1111-1111-111111111111","name":"OLT-01","olt_model_id":"22222222-2222-2222-2222-222222222222"}`
+	validBody         = `{"name":"OLT-01","olt_model_id":"22222222-2222-2222-2222-222222222222"}`
 )
 
 func TestOLTHandlerCreate(t *testing.T) {
@@ -124,19 +124,15 @@ func TestOLTHandlerCreate(t *testing.T) {
 	}
 
 	var body struct {
-		ID              string `json:"id"`
-		AccessNetworkID string `json:"access_network_id"`
-		Name            string `json:"name"`
-		OLTModelID      string `json:"olt_model_id"`
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		OLTModelID string `json:"olt_model_id"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	if body.ID == "" {
 		t.Error("response did not include an id")
-	}
-	if body.AccessNetworkID != "11111111-1111-1111-1111-111111111111" {
-		t.Errorf("access_network_id = %q, want %q", body.AccessNetworkID, "11111111-1111-1111-1111-111111111111")
 	}
 	if body.Name != "OLT-01" || body.OLTModelID != fixtureOLTModelID {
 		t.Errorf("body = %+v, want Name=OLT-01 OLTModelID=%s", body, fixtureOLTModelID)
@@ -169,7 +165,7 @@ func TestOLTHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 	}
 }
 
-func TestOLTHandlerCreatePropagatesConflictOnUnknownAccessNetwork(t *testing.T) {
+func TestOLTHandlerCreatePropagatesConflictOnUnknownOLTModel(t *testing.T) {
 	svc := newFakeOLTService()
 	svc.err = apperror.Conflict("create olt: violates a foreign key relationship")
 	router := newTestRouter(svc)
@@ -184,8 +180,8 @@ func TestOLTHandlerCreatePropagatesConflictOnUnknownAccessNetwork(t *testing.T) 
 }
 
 func TestOLTHandlerList(t *testing.T) {
-	a := olt.OLT{ID: uuid.New(), AccessNetworkID: uuid.New(), Name: "A", OLTModelID: uuid.New()}
-	b := olt.OLT{ID: uuid.New(), AccessNetworkID: uuid.New(), Name: "B", OLTModelID: uuid.New()}
+	a := olt.OLT{ID: uuid.New(), Name: "A", OLTModelID: uuid.New()}
+	b := olt.OLT{ID: uuid.New(), Name: "B", OLTModelID: uuid.New()}
 	router := newTestRouter(newFakeOLTService(a, b))
 
 	req := httptest.NewRequest(http.MethodGet, "/olts", nil)
@@ -210,7 +206,7 @@ func TestOLTHandlerList(t *testing.T) {
 }
 
 func TestOLTHandlerGet(t *testing.T) {
-	o := olt.OLT{ID: uuid.New(), AccessNetworkID: uuid.New(), Name: "OLT-01", OLTModelID: uuid.New()}
+	o := olt.OLT{ID: uuid.New(), Name: "OLT-01", OLTModelID: uuid.New()}
 	router := newTestRouter(newFakeOLTService(o))
 
 	req := httptest.NewRequest(http.MethodGet, "/olts/"+o.ID.String(), nil)
@@ -247,12 +243,12 @@ func TestOLTHandlerGetRejectsMalformedID(t *testing.T) {
 }
 
 func TestOLTHandlerUpdate(t *testing.T) {
-	o := olt.OLT{ID: uuid.New(), AccessNetworkID: uuid.New(), Name: "Old Name", OLTModelID: uuid.New()}
+	o := olt.OLT{ID: uuid.New(), Name: "Old Name", OLTModelID: uuid.New()}
 	router := newTestRouter(newFakeOLTService(o))
 	newModelID := uuid.New()
 
 	req := httptest.NewRequest(http.MethodPut, "/olts/"+o.ID.String(),
-		strings.NewReader(`{"access_network_id":"`+o.AccessNetworkID.String()+`","name":"New Name","olt_model_id":"`+newModelID.String()+`"}`))
+		strings.NewReader(`{"name":"New Name","olt_model_id":"`+newModelID.String()+`"}`))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -285,7 +281,7 @@ func TestOLTHandlerUpdateNotFound(t *testing.T) {
 }
 
 func TestOLTHandlerDelete(t *testing.T) {
-	o := olt.OLT{ID: uuid.New(), AccessNetworkID: uuid.New(), Name: "Temporary", OLTModelID: uuid.New()}
+	o := olt.OLT{ID: uuid.New(), Name: "Temporary", OLTModelID: uuid.New()}
 	router := newTestRouter(newFakeOLTService(o))
 
 	req := httptest.NewRequest(http.MethodDelete, "/olts/"+o.ID.String(), nil)

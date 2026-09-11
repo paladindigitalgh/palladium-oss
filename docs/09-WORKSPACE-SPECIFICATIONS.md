@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.17-draft
+version: 1.20-draft
 ---
 
 # Workspace Specifications
@@ -33,7 +33,7 @@ frontend.
 8.  Customer Workspace
 9.  Service Workspace
 10. Device Workspace
-11. Network Workspace (Access Network / OLT / PON Port / Access Interface)
+11. Network Workspace (OLT / PON Port / Access Interface)
 12. Site Workspace (Site / Building / Room / Rack)
 13. Workflow Workspace
 14. Search Results Workspace
@@ -409,15 +409,17 @@ not worth what it would buy.
 
 Three `DashboardWidget`s, each backed by `useDashboard.ts`:
 
--   **Recent Activity** — the most recent Events system-wide (`GET
-    /api/v1/events/recent`, a small, deliberately bounded addition to
-    the Event domain — see `internal/event/httpapi`'s own doc comment
-    for why this is a different, safe shape from the per-entity
-    `/events` endpoint, which stays unbounded-refused by design).
--   **Network Overview** — real counts: Access Networks, OLTs, PON
-    Ports, and Access Interfaces split by Active/Disabled (a real
-    administrative field, not live telemetry). No online/active ratios
-    — Palladium has no telemetry to report one.
+-   **Recent Activity** — the 10 most recent Events system-wide (`GET
+    /api/v1/events/recent`, deliberately bounded — see
+    `internal/event/httpapi`'s own doc comment for why this stays a
+    distinct, capped shape even though `GET /events` with no
+    entity_type/entity_id now also returns every Event, unbounded, for
+    the Explorer Activity page's full searchable history, section 15).
+    "View All" opens that Activity page.
+-   **Network Overview** — real counts: OLTs, PON Ports, and Access
+    Interfaces split by Active/Disabled (a real administrative field,
+    not live telemetry). No online/active ratios — Palladium has no
+    telemetry to report one.
 -   **Pending Tasks** — the actual Pending/Failed `WorkflowInstance`s
     behind the stat above, each linking to its Service.
 
@@ -534,7 +536,7 @@ Service Workspace.
     Attachment (since 2026-09-10, `ServiceEquipmentService.syncAccessAttachment`
     -- docs/03-DOMAIN-MODEL.md section 7) when the Device has a known
     `OnuAuthorization` and a matching Access Interface already exists, so
-    an operator building the Access Network topology by hand (section 11
+    an operator building the Network topology by hand (section 11
     below) is now only needed for a Device that was never authorized
     through Palladium's own OLT blacklist flow. Add Service is
     all-or-nothing (revised 2026-09-10): if tying the Device or running
@@ -764,41 +766,25 @@ document applies to every other cross-entity link.
 Customer, Service, and Device Workspaces should feel related while
 presenting information appropriate to their specific purpose.
 
-# 11. Network Workspace (Access Network / OLT / PON Port / Access Interface)
+# 11. Network Workspace (OLT / PON Port / Access Interface)
 
 ## Purpose
 
-The Network Workspace is a four-level operational hierarchy — Access
-Network → OLT → PON Port → Access Interface — reached from the Network
-Collection View (a list of Access Networks). Each level is its own
-canonical Detail View, not a tab or a page nested under its parent:
-opening an OLT navigates to `/network/olts/{id}`, exactly as opening a
-Customer navigates to `/customers/{id}` (section 5's canonical-URL
-principle applies here too). A fifth level, Access Attachment (an
-equipment item attached to an Access Interface), has no Detail View of
-its own — it is managed inline on the Access Interface Workspace,
-mirroring how Service Equipment has no Detail View of its own either.
+The Network Workspace is a three-level operational hierarchy — OLT →
+PON Port → Access Interface — reached from the Network Collection View
+(a list of OLTs). Palladium only ever manages a single physical network
+per instance, so OLT is the root: there is no grouping entity above it
+to click through first. Each level is its own canonical Detail View, not
+a tab or a page nested under its parent: opening an OLT navigates to
+`/network/olts/{id}`, exactly as opening a Customer navigates to
+`/customers/{id}` (section 5's canonical-URL principle applies here
+too). A fourth level, Access Attachment (an equipment item attached to
+an Access Interface), has no Detail View of its own — it is managed
+inline on the Access Interface Workspace, mirroring how Service
+Equipment has no Detail View of its own either.
 
 It should answer, at each level: **"What exists under this node, and
 what is it connected to above it?"**
-
-## Access Network Workspace
-
-### Header
-
--   Access Network name
--   Status (Active / Inactive)
-
-### Primary Actions
-
--   Edit Access Network
--   Delete Access Network
-
-### Sections
-
--   Summary (status, created)
--   OLTs (add, remove, open)
--   Timeline
 
 ## OLT Workspace
 
@@ -816,7 +802,6 @@ what is it connected to above it?"**
 ### Sections
 
 -   Summary (vendor, model, management IP, created)
--   Access Network (a single relationship link back up the chain)
 -   PON Ports (add, remove, open)
 -   ONU Status — a "Check ONU Status" button that runs the OLT's own
     whole-device summary commands ("show onu interface all" and
@@ -829,8 +814,8 @@ what is it connected to above it?"**
 
 There is no OLT-level status, software version, uptime, health, or
 alarm data *displayed passively* here — an OLT record answers "what is
-this device and which Access Network does it belong to," not "is it
-currently healthy" on its own, unprompted. That broader question still
+this device and how is it configured," not "is it currently healthy" on
+its own, unprompted. That broader question still
 belongs to a monitoring system (Zabbix, LibreNMS, Prometheus), per
 CLAUDE.md: Palladium is not a monitoring platform, and this workspace
 does not poll, alert, or track history for ONU Status the way one
@@ -1102,11 +1087,13 @@ investigation.
 Explorer is Palladium's home for pulling data out of the OSS: a curated
 set of real, cross-domain reports an operator can browse, search, and
 export to CSV -- "every customer with their contact info," "every
-device," "every customer with the devices tied to them."
+device," "every customer with the devices tied to them" -- plus a
+searchable history of everything that has actually happened in the
+system.
 
 It should answer:
 
-**"Give me a CSV of this, right now."**
+**"Give me a CSV of this, right now"** and **"what happened, and when?"**
 
 Explorer is not a topology viewer, map, or visualization tool. It has no
 notion of physical or logical network diagrams; its subject is data, not
@@ -1114,7 +1101,7 @@ diagrams. Network topology is addressed by dedicated workspaces (see
 Site Workspace, section 12, and the future Network Topology workspace,
 section 20).
 
-As of 2026-09-11, Explorer ships as three curated reports
+As of 2026-09-11, Explorer's Reports page ships as three curated reports
 (`internal/report`; docs/03-DOMAIN-MODEL.md section 28), not the dynamic
 ad hoc query builder this section originally described -- a decision
 made explicitly with the user before building it (see that section's own
@@ -1134,24 +1121,41 @@ remain a future direction, not something this Workspace does today.
 
 -   Select a report (Customers & Contacts, Devices, or Customers &
     Devices -- see docs/03-DOMAIN-MODEL.md section 28 for what each one
-    returns)
--   Search and sort results (entirely client-side against that report's
-    already-fetched rows -- see the Interaction with Display note below)
+    returns) or open the Activity page
+-   Search and sort results (entirely client-side against the
+    already-fetched rows -- see each page's own Interaction with Display
+    note below)
 -   Open a result directly into its own Workspace
--   Export the currently-filtered results to CSV
+-   Export a report's currently-filtered results to CSV
 
-## Primary Panels
+## Structure: a sidebar dropdown, not a page of its own
 
-Explorer is not a single-object workspace, so it is not a Detail
-Workspace and does not use section 6, "Detail Workspace Structure" --
-opening a result leads to that object's own Detail Workspace instead.
+Explorer groups two independent pages rather than managing one object,
+so it is not a Detail Workspace and does not use section 6, "Detail
+Workspace Structure" -- opening a result leads to that object's own
+Detail Workspace instead. As of 2026-09-11 (at the user's explicit
+request), it follows the exact structure section 16 ("Administration
+Workspace") already established: "Explorer" in AppSidebar.vue is a
+default-collapsed toggle (docs/04-NAVIGATION.md section 4's global
+navigation list, via NAV_ITEMS' `children` -- see navigation.ts) that
+expands in place to Reports and Activity, rather than navigating
+anywhere itself. A child route being active forces it open, so landing
+directly on /explorer/reports or /explorer/activity (a refresh, a
+bookmark, or the Dashboard's Recent Activity "View All" link) never
+hides which page you're on. /explorer itself still exists as a bare
+redirect to /explorer/reports (docs/04-NAVIGATION.md section 7: a
+bookmarked URL should always restore to something real).
 
--   Report picker
+### Reports (/explorer/reports)
+
+-   Report picker -- a row of tiles (name + one-line description), one
+    per report, doubling as both the landing content (nothing runs
+    automatically) and the switcher once a report is active
 -   Result Table (search box + sortable columns, the same DataTable
     component every Collection View already uses)
 -   Export CSV action
 
-## Reports
+**Reports:**
 
 -   **Customers & Contacts** -- every Customer, one row per Contact
     (blank contact fields for a Customer with none on file)
@@ -1162,26 +1166,57 @@ opening a result leads to that object's own Detail Workspace instead.
     relationship, one row per relationship (a Device reaching a Customer
     both a direct placement and an active Service at once gets two rows)
 
-## Interaction with Display
+**Interaction with Display:** Unlike every other Collection View in this
+document, a report is fetched once, in full, when selected -- not
+re-fetched on every search/sort/page change the way e.g. the Device
+Collection View is. A report is a pull-once CSV-prep tool, not a live
+filtered browse list, so search, sort, pagination, and CSV export all
+happen client-side against that one cached array; Export CSV exports
+every row currently matching the search box, not just the visible page.
+No report runs on landing: the tile row is the only thing shown until an
+operator picks one. Picking a different tile re-fetches and replaces the
+result table in place, resetting search/sort/page the same way
+switching a report ever has.
 
-Unlike every other Collection View in this document, a report is
-fetched once, in full, when selected -- not re-fetched on every
-search/sort/page change the way e.g. the Device Collection View is. A
-report is a pull-once CSV-prep tool, not a live filtered browse list, so
-search, sort, pagination, and CSV export all happen client-side against
-that one cached array; Export CSV exports every row currently matching
-the search box, not just the visible page.
+### Activity (/explorer/activity)
+
+A searchable history of every Event ever recorded (`internal/event`),
+newest first -- "Created device test-15," "Retired device test-05,"
+"Attached device test-05 to Acme Corp's service," not the generic
+"Workflow started"/"Workflow succeeded" text Events were originally
+limited to (2026-09-11: Device, Customer, Contact, Location, Service,
+Service Equipment, and Customer-Device-attachment actions all now write
+their own real, human-readable Events -- see docs/03-DOMAIN-MODEL.md
+section 12's revision history for the full list). The Dashboard's own
+Recent Activity widget (section 7) is a bounded preview of the same
+underlying data; this page is the unbounded, searchable version of it,
+and its "View All" link opens here.
+
+-   Search box (message, type, and entity type -- the same DataTable
+    component every Collection View already uses)
+-   Result Table: Message, Type, When
+
+Opening a row navigates to that Event's subject -- its own Detail
+Workspace for entity types that have one (Device, Customer, Service), or
+the owning Customer's Workspace for entity types that don't (Contact,
+Location, Service Equipment, Customer-Device attachment all record the
+Customer's id at write time specifically so this page never needs a
+second lookup to build that link).
+
+**Interaction with Display:** the same "fetch once, filter/sort/paginate
+client-side" shape Reports uses, over the full unbounded Event history
+rather than one curated report's rows.
 
 ------------------------------------------------------------------------
 
 # Design Principle
 
-Explorer ships as a curated set of real reports, not a dynamic query an
-operator assembles themselves -- the same "purpose-built reads, not a
-generic query layer" architecture every other domain in this codebase
-already follows. Every result still opens into its subject's own
-Workspace, keeping Explorer consistent with the rest of Palladium rather
-than a separate reporting silo.
+Explorer's Reports page ships as a curated set of real reports, not a
+dynamic query an operator assembles themselves -- the same "purpose-built
+reads, not a generic query layer" architecture every other domain in
+this codebase already follows. Every result still opens into its
+subject's own Workspace, keeping Explorer consistent with the rest of
+Palladium rather than a separate reporting silo.
 
 # 16. Administration Workspace
 
@@ -1449,6 +1484,9 @@ understanding, investigating, and acting on the network.
   1.15 Draft  2026-09-10   Corrected the Customer Workspace's Add Service description (section 8): a provisioning failure is no longer most commonly a missing Access Attachment -- creating the Service Equipment record now auto-syncs one (docs/03-DOMAIN-MODEL.md section 7) whenever the Device has a known OnuAuthorization and matching Access Interface, so the Network workspace is only still needed by hand for a Device never authorized through Palladium's own OLT blacklist flow; a remaining failure is now usually a real OLT-side configuration problem
   1.16 Draft  2026-09-10   Added a Notes section (section 8, 9, and 10 -- Customer, Service, and Device Workspaces), backed by the new internal/note domain. Removed "Government" from the Customer Workspace's customer-type list (section 8). Documented the Services table's Device column and the Device picker's real visibility rule (section 8); corrected the stale claim that a failed Add Service leaves the Service and its Service Equipment record behind (it is all-or-nothing as of today) and removed the now-resolved "known gap" about this Workspace's dynamic action mislabeling a Service whose auto-provisioning failed (section 9), since that scenario can no longer happen. Corrected Remove Service's own description (section 9): workflow history does not block it, and documented the two different Remove-Service entry points (this Workspace's strict one, and the Customer Workspace's full-teardown one). Documented ONU Diagnostics blocks becoming individually collapsible, and Remove Device navigating back to the Devices list on success (section 10). Documented the Device Manufacturer/Model catalog and its per-entry Default checkbox on the Hardware panel (section 16)
   1.17 Draft  2026-09-11   Rewrote Explorer (section 15) to match what actually shipped: a curated set of three real reports (Customers & Contacts, Devices, Customers & Devices -- see docs/03-DOMAIN-MODEL.md section 28), not the dynamic ad hoc query builder this section originally described -- a decision made explicitly with the user before building it. Documented the Users panel (section 16) gaining optional First/Last Name on New User, and the new self-service Profile screen (reached from the account menu, guarded by `/me` rather than this page's Administrator-only `/users` API) for a User's own name/password
+  1.18 Draft  2026-09-11   Rewrote the Network Workspace (section 11) at the user's explicit request: Access Network removed as a domain concept (Palladium only ever manages a single physical network per instance), so the Network Collection View now lists OLTs directly instead of Access Networks, and OLT is the root of a three-level hierarchy (OLT / PON Port / Access Interface), not four. Removed the Access Network line from the Dashboard's Network Overview widget (section 7) and corrected a stray "Access Network" reference in the Customer Workspace's Add Service description (section 8)
+  1.19 Draft  2026-09-11   Corrected Explorer (section 15) at the user's explicit request: the report picker is now a tile row (name + description) that runs nothing automatically on landing, replacing the corner dropdown that auto-ran the first report -- the same tiles double as the switcher once a report is active
+  1.20 Draft  2026-09-11   Restructured Explorer (section 15) into a sidebar dropdown with two pages, Reports and Activity, mirroring Administration's own structure (section 16) -- at the user's explicit request. Added the Activity page: a searchable, unbounded history of every Event, now covering real Device/Customer/Contact/Location/Service/Service-Equipment/Customer-Device actions, not just workflow transitions (see docs/03-DOMAIN-MODEL.md section 12). Corrected the Dashboard's Recent Activity widget description (section 7): "View All" now opens the Activity page, and GET /events is no longer unbounded-refused
 
 ------------------------------------------------------------------------
 

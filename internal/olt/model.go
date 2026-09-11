@@ -1,18 +1,18 @@
 // Package olt models Palladium's OLT domain (v1): a physical Optical
-// Line Terminal, identified by its chassis type and management address,
-// belonging to one AccessNetwork (see internal/accessnetwork). This
-// package holds only the domain model, field validation, and the
-// repository interface — no SQL, no migrations, no HTTP CRUD —
+// Line Terminal, identified by its chassis type and management address.
+// OLT is the root of the Network hierarchy (OLT -> PON Port -> Access
+// Interface -> Access Attachment) — Palladium only ever manages a single
+// physical network per instance, so there is no grouping concept above
+// it. This package holds only the domain model, field validation, and
+// the repository interface — no SQL, no migrations, no HTTP CRUD —
 // mirroring internal/product's own package exactly.
 //
-// This package does not import internal/accessnetwork or
-// internal/oltmodel. AccessNetworkID and OLTModelID are bare uuid.UUID
-// values, not references to accessnetwork.AccessNetwork or
-// oltmodel.OLTModel: the foreign keys to access_networks(id) and
-// olt_models(id) are database concepts, enforced by internal/olt/postgres
-// and its migrations, not a Go package dependency — the same reasoning
-// internal/product/model.go documents for why Product does not import
-// internal/catalog.
+// This package does not import internal/oltmodel. OLTModelID is a bare
+// uuid.UUID value, not a reference to oltmodel.OLTModel: the foreign key
+// to olt_models(id) is a database concept, enforced by
+// internal/olt/postgres and its migrations, not a Go package dependency —
+// the same reasoning internal/product/model.go documents for why Product
+// does not import internal/catalog.
 //
 // # Vendor moved to OLTModel
 //
@@ -42,9 +42,7 @@
 //     profiles: those describe what an OLT's PON ports (see
 //     internal/ponport) are actually doing, not the OLT itself.
 //   - No monitoring, no alarms, no provisioning, no vendor APIs: nothing
-//     here talks to a real OLT or reports its live state. See
-//     internal/accessnetwork/model.go's package doc comment for the same
-//     boundary drawn one level up.
+//     here talks to a real OLT or reports its live state.
 //
 // Everything above is a real feature some future milestone will add. None
 // of it is implied by what exists today.
@@ -70,7 +68,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// OLT is a single Optical Line Terminal within an AccessNetwork.
+// OLT is a single Optical Line Terminal.
 //
 // ConnectionProfileID is nullable (*uuid.UUID), for the same reason
 // connectionprofile.ConnectionProfile.AuthenticationID is: this
@@ -82,10 +80,9 @@ import (
 // a database concept, enforced by internal/olt/postgres and its
 // migration, not a Go package dependency — this package does not import
 // internal/connectionprofile, the same reasoning it already documents
-// above for not importing internal/accessnetwork.
+// above for not importing internal/oltmodel.
 type OLT struct {
 	ID                  uuid.UUID
-	AccessNetworkID     uuid.UUID
 	Name                string
 	OLTModelID          uuid.UUID
 	ManagementIPAddress string

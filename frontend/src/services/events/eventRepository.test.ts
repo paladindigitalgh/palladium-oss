@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { listEvents, listRecentEvents } from './eventRepository'
+import { listEvents, listRecentEvents, listAllEvents } from './eventRepository'
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 
@@ -104,6 +104,46 @@ describe('listRecentEvents', () => {
       message: 'Service activated',
       metadata: null,
       actorUserId: null,
+      createdAt: '2026-01-01T00:00:00Z',
+    })
+  })
+})
+
+describe('listAllEvents', () => {
+  it('fetches /events/ with no query string', async () => {
+    apiFetch.mockResolvedValue({ events: [] })
+
+    await listAllEvents()
+
+    expect(apiFetch).toHaveBeenCalledWith('/events/')
+  })
+
+  it('maps the DTO the same way listEvents does', async () => {
+    apiFetch.mockResolvedValue({
+      events: [
+        {
+          id: 'e1',
+          entity_type: 'device',
+          entity_id: 'd1',
+          type: 'device.created',
+          message: 'Created device test-15',
+          metadata: { customer_id: 'c1' },
+          actor_user_id: 'u1',
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    })
+
+    const result = await listAllEvents()
+
+    expect(result[0]).toEqual({
+      id: 'e1',
+      entityType: 'device',
+      entityId: 'd1',
+      type: 'device.created',
+      message: 'Created device test-15',
+      metadata: { customer_id: 'c1' },
+      actorUserId: 'u1',
       createdAt: '2026-01-01T00:00:00Z',
     })
   })

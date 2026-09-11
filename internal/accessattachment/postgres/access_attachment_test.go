@@ -14,8 +14,6 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/accessattachment/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/accessinterface"
 	accessinterfacepostgres "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/postgres"
-	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
-	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/catalog"
 	catalogpostgres "github.com/paladindigitalgh/palladium-oss/internal/catalog/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/customer"
@@ -54,9 +52,9 @@ import (
 // rolled back automatically on cleanup — the same pattern as
 // internal/serviceequipment/postgres/service_equipment_test.go.
 // AccessAttachment needs the deepest fixture chain in this codebase so
-// far: a fixture AccessInterface (itself needing AccessNetwork -> OLT ->
-// PONPort) AND a fixture ServiceEquipment (itself needing Service, which
-// needs Location -> Customer and Product -> Catalog, plus a Device), all
+// far: a fixture AccessInterface (itself needing OLT -> PONPort) AND a
+// fixture ServiceEquipment (itself needing Service, which needs
+// Location -> Customer and Product -> Catalog, plus a Device), all
 // sharing this one transaction.
 func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	t.Helper()
@@ -84,7 +82,7 @@ func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 }
 
 // createTestAccessInterface creates a real AccessInterface row (and the
-// fixture PONPort/OLT/AccessNetwork chain it requires) through
+// fixture PONPort/OLT chain it requires) through
 // internal/accessinterface/postgres and its own dependencies — not
 // internal/accessattachment/postgres — so an AccessAttachment fixture
 // failure surfaces as a clear failure of one specific layer, not a
@@ -95,15 +93,6 @@ func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 // access_interfaces row for the foreign key to reference.
 func createTestAccessInterface(t *testing.T, ctx context.Context, q database.Querier) accessinterface.AccessInterface {
 	t.Helper()
-
-	accessNetworkRepo := accessnetworkpostgres.NewAccessNetworkRepository(q, clock.New(), id.New())
-	a, err := accessNetworkRepo.Create(ctx, accessnetwork.AccessNetwork{
-		Name:   "Fixture Access Network " + uuid.NewString(),
-		Status: accessnetwork.AccessNetworkStatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create access network: %v", err)
-	}
 
 	oltModelRepo := oltmodelpostgres.NewOLTModelRepository(q, clock.New(), id.New())
 	m, err := oltModelRepo.Create(ctx, oltmodel.OLTModel{
@@ -117,9 +106,8 @@ func createTestAccessInterface(t *testing.T, ctx context.Context, q database.Que
 
 	oltRepo := oltpostgres.NewOLTRepository(q, clock.New(), id.New())
 	o, err := oltRepo.Create(ctx, olt.OLT{
-		AccessNetworkID: a.ID,
-		Name:            "Fixture OLT " + uuid.NewString(),
-		OLTModelID:      m.ID,
+		Name:       "Fixture OLT " + uuid.NewString(),
+		OLTModelID: m.ID,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create olt: %v", err)

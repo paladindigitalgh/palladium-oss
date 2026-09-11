@@ -39,7 +39,7 @@ func NewOLTRepository(db database.Querier, clock clock.Clock, ids id.Generator) 
 // exists.
 func (r *OLTRepository) Get(ctx context.Context, oltID uuid.UUID) (olt.OLT, error) {
 	const query = `
-		SELECT id, access_network_id, name, olt_model_id, management_ip_address,
+		SELECT id, name, olt_model_id, management_ip_address,
 		       connection_profile_id, description, created_at, updated_at
 		FROM olts
 		WHERE id = $1
@@ -59,7 +59,7 @@ func (r *OLTRepository) Get(ctx context.Context, oltID uuid.UUID) (olt.OLT, erro
 // output (see the index added on that column in the migration).
 func (r *OLTRepository) List(ctx context.Context) ([]olt.OLT, error) {
 	const query = `
-		SELECT id, access_network_id, name, olt_model_id, management_ip_address,
+		SELECT id, name, olt_model_id, management_ip_address,
 		       connection_profile_id, description, created_at, updated_at
 		FROM olts
 		ORDER BY name
@@ -90,25 +90,24 @@ func (r *OLTRepository) List(ctx context.Context) ([]olt.OLT, error) {
 //
 // As with ProductRepository.Create, the repository assigns ID, CreatedAt,
 // and UpdatedAt itself — any values already set on the input OLT for
-// those fields are ignored. An AccessNetworkID that does not reference
-// an existing AccessNetwork, an OLTModelID that does not reference an
+// those fields are ignored. An OLTModelID that does not reference an
 // existing OLTModel, or a non-nil ConnectionProfileID that does not
 // reference an existing ConnectionProfile, fails with an
 // apperror.KindConflict error (see translateError).
 func (r *OLTRepository) Create(ctx context.Context, o olt.OLT) (olt.OLT, error) {
 	const query = `
 		INSERT INTO olts (
-			id, access_network_id, name, olt_model_id, management_ip_address,
+			id, name, olt_model_id, management_ip_address,
 			connection_profile_id, description, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-		RETURNING id, access_network_id, name, olt_model_id, management_ip_address,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+		RETURNING id, name, olt_model_id, management_ip_address,
 		          connection_profile_id, description, created_at, updated_at
 	`
 
 	now := r.clock.Now()
 	created, err := scanOLT(r.db.QueryRow(ctx, query,
-		r.ids.New(), o.AccessNetworkID, o.Name, o.OLTModelID, o.ManagementIPAddress,
+		r.ids.New(), o.Name, o.OLTModelID, o.ManagementIPAddress,
 		o.ConnectionProfileID, o.Description, now))
 	if err != nil {
 		return olt.OLT{}, translateError("create olt", err)
@@ -126,15 +125,15 @@ func (r *OLTRepository) Create(ctx context.Context, o olt.OLT) (olt.OLT, error) 
 func (r *OLTRepository) Update(ctx context.Context, o olt.OLT) (olt.OLT, error) {
 	const query = `
 		UPDATE olts
-		SET access_network_id = $1, name = $2, olt_model_id = $3, management_ip_address = $4,
-		    connection_profile_id = $5, description = $6, updated_at = $7
-		WHERE id = $8
-		RETURNING id, access_network_id, name, olt_model_id, management_ip_address,
+		SET name = $1, olt_model_id = $2, management_ip_address = $3,
+		    connection_profile_id = $4, description = $5, updated_at = $6
+		WHERE id = $7
+		RETURNING id, name, olt_model_id, management_ip_address,
 		          connection_profile_id, description, created_at, updated_at
 	`
 
 	updated, err := scanOLT(r.db.QueryRow(ctx, query,
-		o.AccessNetworkID, o.Name, o.OLTModelID, o.ManagementIPAddress,
+		o.Name, o.OLTModelID, o.ManagementIPAddress,
 		o.ConnectionProfileID, o.Description, r.clock.Now(), o.ID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -178,7 +177,7 @@ type rowScanner interface {
 func scanOLT(row rowScanner) (olt.OLT, error) {
 	var o olt.OLT
 	err := row.Scan(
-		&o.ID, &o.AccessNetworkID, &o.Name, &o.OLTModelID, &o.ManagementIPAddress,
+		&o.ID, &o.Name, &o.OLTModelID, &o.ManagementIPAddress,
 		&o.ConnectionProfileID, &o.Description, &o.CreatedAt, &o.UpdatedAt,
 	)
 	return o, err

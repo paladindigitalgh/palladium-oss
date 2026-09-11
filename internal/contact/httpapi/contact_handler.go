@@ -2,12 +2,16 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	"github.com/paladindigitalgh/palladium-oss/internal/contact"
+	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpx"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 )
@@ -28,6 +32,25 @@ type contactService interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
+// customerGetter is the seam ContactHandler uses to resolve the owning
+// Customer's Name for its Event message — the minimal slice of
+// customer.CustomerRepository it actually needs, the same "depend on
+// the seam, not the concrete type" reasoning contactService above
+// already follows. ContactService itself is deliberately not grown a
+// CustomerRepository dependency for this — see
+// internal/inventory/httpapi.DeviceHandler's own eventRecorder for why
+// this kind of display-friendly, cross-entity lookup lives in the
+// handler layer instead.
+type customerGetter interface {
+	Get(ctx context.Context, id uuid.UUID) (customer.Customer, error)
+}
+
+// eventRecorder is the seam ContactHandler uses to write an operational
+// Event after a successful Create.
+type eventRecorder interface {
+	Create(ctx context.Context, e event.Event) (event.Event, error)
+}
+
 // ContactHandler serves the Contact REST endpoints:
 //
 //	POST   /api/v1/contacts
@@ -41,12 +64,14 @@ type contactService interface {
 // Every method is a thin decode/delegate/translate, with no business
 // logic: that is ContactService's job.
 type ContactHandler struct {
-	contacts contactService
+	contacts  contactService
+	customers customerGetter
+	events    eventRecorder
 }
 
 // NewContactHandler builds a ContactHandler.
-func NewContactHandler(contacts contactService) *ContactHandler {
-	return &ContactHandler{contacts: contacts}
+func NewContactHandler(contacts contactService, customers customerGetter, events eventRecorder) *ContactHandler {
+	return &ContactHandler{contacts: contacts, customers: customers, events: events}
 }
 
 // Create handles POST /api/v1/contacts.
@@ -59,6 +84,27 @@ func (h *ContactHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.contacts.Create(r.Context(), req.toContact(uuid.Nil))
 	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	customerName := created.CustomerID.String()
+	if c, err := h.customers.Get(r.Context(), created.CustomerID); err == nil {
+		customerName = c.Name
+	}
+
+	var actorUserID *uuid.UUID
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		actorUserID = &claims.UserID
+	}
+	if _, err := h.events.Create(r.Context(), event.Event{
+		EntityType:  "contact",
+		EntityID:    created.ID,
+		Type:        "contact.created",
+		Message:     fmt.Sprintf("Added contact %s to %s", created.Name, customerName),
+		ActorUserID: actorUserID,
+		Metadata:    map[string]any{"customer_id": created.CustomerID.String()},
+	}); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}

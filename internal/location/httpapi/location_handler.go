@@ -2,11 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/auth"
+	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpx"
 	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
@@ -28,6 +32,20 @@ type locationService interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
+// customerGetter is the seam LocationHandler uses to resolve the owning
+// Customer's Name for its Event message — see
+// internal/contact/httpapi.ContactHandler's own customerGetter for the
+// identical reasoning, applied here one domain over.
+type customerGetter interface {
+	Get(ctx context.Context, id uuid.UUID) (customer.Customer, error)
+}
+
+// eventRecorder is the seam LocationHandler uses to write an operational
+// Event after a successful Create.
+type eventRecorder interface {
+	Create(ctx context.Context, e event.Event) (event.Event, error)
+}
+
 // LocationHandler serves the Location REST endpoints:
 //
 //	POST   /api/v1/locations
@@ -42,11 +60,13 @@ type locationService interface {
 // logic: that is LocationService's job.
 type LocationHandler struct {
 	locations locationService
+	customers customerGetter
+	events    eventRecorder
 }
 
 // NewLocationHandler builds a LocationHandler.
-func NewLocationHandler(locations locationService) *LocationHandler {
-	return &LocationHandler{locations: locations}
+func NewLocationHandler(locations locationService, customers customerGetter, events eventRecorder) *LocationHandler {
+	return &LocationHandler{locations: locations, customers: customers, events: events}
 }
 
 // Create handles POST /api/v1/locations.
@@ -59,6 +79,27 @@ func (h *LocationHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.locations.Create(r.Context(), req.toLocation(uuid.Nil))
 	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	customerName := created.CustomerID.String()
+	if c, err := h.customers.Get(r.Context(), created.CustomerID); err == nil {
+		customerName = c.Name
+	}
+
+	var actorUserID *uuid.UUID
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		actorUserID = &claims.UserID
+	}
+	if _, err := h.events.Create(r.Context(), event.Event{
+		EntityType:  "location",
+		EntityID:    created.ID,
+		Type:        "location.created",
+		Message:     fmt.Sprintf("Added location %s to %s", created.Name, customerName),
+		ActorUserID: actorUserID,
+		Metadata:    map[string]any{"customer_id": created.CustomerID.String()},
+	}); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}

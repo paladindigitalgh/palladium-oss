@@ -1,6 +1,6 @@
 /**
  * The OLT domain type (internal/olt), matching internal/olt/httpapi/dto.go's
- * oltResponse. An OLT belongs to exactly one AccessNetwork
+ * oltResponse. OLT is the root of the Network hierarchy
  * (docs/03-DOMAIN-MODEL.md) -- connectionProfileId is nullable (see
  * @/types/connectionProfile): an OLT can exist with none set, and
  * OLTFormDialog.vue's Connection Profile picker is how one is assigned.
@@ -11,7 +11,6 @@
  */
 export interface OLT {
   id: string
-  accessNetworkId: string
   name: string
   oltModelId: string
   managementIpAddress: string

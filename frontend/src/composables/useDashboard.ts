@@ -3,7 +3,6 @@ import { listCustomers } from '@/services/customers/customerRepository'
 import { listServices } from '@/services/services/serviceRepository'
 import { listDevices } from '@/services/devices/deviceRepository'
 import { listAllWorkflowInstances } from '@/services/workflow/workflowRepository'
-import { listAccessNetworks } from '@/services/accessNetworks/accessNetworkRepository'
 import { listOLTs } from '@/services/olts/oltRepository'
 import { listPONPorts } from '@/services/ponPorts/ponPortRepository'
 import { listAccessInterfaces } from '@/services/accessInterfaces/accessInterfaceRepository'
@@ -19,7 +18,6 @@ export interface DashboardStats {
 }
 
 export interface DashboardNetworkOverview {
-  accessNetworks: number
   olts: number
   ponPorts: number
   activeInterfaces: number
@@ -51,7 +49,6 @@ export function useDashboard() {
   const error = ref(false)
   const stats = ref<DashboardStats>({ customers: 0, activeServices: 0, devices: 0, pendingTasks: 0 })
   const networkOverview = ref<DashboardNetworkOverview>({
-    accessNetworks: 0,
     olts: 0,
     ponPorts: 0,
     activeInterfaces: 0,
@@ -65,13 +62,12 @@ export function useDashboard() {
     error.value = false
 
     try {
-      const [customers, services, devices, workflowInstances, accessNetworks, olts, ponPorts, accessInterfaces, events] =
+      const [customers, services, devices, workflowInstances, olts, ponPorts, accessInterfaces, events] =
         await Promise.all([
           listCustomers({ pageSize: 1 }),
           listServices({ status: 'Active', pageSize: 1 }),
           listDevices({ pageSize: 1 }),
           listAllWorkflowInstances(),
-          listAccessNetworks({ pageSize: 1 }),
           listOLTs(),
           listPONPorts(),
           listAccessInterfaces(),
@@ -87,7 +83,6 @@ export function useDashboard() {
         pendingTasks: pending.length,
       }
       networkOverview.value = {
-        accessNetworks: accessNetworks.total,
         olts: olts.length,
         ponPorts: ponPorts.length,
         activeInterfaces: accessInterfaces.filter((iface) => iface.status === 'Active').length,

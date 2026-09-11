@@ -27,4 +27,13 @@ type EventRepository interface {
 	// only ever wants "the last N things that happened," never "all of
 	// them."
 	ListRecent(ctx context.Context, limit int) ([]Event, error)
+
+	// List returns every Event, newest first, unbounded — the same
+	// "no server-side filtering, frontend paginates client-side" shape
+	// every other domain repository's own List already uses (see e.g.
+	// customer.CustomerRepository.List). Backs the Explorer Activity
+	// page (docs/09-WORKSPACE-SPECIFICATIONS.md section 15), which needs
+	// the full searchable history, not ListRecent's bounded dashboard
+	// preview.
+	List(ctx context.Context) ([]Event, error)
 }

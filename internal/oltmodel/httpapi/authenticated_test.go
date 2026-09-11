@@ -54,10 +54,10 @@ var _ auth.UserRepository = stubUserRepository{}
 // newAuthenticatedTestRouter mounts OLTModelHandler behind the real
 // auth.Middleware and authz.Middleware, exactly as
 // internal/server/router.go wires /api/v1/olt-models in production —
-// using RequireAccessNetworkRead/RequireAccessNetworkWrite, the same
-// capability pair already guarding /access-networks, /olts, and
-// /pon-ports (see authz.CanReadAccessNetwork's doc comment for why an
-// OLTModel shares it). The fake service and stub user repository are
+// using RequireNetworkRead/RequireNetworkWrite, the same
+// capability pair already guarding /olts and /pon-ports (see
+// authz.CanReadNetwork's doc comment for why an OLTModel shares it).
+// The fake service and stub user repository are
 // the only stand-ins; everything about how a request reaches the
 // handler (routing, authentication, authorization, context propagation)
 // is the genuine article. This is what distinguishes these tests from
@@ -72,13 +72,13 @@ func newAuthenticatedTestRouter(svc *fakeOLTModelService, tokens *auth.TokenIssu
 		r.Use(auth.Middleware(tokens))
 
 		r.Group(func(r chi.Router) {
-			r.Use(authzMiddleware.RequireAccessNetworkRead())
+			r.Use(authzMiddleware.RequireNetworkRead())
 			r.Get("/", handler.List)
 			r.Get("/{id}", handler.Get)
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(authzMiddleware.RequireAccessNetworkWrite())
+			r.Use(authzMiddleware.RequireNetworkWrite())
 			r.Post("/", handler.Create)
 			r.Put("/{id}", handler.Update)
 			r.Delete("/{id}", handler.Delete)

@@ -394,11 +394,11 @@ func TestCanWriteWorkflow(t *testing.T) {
 	}
 }
 
-// TestCanReadAccessNetwork and TestCanWriteAccessNetwork are the same
+// TestCanReadNetwork and TestCanWriteNetwork are the same
 // direct proof as TestCanReadWorkflow/TestCanWriteWorkflow,
-// applied to the Access Network domain's access-control table ("apply
+// applied to the Network domain's access-control table ("apply
 // the standard RBAC matrix").
-func TestCanReadAccessNetwork(t *testing.T) {
+func TestCanReadNetwork(t *testing.T) {
 	cases := map[auth.Role]bool{
 		auth.RoleAdministrator: true,
 		auth.RoleOperator:      true,
@@ -408,13 +408,13 @@ func TestCanReadAccessNetwork(t *testing.T) {
 	}
 
 	for role, want := range cases {
-		if got := authz.CanReadAccessNetwork(role); got != want {
-			t.Errorf("CanReadAccessNetwork(%q) = %v, want %v", role, got, want)
+		if got := authz.CanReadNetwork(role); got != want {
+			t.Errorf("CanReadNetwork(%q) = %v, want %v", role, got, want)
 		}
 	}
 }
 
-func TestCanWriteAccessNetwork(t *testing.T) {
+func TestCanWriteNetwork(t *testing.T) {
 	cases := map[auth.Role]bool{
 		auth.RoleAdministrator: true,
 		auth.RoleOperator:      true,
@@ -424,14 +424,14 @@ func TestCanWriteAccessNetwork(t *testing.T) {
 	}
 
 	for role, want := range cases {
-		if got := authz.CanWriteAccessNetwork(role); got != want {
-			t.Errorf("CanWriteAccessNetwork(%q) = %v, want %v", role, got, want)
+		if got := authz.CanWriteNetwork(role); got != want {
+			t.Errorf("CanWriteNetwork(%q) = %v, want %v", role, got, want)
 		}
 	}
 }
 
 // TestCanReadAccessTopology and TestCanWriteAccessTopology are the same
-// direct proof as TestCanReadAccessNetwork/TestCanWriteAccessNetwork,
+// direct proof as TestCanReadNetwork/TestCanWriteNetwork,
 // applied to the Access Topology domain's access-control table ("apply
 // the standard RBAC matrix").
 func TestCanReadAccessTopology(t *testing.T) {
@@ -626,11 +626,11 @@ func TestCanWriteConnectionProfiles(t *testing.T) {
 // TestNoAdministratorExclusiveCapabilityForSitesOrCustomers is the direct
 // check behind "no Site endpoint should require Administrator
 // exclusively" (goal 4) and its Customer, Location, Catalog, Service,
-// Service Equipment, Provisioning, Access Network, Access Topology,
+// Service Equipment, Provisioning, Network, Access Topology,
 // Service Profile, Diagnostics, Authentication, and Connection Profile
 // equivalents: for every capability a Site, Customer, Location,
-// Catalog/Product, Service, Service Equipment, Provisioning, Access
-// Network/OLT/PONPort, Access Interface/Access Attachment, Service
+// Catalog/Product, Service, Service Equipment, Provisioning,
+// OLT/PONPort, Access Interface/Access Attachment, Service
 // Profile, Diagnostics, Authentication, or Connection Profile endpoint
 // actually uses, at least one non-Administrator role must also satisfy
 // it.
@@ -652,8 +652,8 @@ func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 		"CanWriteCustomerDevices":    authz.CanWriteCustomerDevices,
 		"CanReadWorkflow":            authz.CanReadWorkflow,
 		"CanWriteWorkflow":           authz.CanWriteWorkflow,
-		"CanReadAccessNetwork":       authz.CanReadAccessNetwork,
-		"CanWriteAccessNetwork":      authz.CanWriteAccessNetwork,
+		"CanReadNetwork":       authz.CanReadNetwork,
+		"CanWriteNetwork":      authz.CanWriteNetwork,
 		"CanReadAccessTopology":      authz.CanReadAccessTopology,
 		"CanWriteAccessTopology":     authz.CanWriteAccessTopology,
 		"CanReadServiceProfiles":     authz.CanReadServiceProfiles,

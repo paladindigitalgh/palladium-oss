@@ -34,6 +34,10 @@ func (s *stubEventLister) ListRecent(_ context.Context, limit int) ([]event.Even
 	return s.events, s.err
 }
 
+func (s *stubEventLister) List(context.Context) ([]event.Event, error) {
+	return s.events, s.err
+}
+
 func TestListRequiresEntityType(t *testing.T) {
 	h := httpapi.NewEventHandler(&stubEventLister{})
 
@@ -43,6 +47,23 @@ func TestListRequiresEntityType(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+// TestListReturnsEveryEventWhenBothParamsAbsent backs the Explorer
+// Activity page (docs/09-WORKSPACE-SPECIFICATIONS.md section 15): no
+// entity_type/entity_id at all means "give me everything," not a 400.
+func TestListReturnsEveryEventWhenBothParamsAbsent(t *testing.T) {
+	h := httpapi.NewEventHandler(&stubEventLister{events: []event.Event{
+		{ID: uuid.New(), EntityType: "device", Type: "device.created", Message: "Created device test-15"},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 }
 

@@ -3,9 +3,9 @@ import { nextTick } from 'vue'
 import { useSiteCollection } from './useSiteCollection'
 
 /**
- * Mirrors useAccessNetworkCollection.test.ts, trimmed to what Site
- * actually supports: no status, and toggleSort takes no key argument
- * since name is the only sortable field.
+ * Site has no status field and only one sortable field (name), so
+ * toggleSort takes no key argument -- there is nothing to switch
+ * between.
  */
 const { listSites } = vi.hoisted(() => ({ listSites: vi.fn() }))
 

@@ -30,7 +30,7 @@ import (
 // PONPortID is left as its plain uuid.UUID rather than following that
 // same string-everywhere rule: it carries no domain enum type to
 // decouple from in the first place — the same reasoning
-// internal/olt/httpapi.oltRequest gives for its own AccessNetworkID
+// internal/olt/httpapi.oltRequest gives for its own OLTModelID
 // field.
 //
 // It intentionally has no ID or timestamp fields. Identity is either

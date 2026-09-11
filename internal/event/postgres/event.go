@@ -121,6 +121,37 @@ func (r *EventRepository) ListRecent(ctx context.Context, limit int) ([]event.Ev
 	return events, nil
 }
 
+// List returns every Event, newest first, unbounded — see
+// EventRepository.List's doc comment for why this is a distinct query
+// from ListRecent's bounded, dashboard-preview shape.
+func (r *EventRepository) List(ctx context.Context) ([]event.Event, error) {
+	const query = `
+		SELECT id, entity_type, entity_id, type, message, metadata, actor_user_id, created_at
+		FROM events
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, translateError("list events", err)
+	}
+	defer rows.Close()
+
+	events := []event.Event{}
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, translateError("scan event row", err)
+		}
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translateError("list events", err)
+	}
+
+	return events, nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

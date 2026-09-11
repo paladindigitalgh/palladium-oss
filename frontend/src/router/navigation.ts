@@ -27,10 +27,12 @@ import type { IconName } from '@/components/base/BaseIcon.vue'
  *
  * `children` was reserved for future nested navigation (Milestone 1's
  * "support future nested navigation, but do not build child menus yet")
- * and is now real: Administration is the first item to use it (a
+ * and is now real: Administration was the first item to use it (a
  * default-collapsed dropdown in AppSidebar.vue, not a page of its own --
  * see that component's own doc comment), at the user's explicit request.
- * Every other item still leaves it undefined.
+ * Explorer (2026-09-11, also the user's explicit request) followed the
+ * same pattern, splitting into Reports and Activity. Every other item
+ * still leaves it undefined.
  */
 export interface NavItem {
   id: string
@@ -68,14 +70,34 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Network',
     path: '/network',
     icon: 'network',
-    description: 'Search access networks, OLTs, and PON ports.',
+    description: 'Search OLTs, PON ports, and access interfaces.',
   },
   {
+    // No page of its own -- /explorer redirects to the first child (see
+    // router/index.ts) -- this item exists purely to group its children
+    // under one collapsible sidebar entry, the same pattern Administration
+    // (below) already established.
     id: 'explorer',
     label: 'Explorer',
     path: '/explorer',
     icon: 'explorer',
-    description: 'Run ad hoc queries across the OSS database.',
+    description: 'Pull data out of the OSS: reports and activity history.',
+    children: [
+      {
+        id: 'explorer-reports',
+        label: 'Reports',
+        path: '/explorer/reports',
+        icon: 'explorer',
+        description: 'Curated cross-domain reports, searchable and exportable to CSV.',
+      },
+      {
+        id: 'explorer-activity',
+        label: 'Activity',
+        path: '/explorer/activity',
+        icon: 'history',
+        description: 'A searchable history of everything that has happened in the OSS.',
+      },
+    ],
   },
   {
     id: 'administration',

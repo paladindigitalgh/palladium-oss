@@ -12,10 +12,23 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 )
+
+// fakeEventRecorder is the seam httpapi.DeviceHandler uses to record an
+// Event after a successful Create. Records every Event it's given so
+// tests can assert on the exact message written.
+type fakeEventRecorder struct {
+	created []event.Event
+}
+
+func (f *fakeEventRecorder) Create(_ context.Context, e event.Event) (event.Event, error) {
+	f.created = append(f.created, e)
+	return e, nil
+}
 
 // fakeDeviceService is the seam httpapi.DeviceHandler depends on. See
 // fakeSiteService's doc comment (site_handler_test.go) for why this
@@ -91,9 +104,12 @@ func (f *fakeDeviceService) Update(_ context.Context, device inventory.Device) (
 
 // newDeviceTestRouter mounts a DeviceHandler backed by svc on a real
 // chi.Router. See newTestRouter's doc comment (site_handler_test.go) for
-// why.
-func newDeviceTestRouter(svc *fakeDeviceService) http.Handler {
-	handler := httpapi.NewDeviceHandler(svc)
+// why. Returns the fakeEventRecorder alongside the router so tests that
+// care about the Event written on Create can inspect it; most tests
+// discard it.
+func newDeviceTestRouter(svc *fakeDeviceService) (http.Handler, *fakeEventRecorder) {
+	events := &fakeEventRecorder{}
+	handler := httpapi.NewDeviceHandler(svc, events)
 
 	r := chi.NewRouter()
 	r.Post("/devices", handler.Create)
@@ -101,7 +117,7 @@ func newDeviceTestRouter(svc *fakeDeviceService) http.Handler {
 	r.Get("/devices/{id}", handler.Get)
 	r.Get("/devices/by-serial-number/{serialNumber}", handler.GetBySerialNumber)
 	r.Put("/devices/{id}", handler.Update)
-	return r
+	return r, events
 }
 
 const validDeviceModelIDJSON = `"11111111-1111-1111-1111-111111111111"`
@@ -109,7 +125,7 @@ const validDeviceModelIDJSON = `"11111111-1111-1111-1111-111111111111"`
 const validDeviceBody = `{"name":"ONT-Main-01","device_model_id":` + validDeviceModelIDJSON + `,"serial_number":"CXNK00112233","status":"InStock"}`
 
 func TestDeviceHandlerCreate(t *testing.T) {
-	router := newDeviceTestRouter(newFakeDeviceService())
+	router, events := newDeviceTestRouter(newFakeDeviceService())
 
 	req := httptest.NewRequest(http.MethodPost, "/devices", strings.NewReader(validDeviceBody))
 	rec := httptest.NewRecorder()
@@ -134,10 +150,24 @@ func TestDeviceHandlerCreate(t *testing.T) {
 	if body.Name != "ONT-Main-01" || body.DeviceModelID != "11111111-1111-1111-1111-111111111111" || body.Status != "InStock" {
 		t.Errorf("body = %+v, want Name=ONT-Main-01 DeviceModelID=11111111-1111-1111-1111-111111111111 Status=InStock", body)
 	}
+
+	if len(events.created) != 1 {
+		t.Fatalf("len(events.created) = %d, want 1", len(events.created))
+	}
+	got := events.created[0]
+	if got.EntityType != "device" || got.EntityID.String() != body.ID {
+		t.Errorf("event EntityType/EntityID = %q/%v, want \"device\"/%s", got.EntityType, got.EntityID, body.ID)
+	}
+	if got.Type != "device.created" {
+		t.Errorf("event Type = %q, want %q", got.Type, "device.created")
+	}
+	if got.Message != "Created device ONT-Main-01" {
+		t.Errorf("event Message = %q, want %q", got.Message, "Created device ONT-Main-01")
+	}
 }
 
 func TestDeviceHandlerCreateRejectsMalformedJSON(t *testing.T) {
-	router := newDeviceTestRouter(newFakeDeviceService())
+	router, _ := newDeviceTestRouter(newFakeDeviceService())
 
 	req := httptest.NewRequest(http.MethodPost, "/devices", strings.NewReader(`{not json`))
 	rec := httptest.NewRecorder()
@@ -151,7 +181,7 @@ func TestDeviceHandlerCreateRejectsMalformedJSON(t *testing.T) {
 func TestDeviceHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 	svc := newFakeDeviceService()
 	svc.err = apperror.Invalid("name: is required")
-	router := newDeviceTestRouter(svc)
+	router, _ := newDeviceTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/devices", strings.NewReader(`{"name":""}`))
 	rec := httptest.NewRecorder()
@@ -165,7 +195,7 @@ func TestDeviceHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 func TestDeviceHandlerList(t *testing.T) {
 	a := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "A"}, Status: inventory.DeviceStatusUnused}
 	b := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "B"}, Status: inventory.DeviceStatusUnused}
-	router := newDeviceTestRouter(newFakeDeviceService(a, b))
+	router, _ := newDeviceTestRouter(newFakeDeviceService(a, b))
 
 	req := httptest.NewRequest(http.MethodGet, "/devices", nil)
 	rec := httptest.NewRecorder()
@@ -190,7 +220,7 @@ func TestDeviceHandlerList(t *testing.T) {
 
 func TestDeviceHandlerGet(t *testing.T) {
 	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "ONT-Main-01"}, Status: inventory.DeviceStatusUnused}
-	router := newDeviceTestRouter(newFakeDeviceService(device))
+	router, _ := newDeviceTestRouter(newFakeDeviceService(device))
 
 	req := httptest.NewRequest(http.MethodGet, "/devices/"+device.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -202,7 +232,7 @@ func TestDeviceHandlerGet(t *testing.T) {
 }
 
 func TestDeviceHandlerGetNotFound(t *testing.T) {
-	router := newDeviceTestRouter(newFakeDeviceService())
+	router, _ := newDeviceTestRouter(newFakeDeviceService())
 
 	req := httptest.NewRequest(http.MethodGet, "/devices/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
@@ -215,7 +245,7 @@ func TestDeviceHandlerGetNotFound(t *testing.T) {
 
 func TestDeviceHandlerGetBySerialNumber(t *testing.T) {
 	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "ONT-Main-01"}, SerialNumber: "CXNK00112233", Status: inventory.DeviceStatusUnused}
-	router := newDeviceTestRouter(newFakeDeviceService(device))
+	router, _ := newDeviceTestRouter(newFakeDeviceService(device))
 
 	req := httptest.NewRequest(http.MethodGet, "/devices/by-serial-number/CXNK00112233", nil)
 	rec := httptest.NewRecorder()
@@ -227,7 +257,7 @@ func TestDeviceHandlerGetBySerialNumber(t *testing.T) {
 }
 
 func TestDeviceHandlerGetBySerialNumberNotFound(t *testing.T) {
-	router := newDeviceTestRouter(newFakeDeviceService())
+	router, _ := newDeviceTestRouter(newFakeDeviceService())
 
 	req := httptest.NewRequest(http.MethodGet, "/devices/by-serial-number/does-not-exist", nil)
 	rec := httptest.NewRecorder()
@@ -239,7 +269,7 @@ func TestDeviceHandlerGetBySerialNumberNotFound(t *testing.T) {
 }
 
 func TestDeviceHandlerGetRejectsMalformedID(t *testing.T) {
-	router := newDeviceTestRouter(newFakeDeviceService())
+	router, _ := newDeviceTestRouter(newFakeDeviceService())
 
 	req := httptest.NewRequest(http.MethodGet, "/devices/not-a-uuid", nil)
 	rec := httptest.NewRecorder()
@@ -252,7 +282,7 @@ func TestDeviceHandlerGetRejectsMalformedID(t *testing.T) {
 
 func TestDeviceHandlerUpdate(t *testing.T) {
 	device := inventory.Device{Metadata: inventory.Metadata{ID: uuid.New(), Name: "Old Name"}, Status: inventory.DeviceStatusUnused}
-	router := newDeviceTestRouter(newFakeDeviceService(device))
+	router, _ := newDeviceTestRouter(newFakeDeviceService(device))
 
 	req := httptest.NewRequest(http.MethodPut, "/devices/"+device.ID.String(), strings.NewReader(
 		`{"name":"New Name","device_model_id":`+validDeviceModelIDJSON+`,"serial_number":"CXNK00112233","status":"Installed"}`))
@@ -275,7 +305,7 @@ func TestDeviceHandlerUpdate(t *testing.T) {
 }
 
 func TestDeviceHandlerUpdateNotFound(t *testing.T) {
-	router := newDeviceTestRouter(newFakeDeviceService())
+	router, _ := newDeviceTestRouter(newFakeDeviceService())
 
 	req := httptest.NewRequest(http.MethodPut, "/devices/"+uuid.New().String(), strings.NewReader(validDeviceBody))
 	rec := httptest.NewRecorder()

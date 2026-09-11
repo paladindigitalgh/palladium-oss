@@ -5,9 +5,9 @@ import type { DataTableColumn } from '@/components/data-display/DataTable.vue'
 import type { CustomerContactRow, DeviceReportRow, CustomerDeviceRow } from '@/types/report'
 
 /**
- * Owns state and orchestration for the Explorer Workspace
- * (docs/09-WORKSPACE-SPECIFICATIONS.md §15) -- ExplorerView.vue is a
- * thin template over this, the same "composable owns logic, view owns
+ * Owns state and orchestration for Explorer's Reports page
+ * (docs/09-WORKSPACE-SPECIFICATIONS.md §15) -- ExplorerReportsView.vue is
+ * a thin template over this, the same "composable owns logic, view owns
  * markup" split useDeviceCollection.ts already establishes for
  * DeviceCollectionView.vue.
  *
@@ -17,6 +17,13 @@ import type { CustomerContactRow, DeviceReportRow, CustomerDeviceRow } from '@/t
  * CSV-prep tools, not a live filtered browse list -- and every
  * reshaping after that (search, sort, pagination, CSV export) happens
  * entirely client-side against that one cached array.
+ *
+ * No report is selected on creation (2026-09-11, user's explicit
+ * request): the landing state is a picker over `reports`, not an
+ * automatic fetch of the first one -- see ExplorerReportsView.vue's tile
+ * grid, which doubles as the report-switcher once a report is active.
+ * `selectedReportId` is therefore nullable, and nothing fetches until
+ * `selectReport` sets it.
  *
  * Each report is described by one concrete ReportDefinition (not a
  * generic schema, per this workspace's "curated reports, not a dynamic
@@ -35,6 +42,7 @@ export interface ReportRecord {
 interface ReportDefinition {
   id: string
   label: string
+  description: string
   columns: DataTableColumn[]
   fetch: () => Promise<ReportRecord[]>
   openRoute: (row: ReportRecord) => string
@@ -49,6 +57,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'customers-contacts',
     label: 'Customers & Contacts',
+    description: 'Every customer, one row per contact.',
     columns: [
       { key: 'customerName', label: 'Customer', sortable: true },
       { key: 'customerType', label: 'Type', sortable: true },
@@ -81,6 +90,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'devices',
     label: 'Devices',
+    description: 'Every device, its manufacturer/model, location, and assigned customer.',
     columns: [
       { key: 'deviceName', label: 'Device', sortable: true },
       { key: 'manufacturer', label: 'Manufacturer', sortable: true },
@@ -119,6 +129,7 @@ const REPORTS: ReportDefinition[] = [
   {
     id: 'customers-devices',
     label: 'Customers & Devices',
+    description: 'Every customer-device relationship, one row each.',
     columns: [
       { key: 'customerName', label: 'Customer', sortable: true },
       { key: 'customerType', label: 'Type', sortable: true },
@@ -158,10 +169,11 @@ const REPORTS: ReportDefinition[] = [
 
 const PAGE_SIZE = 25
 
-export function useExplorer() {
-  const selectedReportId = ref(REPORTS[0].id)
-  const selectedReport = computed(() => REPORTS.find((r) => r.id === selectedReportId.value) ?? REPORTS[0])
-  const reportOptions = REPORTS.map((r) => ({ value: r.id, label: r.label }))
+export function useExplorerReports() {
+  const reports = REPORTS.map((r) => ({ id: r.id, label: r.label, description: r.description }))
+
+  const selectedReportId = ref<string | null>(null)
+  const selectedReport = computed(() => REPORTS.find((r) => r.id === selectedReportId.value) ?? null)
 
   const search = ref('')
   const sortKey = ref('')
@@ -172,19 +184,26 @@ export function useExplorer() {
   const loading = ref(false)
 
   async function loadSelectedReport() {
+    const report = selectedReport.value
+    if (!report) return
+
     loading.value = true
     search.value = ''
-    sortKey.value = selectedReport.value.columns[0]?.key ?? ''
+    sortKey.value = report.columns[0]?.key ?? ''
     sortDirection.value = 'asc'
     page.value = 1
     try {
-      allRows.value = await selectedReport.value.fetch()
+      allRows.value = await report.fetch()
     } finally {
       loading.value = false
     }
   }
 
-  watch(selectedReportId, loadSelectedReport, { immediate: true })
+  function selectReport(id: string) {
+    selectedReportId.value = id
+  }
+
+  watch(selectedReportId, loadSelectedReport)
 
   const filteredRows = computed(() => {
     const term = search.value.trim().toLowerCase()
@@ -220,20 +239,23 @@ export function useExplorer() {
   })
 
   function openRoute(row: ReportRecord): string {
-    return selectedReport.value.openRoute(row)
+    return selectedReport.value?.openRoute(row) ?? '/explorer'
   }
 
   /** Exports every row currently matching `search` (not just the visible page) as a CSV download. */
   function exportCsv() {
-    const csv = rowsToCsv(selectedReport.value.columns, sortedRows.value)
+    const report = selectedReport.value
+    if (!report) return
+    const csv = rowsToCsv(report.columns, sortedRows.value)
     const date = new Date().toISOString().slice(0, 10)
-    downloadCsv(`${selectedReport.value.filename}-${date}.csv`, csv)
+    downloadCsv(`${report.filename}-${date}.csv`, csv)
   }
 
   return {
-    reportOptions,
+    reports,
     selectedReportId,
     selectedReport,
+    selectReport,
     search,
     sortKey,
     sortDirection,

@@ -4,7 +4,7 @@ import { ApiError } from '@/services/api/httpClient'
 import SiteFormDialog from './SiteFormDialog.vue'
 import type { Site } from '@/types/site'
 
-/** Dual-mode, mirrors AccessNetworkFormDialog.test.ts, minus the status field (Site has none). */
+/** Dual-mode: create when `site` is absent, edit when present. Site has no status field, so there is nothing to test there. */
 const { createSite, updateSite } = vi.hoisted(() => ({ createSite: vi.fn(), updateSite: vi.fn() }))
 
 vi.mock('@/services/sites/siteRepository', () => ({ createSite, updateSite }))

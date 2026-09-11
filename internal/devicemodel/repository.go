@@ -18,7 +18,8 @@ import (
 // and most other catalogs in this codebase use — a caller narrowing to
 // one Manufacturer's Models (e.g. a cascading picker) filters
 // client-side, the same pattern this codebase's frontend already uses
-// throughout (see e.g. oltRepository.ts's listOLTsByAccessNetworkId).
+// throughout (see e.g. useOLTCollection.ts's client-side search/sort
+// over a single fetched listOLTs() array).
 //
 // Nothing in this package implements it — no SQL, no migrations — so the
 // domain has zero dependency on any storage technology. A concrete

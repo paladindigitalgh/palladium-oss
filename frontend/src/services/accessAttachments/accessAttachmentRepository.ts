@@ -2,7 +2,7 @@ import type { AccessAttachment } from '@/types/accessAttachment'
 import { apiFetch } from '@/services/api/httpClient'
 
 /**
- * The real AccessAttachment data source -- the leaf of the access-network
+ * The real AccessAttachment data source -- the leaf of the Network
  * hierarchy, with no Detail page of its own (see AccessInterfaceDetailView.vue's
  * Attachments section). GET /access-attachments has no server-side
  * filtering, so every list below fetches the full set once and filters

@@ -2,11 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/auth"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpx"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 )
@@ -21,6 +24,21 @@ type deviceService interface {
 	Create(ctx context.Context, device inventory.Device) (inventory.Device, error)
 	Update(ctx context.Context, device inventory.Device) (inventory.Device, error)
 }
+
+// eventRecorder is the seam DeviceHandler uses to write an operational
+// Event after a successful Create — the minimal slice of
+// event.EventRepository it actually needs, the same "depend on the
+// seam, not the concrete type" reasoning deviceService above already
+// follows. Event-writing happens here, in the handler, not inside
+// DeviceService: see internal/note/httpapi.NoteHandler's own
+// userLookup for the established precedent of resolving
+// display-friendly context at the handler layer rather than growing a
+// domain service's own dependencies for it.
+type eventRecorder interface {
+	Create(ctx context.Context, e event.Event) (event.Event, error)
+}
+
+const entityTypeDevice = "device"
 
 // DeviceHandler serves the Device REST endpoints:
 //
@@ -37,11 +55,12 @@ type deviceService interface {
 // has no knowledge of PostgreSQL, SQL, or any storage technology.
 type DeviceHandler struct {
 	devices deviceService
+	events  eventRecorder
 }
 
 // NewDeviceHandler builds a DeviceHandler.
-func NewDeviceHandler(devices deviceService) *DeviceHandler {
-	return &DeviceHandler{devices: devices}
+func NewDeviceHandler(devices deviceService, events eventRecorder) *DeviceHandler {
+	return &DeviceHandler{devices: devices, events: events}
 }
 
 // Create handles POST /api/v1/devices.
@@ -54,6 +73,21 @@ func (h *DeviceHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.devices.Create(r.Context(), req.toDevice(uuid.Nil))
 	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	var actorUserID *uuid.UUID
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		actorUserID = &claims.UserID
+	}
+	if _, err := h.events.Create(r.Context(), event.Event{
+		EntityType:  entityTypeDevice,
+		EntityID:    created.ID,
+		Type:        "device.created",
+		Message:     fmt.Sprintf("Created device %s", created.Name),
+		ActorUserID: actorUserID,
+	}); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}

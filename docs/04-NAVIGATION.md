@@ -2,7 +2,7 @@
 document: 04-NAVIGATION
 status: Draft
 title: Navigation
-version: 1.2-draft
+version: 1.5-draft
 ---
 
 # Navigation
@@ -153,21 +153,29 @@ Detail View still exists and is still linked to from both of those
 places; only the collection page and the primary-navigation entry are
 gone.
 
-Administration is the one exception to "clicking a primary navigation
-item opens a page" (2026-09-07, at the user's explicit request): it has
-no Collection View of its own, so clicking it expands a default-collapsed
-dropdown in place instead of navigating, revealing Providers, Users,
-Hardware, and Inventory as sub-items (see NAV_ITEMS' `children` in
-navigation.ts, and AppSidebar.vue, which is the first and only consumer
-of that field). Selecting a sub-item navigates normally. Inventory moved
-here from its own former primary-navigation entry (2026-09-08, at the
-user's explicit request, mirroring how Providers/Users/Hardware are
-already grouped) -- it keeps its full Collection View and Site -> Building
--> Room -> Rack detail hierarchy, just nested under Administration in the
-sidebar and under /administration/inventory in the URL. This is a
-sidebar-presentation exception only -- docs/09-WORKSPACE-SPECIFICATIONS.md
-section 16 ("Administration Workspace") has the full picture of what each
+Administration and Explorer are the two exceptions to "clicking a primary
+navigation item opens a page." Administration (2026-09-07, at the user's
+explicit request) has no Collection View of its own, so clicking it
+expands a default-collapsed dropdown in place instead of navigating,
+revealing Providers, Users, Hardware, and Inventory as sub-items (see
+NAV_ITEMS' `children` in navigation.ts, and AppSidebar.vue, which is the
+first consumer of that field). Selecting a sub-item navigates normally.
+Inventory moved here from its own former primary-navigation entry
+(2026-09-08, at the user's explicit request, mirroring how
+Providers/Users/Hardware are already grouped) -- it keeps its full
+Collection View and Site -> Building -> Room -> Rack detail hierarchy,
+just nested under Administration in the sidebar and under
+/administration/inventory in the URL. This is a sidebar-presentation
+exception only -- docs/09-WORKSPACE-SPECIFICATIONS.md section 16
+("Administration Workspace") has the full picture of what each
 sub-item's page does.
+
+Explorer followed the identical pattern (2026-09-11, at the user's
+explicit request): it split into two sub-items, Reports and Activity
+(see docs/09-WORKSPACE-SPECIFICATIONS.md section 15), rather than
+staying one page with an in-page tile picker. `/explorer` itself is now
+just a redirect to `/explorer/reports`, the same shape
+`/administration` already had.
 
 ## Persistent Navigation
 
@@ -249,6 +257,19 @@ Operators should not need to learn a different navigation pattern for
 each Entity Workspace.
 
 Consistency reduces cognitive load and training time.
+
+As of 2026-09-11, the shell-level top bar shows this as a real
+directory-style trail (`TopNavigation.vue`, `useBreadcrumb.ts`) -- e.g.
+`Network / OLT Details / PON Port Details` -- rather than a static
+`Palladium / <page>` label, growing one segment per navigation level and
+linking each known ancestor to its own record. A `←` button, leftmost in
+the bar, jumps to the immediate parent (the second-to-last segment) and
+disappears wherever there isn't one (a root page, or an ancestor with no
+real page of its own, like Services). Depth is deliberately capped at the
+trail's root plus the immediate parent plus the current page -- never
+full ancestry -- so a Detail View never needs to fetch an entity further
+up its chain than it already does for its own "View X" relationship
+link.
 
 ------------------------------------------------------------------------
 
@@ -391,7 +412,6 @@ Potential future enhancements include:
 -   Workspace templates
 -   Multi-workspace split view
 -   Global activity feed
--   Cross-workspace breadcrumbs
 -   User-customizable dashboards
 -   AI-assisted navigation and recommendations
 
@@ -442,6 +462,8 @@ When navigation becomes invisible, operators become more effective.
   1.1 Draft   2026-07-30   Scoped "every workspace follows the same layout" (section 6) to Entity Workspaces
   1.2 Draft   2026-07-30   Documented the Collection View -> Detail View navigation flow (sections 4, 5, 6, 7)
   1.3 Draft   2026-09-07   Documented Administration as the one exception to "clicking a primary navigation item opens a page" (section 4): it expands a sidebar dropdown (Providers/Users) via NAV_ITEMS' `children` instead of navigating
+  1.4 Draft   2026-09-11   Corrected the frontmatter version to match this table (had drifted to 1.2 while the table was already at 1.3). Documented the shell-level directory-style breadcrumb and back-a-level arrow shipped this date (section 6), and removed "Cross-workspace breadcrumbs" from Future Navigation Enhancements (section 12) now that it exists
+  1.5 Draft   2026-09-11   Documented Explorer as a second exception to "clicking a primary navigation item opens a page" (section 4), splitting into Reports and Activity sub-items the same way Administration already groups Providers/Users/Hardware/Inventory -- at the user's explicit request
 
 ------------------------------------------------------------------------
 

@@ -65,7 +65,7 @@ var _ auth.UserRepository = stubUserRepository{}
 // wires both from the start, since Customer's authorization requirement
 // is explicit in this milestone's goals.
 func newAuthenticatedTestRouter(svc *fakeCustomerService, tokens *auth.TokenIssuer, role auth.Role) http.Handler {
-	handler := httpapi.NewCustomerHandler(svc)
+	handler := httpapi.NewCustomerHandler(svc, &fakeEventRecorder{})
 	authzMiddleware := authz.NewMiddleware(stubUserRepository{role: role})
 
 	r := chi.NewRouter()

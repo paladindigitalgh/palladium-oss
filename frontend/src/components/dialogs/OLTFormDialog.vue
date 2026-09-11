@@ -14,10 +14,8 @@ import type { ConnectionProfile } from '@/types/connectionProfile'
 
 /**
  * Dual-mode: create when `olt` is absent, edit when present -- mirrors
- * DeviceFormDialog.vue. `accessNetworkId` (the parent prop, needed for
- * create) is ignored in edit mode -- the OLT being edited already has
- * one, and moving an OLT to a different Access Network is a bigger
- * operation than this dialog does.
+ * DeviceFormDialog.vue. OLT is a top-level collection with no parent
+ * entity to scope creation to.
  *
  * The OLT Model picker replaces this form's former free-text Vendor and
  * Model fields (see internal/olt/model.go's package doc comment on why
@@ -30,7 +28,7 @@ import type { ConnectionProfile } from '@/types/connectionProfile'
  * DeviceFormDialog.vue's own Rack picker documents -- no cache to keep
  * fresh, and both datasets are small.
  */
-const props = defineProps<{ open: boolean; accessNetworkId: string; olt?: OLT | null }>()
+const props = defineProps<{ open: boolean; olt?: OLT | null }>()
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'created', olt: OLT): void
@@ -113,13 +111,11 @@ async function handleSubmit() {
         oltModelId: oltModelId.value,
         managementIpAddress: managementIpAddress.value,
         description: description.value,
-        accessNetworkId: props.olt.accessNetworkId,
         connectionProfileId: selectedConnectionProfileId,
       })
       emit('updated', updated)
     } else {
       const olt = await createOLT({
-        accessNetworkId: props.accessNetworkId,
         name: name.value,
         oltModelId: oltModelId.value,
         managementIpAddress: managementIpAddress.value,

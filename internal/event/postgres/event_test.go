@@ -139,3 +139,29 @@ func TestEventRepositoryListRecentRespectsLimit(t *testing.T) {
 		t.Fatalf("len(events) = %d, want 2", len(events))
 	}
 }
+
+func TestEventRepositoryListOrdersNewestFirstAndIsUnbounded(t *testing.T) {
+	repo, ctx := newTestRepository(t)
+
+	first := createTestEvent(t, ctx, repo, "first")
+	second := createTestEvent(t, ctx, repo, "second")
+	third := createTestEvent(t, ctx, repo, "third")
+
+	events, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	// Same reasoning as TestEventRepositoryListRecentOrdersNewestFirst:
+	// this transaction's own three rows are the only ones it can see.
+	ids := make([]uuid.UUID, len(events))
+	for i, e := range events {
+		ids[i] = e.ID
+	}
+	wantOrder := []uuid.UUID{third.ID, second.ID, first.ID}
+	for i, want := range wantOrder {
+		if ids[i] != want {
+			t.Errorf("events[%d].ID = %v, want %v (newest first)", i, ids[i], want)
+		}
+	}
+}

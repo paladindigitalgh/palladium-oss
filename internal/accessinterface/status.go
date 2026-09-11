@@ -3,10 +3,10 @@ package accessinterface
 import "strings"
 
 // Status is an AccessInterface's operational state. It is a distinct
-// type, not a raw string, following the exact pattern of
-// accessnetwork.AccessNetworkStatus.
+// type, not a raw string, the same pattern used throughout this
+// codebase for a closed set of valid values.
 //
-// Like AccessNetworkStatus, this is a flat, two-value lifecycle: an
+// This is a flat, two-value lifecycle: an
 // interface answers exactly one question here, "is it currently allowed
 // to be used," not a richer provisioning-style lifecycle (up/down,
 // alarm, ...) — those are real-time or provisioning concerns this

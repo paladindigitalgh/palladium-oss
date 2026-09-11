@@ -12,6 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	"github.com/paladindigitalgh/palladium-oss/internal/location/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
@@ -92,12 +94,45 @@ func (f *fakeLocationService) Delete(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// fakeCustomerGetter is the seam httpapi.LocationHandler uses to resolve
+// the owning Customer's Name for its Event message.
+type fakeCustomerGetter struct {
+	customers map[uuid.UUID]customer.Customer
+}
+
+func (f *fakeCustomerGetter) Get(_ context.Context, id uuid.UUID) (customer.Customer, error) {
+	c, ok := f.customers[id]
+	if !ok {
+		return customer.Customer{}, apperror.NotFound("customer not found")
+	}
+	return c, nil
+}
+
+// fakeEventRecorder is the seam httpapi.LocationHandler uses to record
+// an Event after a successful Create. Records every Event it's given so
+// tests can assert on the exact message written.
+type fakeEventRecorder struct {
+	created []event.Event
+}
+
+func (f *fakeEventRecorder) Create(_ context.Context, e event.Event) (event.Event, error) {
+	f.created = append(f.created, e)
+	return e, nil
+}
+
 // newTestRouter mounts a LocationHandler backed by svc on a real
 // chi.Router, so tests that need a URL path parameter (Get/Update/
 // Delete's {id}) get one populated the same way production code does,
-// rather than faking chi's route context by hand.
-func newTestRouter(svc *fakeLocationService) http.Handler {
-	handler := httpapi.NewLocationHandler(svc)
+// rather than faking chi's route context by hand. Returns the
+// fakeEventRecorder alongside the router so tests that care about the
+// Event written on Create can inspect it; most tests discard it. The
+// seeded customerGetter always knows validCustomerID as "Acme Corp".
+func newTestRouter(svc *fakeLocationService) (http.Handler, *fakeEventRecorder) {
+	customers := &fakeCustomerGetter{customers: map[uuid.UUID]customer.Customer{
+		validCustomerID: {ID: validCustomerID, Name: "Acme Corp"},
+	}}
+	events := &fakeEventRecorder{}
+	handler := httpapi.NewLocationHandler(svc, customers, events)
 
 	r := chi.NewRouter()
 	r.Post("/locations", handler.Create)
@@ -105,13 +140,15 @@ func newTestRouter(svc *fakeLocationService) http.Handler {
 	r.Get("/locations/{id}", handler.Get)
 	r.Put("/locations/{id}", handler.Update)
 	r.Delete("/locations/{id}", handler.Delete)
-	return r
+	return r, events
 }
+
+var validCustomerID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
 
 const validBody = `{"customer_id":"11111111-1111-1111-1111-111111111111","name":"Main Service Address","type":"Service","status":"Active"}`
 
 func TestLocationHandlerCreate(t *testing.T) {
-	router := newTestRouter(newFakeLocationService())
+	router, events := newTestRouter(newFakeLocationService())
 
 	req := httptest.NewRequest(http.MethodPost, "/locations", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -140,10 +177,24 @@ func TestLocationHandlerCreate(t *testing.T) {
 	if body.Name != "Main Service Address" || body.Type != "Service" || body.Status != "Active" {
 		t.Errorf("body = %+v, want Name=Main Service Address Type=Service Status=Active", body)
 	}
+
+	if len(events.created) != 1 {
+		t.Fatalf("len(events.created) = %d, want 1", len(events.created))
+	}
+	got := events.created[0]
+	if got.EntityType != "location" || got.EntityID.String() != body.ID {
+		t.Errorf("event EntityType/EntityID = %q/%v, want \"location\"/%s", got.EntityType, got.EntityID, body.ID)
+	}
+	if got.Type != "location.created" {
+		t.Errorf("event Type = %q, want %q", got.Type, "location.created")
+	}
+	if got.Message != "Added location Main Service Address to Acme Corp" {
+		t.Errorf("event Message = %q, want %q", got.Message, "Added location Main Service Address to Acme Corp")
+	}
 }
 
 func TestLocationHandlerCreateRejectsMalformedJSON(t *testing.T) {
-	router := newTestRouter(newFakeLocationService())
+	router, _ := newTestRouter(newFakeLocationService())
 
 	req := httptest.NewRequest(http.MethodPost, "/locations", strings.NewReader(`{not json`))
 	rec := httptest.NewRecorder()
@@ -157,7 +208,7 @@ func TestLocationHandlerCreateRejectsMalformedJSON(t *testing.T) {
 func TestLocationHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 	svc := newFakeLocationService()
 	svc.err = apperror.Invalid("name: is required")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/locations", strings.NewReader(`{"name":""}`))
 	rec := httptest.NewRecorder()
@@ -171,7 +222,7 @@ func TestLocationHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 func TestLocationHandlerCreatePropagatesConflictOnUnknownCustomer(t *testing.T) {
 	svc := newFakeLocationService()
 	svc.err = apperror.Conflict("create location: violates a foreign key relationship")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/locations", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -185,7 +236,7 @@ func TestLocationHandlerCreatePropagatesConflictOnUnknownCustomer(t *testing.T) 
 func TestLocationHandlerList(t *testing.T) {
 	a := location.Location{ID: uuid.New(), CustomerID: uuid.New(), Name: "A", Type: location.LocationTypeService, Status: location.LocationStatusActive}
 	b := location.Location{ID: uuid.New(), CustomerID: uuid.New(), Name: "B", Type: location.LocationTypeOffice, Status: location.LocationStatusActive}
-	router := newTestRouter(newFakeLocationService(a, b))
+	router, _ := newTestRouter(newFakeLocationService(a, b))
 
 	req := httptest.NewRequest(http.MethodGet, "/locations", nil)
 	rec := httptest.NewRecorder()
@@ -210,7 +261,7 @@ func TestLocationHandlerList(t *testing.T) {
 
 func TestLocationHandlerGet(t *testing.T) {
 	l := location.Location{ID: uuid.New(), CustomerID: uuid.New(), Name: "Main Service Address", Type: location.LocationTypeService, Status: location.LocationStatusActive}
-	router := newTestRouter(newFakeLocationService(l))
+	router, _ := newTestRouter(newFakeLocationService(l))
 
 	req := httptest.NewRequest(http.MethodGet, "/locations/"+l.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -222,7 +273,7 @@ func TestLocationHandlerGet(t *testing.T) {
 }
 
 func TestLocationHandlerGetNotFound(t *testing.T) {
-	router := newTestRouter(newFakeLocationService())
+	router, _ := newTestRouter(newFakeLocationService())
 
 	req := httptest.NewRequest(http.MethodGet, "/locations/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
@@ -234,7 +285,7 @@ func TestLocationHandlerGetNotFound(t *testing.T) {
 }
 
 func TestLocationHandlerGetRejectsMalformedID(t *testing.T) {
-	router := newTestRouter(newFakeLocationService())
+	router, _ := newTestRouter(newFakeLocationService())
 
 	req := httptest.NewRequest(http.MethodGet, "/locations/not-a-uuid", nil)
 	rec := httptest.NewRecorder()
@@ -247,7 +298,7 @@ func TestLocationHandlerGetRejectsMalformedID(t *testing.T) {
 
 func TestLocationHandlerUpdate(t *testing.T) {
 	l := location.Location{ID: uuid.New(), CustomerID: uuid.New(), Name: "Old Name", Type: location.LocationTypeService, Status: location.LocationStatusActive}
-	router := newTestRouter(newFakeLocationService(l))
+	router, _ := newTestRouter(newFakeLocationService(l))
 
 	req := httptest.NewRequest(http.MethodPut, "/locations/"+l.ID.String(),
 		strings.NewReader(`{"customer_id":"`+l.CustomerID.String()+`","name":"New Name","type":"Billing","status":"Inactive"}`))
@@ -272,7 +323,7 @@ func TestLocationHandlerUpdate(t *testing.T) {
 }
 
 func TestLocationHandlerUpdateNotFound(t *testing.T) {
-	router := newTestRouter(newFakeLocationService())
+	router, _ := newTestRouter(newFakeLocationService())
 
 	req := httptest.NewRequest(http.MethodPut, "/locations/"+uuid.New().String(), strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -285,7 +336,7 @@ func TestLocationHandlerUpdateNotFound(t *testing.T) {
 
 func TestLocationHandlerDelete(t *testing.T) {
 	l := location.Location{ID: uuid.New(), CustomerID: uuid.New(), Name: "Temporary", Type: location.LocationTypeService, Status: location.LocationStatusActive}
-	router := newTestRouter(newFakeLocationService(l))
+	router, _ := newTestRouter(newFakeLocationService(l))
 
 	req := httptest.NewRequest(http.MethodDelete, "/locations/"+l.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -300,7 +351,7 @@ func TestLocationHandlerDelete(t *testing.T) {
 }
 
 func TestLocationHandlerDeleteNotFound(t *testing.T) {
-	router := newTestRouter(newFakeLocationService())
+	router, _ := newTestRouter(newFakeLocationService())
 
 	req := httptest.NewRequest(http.MethodDelete, "/locations/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()

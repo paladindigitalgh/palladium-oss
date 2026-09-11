@@ -21,7 +21,7 @@ import (
 // field at all (see internal/ponport/model.go's doc comment on what this
 // package deliberately does not model — no Status), so there is nothing
 // here to decouple from in the first place, the same reasoning
-// internal/olt/httpapi.oltRequest gives for its own AccessNetworkID
+// internal/olt/httpapi.oltRequest gives for its own OLTModelID
 // field.
 //
 // It intentionally has no ID or timestamp fields. Identity is either

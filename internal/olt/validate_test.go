@@ -10,9 +10,9 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 )
 
-// assertInvalid mirrors internal/accessnetwork/validate_test.go's helper
-// of the same name: every domain package's Validate() must return an
-// *apperror.Error of KindInvalid.
+// assertInvalid mirrors every other domain package's validate_test.go
+// helper of the same name: every domain package's Validate() must return
+// an *apperror.Error of KindInvalid.
 func assertInvalid(t *testing.T, err error) {
 	t.Helper()
 
@@ -31,9 +31,8 @@ func assertInvalid(t *testing.T, err error) {
 
 func validOLT() olt.OLT {
 	return olt.OLT{
-		AccessNetworkID: uuid.New(),
-		Name:            "OLT-01",
-		OLTModelID:      uuid.New(),
+		Name:       "OLT-01",
+		OLTModelID: uuid.New(),
 	}
 }
 
@@ -43,13 +42,6 @@ func TestOLTValidate(t *testing.T) {
 	}
 
 	assertInvalid(t, olt.OLT{}.Validate())
-}
-
-func TestOLTValidateRequiresAccessNetworkID(t *testing.T) {
-	o := validOLT()
-	o.AccessNetworkID = uuid.Nil
-
-	assertInvalid(t, o.Validate())
 }
 
 func TestOLTValidateRequiresName(t *testing.T) {

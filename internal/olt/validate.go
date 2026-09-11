@@ -7,16 +7,14 @@ import (
 )
 
 // Validate reports whether o has every required field set: a present
-// AccessNetworkID, a present Name, and a present OLTModelID.
-// ManagementIPAddress and Description are both optional and are never
-// checked for presence — this milestone's Validation section for OLT
-// names only AccessNetworkID, Name, and OLTModelID as required,
+// Name and a present OLTModelID. ManagementIPAddress and Description are
+// both optional and are never checked for presence — this milestone's
+// Validation section for OLT names only Name and OLTModelID as required,
 // consistent with catalog.ProductCatalog's own optional Description.
 //
-// OLTModelID's requiredness (rather than validating it is a real
-// OLTModel — a database-level concern the FK, not this method, enforces)
-// mirrors AccessNetworkID's own check below: this method only confirms
-// the field was supplied, not that it resolves to anything.
+// OLTModelID's requiredness only confirms the field was supplied, not
+// that it resolves to a real OLTModel — a database-level concern the FK,
+// not this method, enforces.
 //
 // ManagementIPAddress is deliberately not checked for being a
 // well-formed IP address. This milestone's scope is recording that an
@@ -28,9 +26,6 @@ import (
 func (o OLT) Validate() error {
 	errs := validate.New()
 
-	if o.AccessNetworkID == uuid.Nil {
-		errs.Add("access_network_id", "is required")
-	}
 	if !validate.Required(o.Name) {
 		errs.Add("name", "is required")
 	}

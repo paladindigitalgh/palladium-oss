@@ -2,12 +2,17 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/paladindigitalgh/palladium-oss/internal/auth"
+	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/httpx"
+	"github.com/paladindigitalgh/palladium-oss/internal/location"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 	domainservice "github.com/paladindigitalgh/palladium-oss/internal/service"
 )
@@ -28,6 +33,31 @@ type serviceService interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
+// locationGetter is the seam ServiceHandler uses to resolve a Service's
+// Location (and, through it, its owning Customer) for its Event
+// message — the minimal slice of location.LocationRepository it
+// actually needs, the same "depend on the seam, not the concrete type"
+// reasoning serviceService above already follows. ServiceService itself
+// is deliberately not grown this dependency — see
+// internal/inventory/httpapi.DeviceHandler's own eventRecorder for why
+// this kind of display-friendly, cross-entity lookup lives in the
+// handler layer instead.
+type locationGetter interface {
+	Get(ctx context.Context, id uuid.UUID) (location.Location, error)
+}
+
+// customerGetter is the seam ServiceHandler uses to resolve a Location's
+// owning Customer Name.
+type customerGetter interface {
+	Get(ctx context.Context, id uuid.UUID) (customer.Customer, error)
+}
+
+// eventRecorder is the seam ServiceHandler uses to write an operational
+// Event after a successful Create or Delete.
+type eventRecorder interface {
+	Create(ctx context.Context, e event.Event) (event.Event, error)
+}
+
 // ServiceHandler serves the Service REST endpoints:
 //
 //	POST   /api/v1/services
@@ -41,12 +71,30 @@ type serviceService interface {
 // Every method is a thin decode/delegate/translate, with no business
 // logic: that is ServiceService's job.
 type ServiceHandler struct {
-	services serviceService
+	services  serviceService
+	locations locationGetter
+	customers customerGetter
+	events    eventRecorder
 }
 
 // NewServiceHandler builds a ServiceHandler.
-func NewServiceHandler(services serviceService) *ServiceHandler {
-	return &ServiceHandler{services: services}
+func NewServiceHandler(services serviceService, locations locationGetter, customers customerGetter, events eventRecorder) *ServiceHandler {
+	return &ServiceHandler{services: services, locations: locations, customers: customers, events: events}
+}
+
+// customerNameForLocation resolves locationID's owning Customer's Name,
+// falling back to the raw id (as a string) when either lookup fails --
+// an Event's message should never block on this, and the Metadata's
+// raw ids always let a caller recover the real records later.
+func (h *ServiceHandler) customerNameForLocation(ctx context.Context, locationID uuid.UUID) (customerID uuid.UUID, customerName string) {
+	loc, err := h.locations.Get(ctx, locationID)
+	if err != nil {
+		return uuid.Nil, locationID.String()
+	}
+	if c, err := h.customers.Get(ctx, loc.CustomerID); err == nil {
+		return loc.CustomerID, c.Name
+	}
+	return loc.CustomerID, loc.CustomerID.String()
 }
 
 // Create handles POST /api/v1/services.
@@ -59,6 +107,24 @@ func (h *ServiceHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.services.Create(r.Context(), req.toService(uuid.Nil))
 	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	customerID, customerName := h.customerNameForLocation(r.Context(), created.LocationID)
+
+	var actorUserID *uuid.UUID
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		actorUserID = &claims.UserID
+	}
+	if _, err := h.events.Create(r.Context(), event.Event{
+		EntityType:  "service",
+		EntityID:    created.ID,
+		Type:        "service.created",
+		Message:     fmt.Sprintf("Added service for %s", customerName),
+		ActorUserID: actorUserID,
+		Metadata:    map[string]any{"customer_id": customerID.String()},
+	}); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
@@ -117,7 +183,10 @@ func (h *ServiceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, newServiceResponse(updated))
 }
 
-// Delete handles DELETE /api/v1/services/{id}.
+// Delete handles DELETE /api/v1/services/{id}. The Service is fetched
+// before deletion, not after — its LocationID (and, through it, the
+// owning Customer's Name) would otherwise be unrecoverable once the row
+// is gone.
 func (h *ServiceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
@@ -125,7 +194,31 @@ func (h *ServiceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	existing, err := h.services.Get(r.Context(), id)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
 	if err := h.services.Delete(r.Context(), id); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	customerID, customerName := h.customerNameForLocation(r.Context(), existing.LocationID)
+
+	var actorUserID *uuid.UUID
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		actorUserID = &claims.UserID
+	}
+	if _, err := h.events.Create(r.Context(), event.Event{
+		EntityType:  "service",
+		EntityID:    id,
+		Type:        "service.removed",
+		Message:     fmt.Sprintf("Removed service for %s", customerName),
+		ActorUserID: actorUserID,
+		Metadata:    map[string]any{"customer_id": customerID.String()},
+	}); err != nil {
 		httpx.WriteError(w, err)
 		return
 	}

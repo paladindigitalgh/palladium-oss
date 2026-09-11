@@ -230,22 +230,22 @@ func (m *Middleware) RequireWorkflowWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteWorkflow)
 }
 
-// RequireAccessNetworkRead returns middleware allowing any Role that
-// CanReadAccessNetwork (Administrator, Operator, Viewer). Applied to
-// the /access-networks, /olts, and /pon-ports routes — see
-// CanReadAccessNetwork's doc comment for why one capability guards all
+// RequireNetworkRead returns middleware allowing any Role that
+// CanReadNetwork (Administrator, Operator, Viewer). Applied to
+// the /olts, /olt-models, and /pon-ports routes — see
+// CanReadNetwork's doc comment for why one capability guards all
 // three resources.
-func (m *Middleware) RequireAccessNetworkRead() func(http.Handler) http.Handler {
-	return m.Require(CanReadAccessNetwork)
+func (m *Middleware) RequireNetworkRead() func(http.Handler) http.Handler {
+	return m.Require(CanReadNetwork)
 }
 
-// RequireAccessNetworkWrite returns middleware allowing any Role that
-// CanWriteAccessNetwork (Administrator, Operator). Applied to the
-// /access-networks, /olts, and /pon-ports routes — see
-// CanReadAccessNetwork's doc comment for why one capability guards all
+// RequireNetworkWrite returns middleware allowing any Role that
+// CanWriteNetwork (Administrator, Operator). Applied to the
+// /olts, /olt-models, and /pon-ports routes — see
+// CanReadNetwork's doc comment for why one capability guards all
 // three resources.
-func (m *Middleware) RequireAccessNetworkWrite() func(http.Handler) http.Handler {
-	return m.Require(CanWriteAccessNetwork)
+func (m *Middleware) RequireNetworkWrite() func(http.Handler) http.Handler {
+	return m.Require(CanWriteNetwork)
 }
 
 // RequireAccessTopologyRead returns middleware allowing any Role that

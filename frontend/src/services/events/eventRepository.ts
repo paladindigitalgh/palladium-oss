@@ -35,13 +35,27 @@ export async function listEvents(entityType: string, entityId: string): Promise<
 
 /**
  * Fetches the `limit` most recently recorded Events across every entity,
- * newest first (see GET /api/v1/events/recent) -- the Dashboard's system-
- * wide activity feed, not a per-entity Timeline. Deliberately a separate
- * endpoint from listEvents, not the same one with entity_type/entity_id
- * omitted: /events has no unbounded mode (see internal/event/httpapi's
- * own doc comment for why), this one is bounded by design.
+ * newest first (see GET /api/v1/events/recent) -- the Dashboard's
+ * bounded system-wide activity preview, not a per-entity Timeline or the
+ * full searchable history (see listAllEvents below). Deliberately a
+ * separate endpoint from listEvents/listAllEvents: this one is always
+ * capped, by design, regardless of how many Events actually exist.
  */
 export async function listRecentEvents(limit = 20): Promise<TimelineEvent[]> {
   const { events } = await apiFetch<{ events: EventDto[] }>(`/events/recent?limit=${limit}`)
+  return events.map(fromDto)
+}
+
+/**
+ * Fetches every Event ever recorded, across every entity, newest first
+ * (see GET /api/v1/events with neither entity_type nor entity_id set) --
+ * backs the Explorer Activity page
+ * (docs/09-WORKSPACE-SPECIFICATIONS.md §15). Unbounded, the same "no
+ * server-side filtering, frontend paginates client-side" shape every
+ * other domain repository's own list function uses in this codebase
+ * (e.g. listOLTs in oltRepository.ts).
+ */
+export async function listAllEvents(): Promise<TimelineEvent[]> {
+  const { events } = await apiFetch<{ events: EventDto[] }>('/events/')
   return events.map(fromDto)
 }

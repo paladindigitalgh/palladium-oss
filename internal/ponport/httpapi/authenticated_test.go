@@ -54,9 +54,9 @@ var _ auth.UserRepository = stubUserRepository{}
 // newAuthenticatedTestRouter mounts PONPortHandler behind the real
 // auth.Middleware and authz.Middleware, exactly as
 // internal/server/router.go wires /api/v1/pon-ports in production —
-// using RequireAccessNetworkRead/RequireAccessNetworkWrite, the same
-// capability pair /api/v1/access-networks and /api/v1/olts use (see
-// authz.CanReadAccessNetwork's doc comment for why PONPort does not get
+// using RequireNetworkRead/RequireNetworkWrite, the same
+// capability pair /api/v1/olts and /api/v1/olt-models use (see
+// authz.CanReadNetwork's doc comment for why PONPort does not get
 // its own dedicated pair). The fake service and stub user repository are
 // the only stand-ins; everything about how a request reaches the handler
 // (routing, authentication, authorization, context propagation) is the
@@ -72,13 +72,13 @@ func newAuthenticatedTestRouter(svc *fakePONPortService, tokens *auth.TokenIssue
 		r.Use(auth.Middleware(tokens))
 
 		r.Group(func(r chi.Router) {
-			r.Use(authzMiddleware.RequireAccessNetworkRead())
+			r.Use(authzMiddleware.RequireNetworkRead())
 			r.Get("/", handler.List)
 			r.Get("/{id}", handler.Get)
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(authzMiddleware.RequireAccessNetworkWrite())
+			r.Use(authzMiddleware.RequireNetworkWrite())
 			r.Post("/", handler.Create)
 			r.Put("/{id}", handler.Update)
 			r.Delete("/{id}", handler.Delete)

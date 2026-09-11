@@ -3,17 +3,15 @@ import { apiFetch, ApiError } from '@/services/api/httpClient'
 
 /**
  * The real OLT data source. GET /olts has no server-side filtering (see
- * internal/olt/httpapi), so "an access network's OLTs" is resolved by
- * fetching every OLT once and filtering client-side -- the same pattern
- * locationRepository.ts uses. Unlike Location, OLT has its own Detail
- * page, so getOLTById hits GET /olts/:id directly (like
+ * internal/olt/httpapi), so useOLTCollection.ts fetches every OLT once
+ * and filters/sorts/paginates client-side. Unlike Location, OLT has its
+ * own Detail page, so getOLTById hits GET /olts/:id directly (like
  * getCustomerById/getServiceById/getDeviceById) rather than fetching the
  * whole list and finding.
  */
 
 interface OLTDto {
   id: string
-  access_network_id: string
   name: string
   olt_model_id: string
   management_ip_address: string
@@ -26,7 +24,6 @@ interface OLTDto {
 function fromDto(dto: OLTDto): OLT {
   return {
     id: dto.id,
-    accessNetworkId: dto.access_network_id,
     name: dto.name,
     oltModelId: dto.olt_model_id,
     managementIpAddress: dto.management_ip_address,
@@ -42,11 +39,6 @@ export async function listOLTs(): Promise<OLT[]> {
   return olts.map(fromDto)
 }
 
-export async function listOLTsByAccessNetworkId(accessNetworkId: string): Promise<OLT[]> {
-  const olts = await listOLTs()
-  return olts.filter((olt) => olt.accessNetworkId === accessNetworkId)
-}
-
 /** Fetches a single OLT, returning null (not throwing) when it does not exist. */
 export async function getOLTById(id: string): Promise<OLT | null> {
   try {
@@ -59,7 +51,6 @@ export async function getOLTById(id: string): Promise<OLT | null> {
 }
 
 export interface CreateOLTInput {
-  accessNetworkId: string
   name: string
   oltModelId: string
   managementIpAddress: string
@@ -79,7 +70,6 @@ export async function createOLT(input: CreateOLTInput): Promise<OLT> {
   const dto = await apiFetch<OLTDto>('/olts/', {
     method: 'POST',
     body: {
-      access_network_id: input.accessNetworkId,
       name: input.name,
       olt_model_id: input.oltModelId,
       management_ip_address: input.managementIpAddress,
@@ -96,21 +86,12 @@ export interface UpdateOLTInput {
   managementIpAddress: string
   description: string
   connectionProfileId: string | null
-  /**
-   * Not user-editable (see OLTFormDialog.vue -- no accessNetwork picker
-   * exists in this workspace). Callers pass the OLT's current
-   * accessNetworkId through unchanged: PUT replaces every mutable column
-   * (see internal/olt/postgres's Update), so omitting it here would
-   * silently move the OLT to no access network.
-   */
-  accessNetworkId: string
 }
 
 export async function updateOLT(id: string, input: UpdateOLTInput): Promise<OLT> {
   const dto = await apiFetch<OLTDto>(`/olts/${id}`, {
     method: 'PUT',
     body: {
-      access_network_id: input.accessNetworkId,
       name: input.name,
       olt_model_id: input.oltModelId,
       management_ip_address: input.managementIpAddress,

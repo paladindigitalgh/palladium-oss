@@ -6,10 +6,7 @@ import type { OLT } from '@/types/olt'
 import type { OLTModel } from '@/types/oltModel'
 import type { ConnectionProfile } from '@/types/connectionProfile'
 
-/**
- * Dual-mode, mirrors LocationFormDialog.test.ts's shape: takes a required
- * accessNetworkId prop, ignored in edit mode in favor of the OLT's own.
- */
+/** Dual-mode, mirrors DeviceFormDialog.test.ts's shape: OLT is a top-level collection, no parent id prop. */
 const { createOLT, updateOLT, listOLTModels, listConnectionProfiles } = vi.hoisted(() => ({
   createOLT: vi.fn(),
   updateOLT: vi.fn(),
@@ -30,7 +27,6 @@ enableAutoUnmount(afterEach)
 function existingOLT(overrides: Partial<OLT> = {}): OLT {
   return {
     id: 'olt1',
-    accessNetworkId: 'an1',
     name: 'OLT-Core-1',
     oltModelId: 'model-nokia',
     managementIpAddress: '10.0.0.1',
@@ -100,16 +96,16 @@ beforeEach(() => {
 
 describe('create mode (no olt prop)', () => {
   it('defaults the OLT Model to the first one fetched, and the Connection Profile to None', async () => {
-    mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an1' } })
+    mount(OLTFormDialog, { props: { open: true } })
     await flushPromises()
 
     expect((selectByLabel('OLT Model').element as HTMLSelectElement).value).toBe('model-nokia')
     expect((selectByLabel('Connection Profile').element as HTMLSelectElement).value).toBe('')
   })
 
-  it('passes the accessNetworkId prop through into createOLT alongside the form fields, sending null for an unset Connection Profile, and emits created', async () => {
+  it('passes the form fields through into createOLT, sending null for an unset Connection Profile, and emits created', async () => {
     createOLT.mockResolvedValue(existingOLT({ name: 'OLT-Core-1' }))
-    const wrapper = mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an1' } })
+    const wrapper = mount(OLTFormDialog, { props: { open: true } })
     await flushPromises()
 
     await inputByLabel('Name').setValue('OLT-Core-1')
@@ -119,7 +115,6 @@ describe('create mode (no olt prop)', () => {
     await wrapper.vm.$nextTick()
 
     expect(createOLT).toHaveBeenCalledWith({
-      accessNetworkId: 'an1',
       name: 'OLT-Core-1',
       oltModelId: 'model-calix',
       managementIpAddress: '10.0.0.5',
@@ -132,7 +127,7 @@ describe('create mode (no olt prop)', () => {
 
   it('sends the selected Connection Profile id when one is chosen', async () => {
     createOLT.mockResolvedValue(existingOLT({ name: 'OLT-Core-1', connectionProfileId: 'cp1' }))
-    const wrapper = mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an1' } })
+    const wrapper = mount(OLTFormDialog, { props: { open: true } })
     await flushPromises()
 
     await inputByLabel('Name').setValue('OLT-Core-1')
@@ -147,7 +142,7 @@ describe('create mode (no olt prop)', () => {
 
   it('surfaces the API error message instead of throwing, and does not emit created', async () => {
     createOLT.mockRejectedValue(new ApiError('name is required', 'invalid', 422))
-    const wrapper = mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an1' } })
+    const wrapper = mount(OLTFormDialog, { props: { open: true } })
     await flushPromises()
 
     await body().find('form').trigger('submit.prevent')
@@ -163,7 +158,6 @@ describe('edit mode (olt prop present)', () => {
     mount(OLTFormDialog, {
       props: {
         open: true,
-        accessNetworkId: 'an1',
         olt: existingOLT({ name: 'OLT-Core-1', oltModelId: 'model-calix', connectionProfileId: 'cp1' }),
       },
     })
@@ -177,21 +171,17 @@ describe('edit mode (olt prop present)', () => {
 
   it('defaults an unset Connection Profile to None rather than a blank/invalid selection', async () => {
     mount(OLTFormDialog, {
-      props: { open: true, accessNetworkId: 'an1', olt: existingOLT({ connectionProfileId: null }) },
+      props: { open: true, olt: existingOLT({ connectionProfileId: null }) },
     })
     await flushPromises()
 
     expect((selectByLabel('Connection Profile').element as HTMLSelectElement).value).toBe('')
   })
 
-  it('submits the edited fields to updateOLT, using the OLT\'s own accessNetworkId rather than the prop, and emits updated', async () => {
-    // accessNetworkId prop deliberately differs from olt.accessNetworkId,
-    // so a wrong implementation that used the prop instead of the OLT's
-    // own access network would fail this assertion, not pass it by
-    // accident.
-    const olt = existingOLT({ accessNetworkId: 'an-actual', connectionProfileId: 'cp1' })
+  it('submits the edited fields to updateOLT and emits updated', async () => {
+    const olt = existingOLT({ connectionProfileId: 'cp1' })
     updateOLT.mockResolvedValue({ ...olt, name: 'OLT-Core-1 Renamed' })
-    const wrapper = mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an-prop-should-be-ignored', olt } })
+    const wrapper = mount(OLTFormDialog, { props: { open: true, olt } })
     await flushPromises()
 
     await inputByLabel('Name').setValue('OLT-Core-1 Renamed')
@@ -203,7 +193,6 @@ describe('edit mode (olt prop present)', () => {
       oltModelId: olt.oltModelId,
       managementIpAddress: olt.managementIpAddress,
       description: olt.description,
-      accessNetworkId: 'an-actual',
       connectionProfileId: 'cp1',
     })
     expect(createOLT).not.toHaveBeenCalled()
@@ -213,7 +202,7 @@ describe('edit mode (olt prop present)', () => {
   it('clearing the Connection Profile back to None sends null to updateOLT', async () => {
     const olt = existingOLT({ connectionProfileId: 'cp1' })
     updateOLT.mockResolvedValue(olt)
-    const wrapper = mount(OLTFormDialog, { props: { open: true, accessNetworkId: 'an1', olt } })
+    const wrapper = mount(OLTFormDialog, { props: { open: true, olt } })
     await flushPromises()
 
     await selectByLabel('Connection Profile').setValue('')
@@ -226,7 +215,7 @@ describe('edit mode (olt prop present)', () => {
 
 it('closing and reopening for a different OLT repopulates the form instead of keeping stale values', async () => {
   const wrapper = mount(OLTFormDialog, {
-    props: { open: true, accessNetworkId: 'an1', olt: existingOLT({ name: 'First' }) },
+    props: { open: true, olt: existingOLT({ name: 'First' }) },
   })
   await flushPromises()
   expect((inputByLabel('Name').element as HTMLInputElement).value).toBe('First')

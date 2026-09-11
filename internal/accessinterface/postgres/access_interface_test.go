@@ -12,8 +12,6 @@ import (
 
 	"github.com/paladindigitalgh/palladium-oss/internal/accessinterface"
 	"github.com/paladindigitalgh/palladium-oss/internal/accessinterface/postgres"
-	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
-	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/olt"
 	oltpostgres "github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
@@ -29,11 +27,11 @@ import (
 // newTestQuerier opens a transaction against the real test database,
 // rolled back automatically on cleanup — the same pattern as
 // internal/ponport/postgres/pon_port_test.go. Every AccessInterface test
-// needs a fixture PONPort (which itself needs a fixture OLT, which needs
-// a fixture AccessNetwork) to satisfy the required PONPortID foreign
-// key, and the fixture must share the same transaction as the repository
-// under test, so tests here call this directly rather than hiding it
-// behind an AccessInterface-style newTestRepository wrapper.
+// needs a fixture PONPort (which itself needs a fixture OLT) to satisfy
+// the required PONPortID foreign key, and the fixture must share the
+// same transaction as the repository under test, so tests here call this
+// directly rather than hiding it behind an AccessInterface-style
+// newTestRepository wrapper.
 func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	t.Helper()
 
@@ -59,27 +57,17 @@ func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	return tx, ctx
 }
 
-// createTestPONPort creates a real PONPort row (and the fixture OLT and
-// AccessNetwork it requires) through internal/ponport/postgres,
-// internal/olt/postgres, and internal/accessnetwork/postgres — not
-// internal/accessinterface/postgres — so an AccessInterface fixture
-// failure surfaces as a clear failure of one specific layer, not a
-// confusing failure somewhere else. This is the one place this package
-// imports internal/ponport, internal/olt, or internal/accessnetwork at
-// all: the domain model (internal/accessinterface) never does (see its
-// package doc comment), only this test, which genuinely needs a real
-// pon_ports row for the foreign key to reference.
+// createTestPONPort creates a real PONPort row (and the fixture OLT it
+// requires) through internal/ponport/postgres and internal/olt/postgres
+// — not internal/accessinterface/postgres — so an AccessInterface
+// fixture failure surfaces as a clear failure of one specific layer, not
+// a confusing failure somewhere else. This is the one place this package
+// imports internal/ponport or internal/olt at all: the domain model
+// (internal/accessinterface) never does (see its package doc comment),
+// only this test, which genuinely needs a real pon_ports row for the
+// foreign key to reference.
 func createTestPONPort(t *testing.T, ctx context.Context, q database.Querier) ponport.PONPort {
 	t.Helper()
-
-	accessNetworkRepo := accessnetworkpostgres.NewAccessNetworkRepository(q, clock.New(), id.New())
-	a, err := accessNetworkRepo.Create(ctx, accessnetwork.AccessNetwork{
-		Name:   "Fixture Access Network " + uuid.NewString(),
-		Status: accessnetwork.AccessNetworkStatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create access network: %v", err)
-	}
 
 	oltModelRepo := oltmodelpostgres.NewOLTModelRepository(q, clock.New(), id.New())
 	m, err := oltModelRepo.Create(ctx, oltmodel.OLTModel{
@@ -93,9 +81,8 @@ func createTestPONPort(t *testing.T, ctx context.Context, q database.Querier) po
 
 	oltRepo := oltpostgres.NewOLTRepository(q, clock.New(), id.New())
 	o, err := oltRepo.Create(ctx, olt.OLT{
-		AccessNetworkID: a.ID,
-		Name:            "Fixture OLT " + uuid.NewString(),
-		OLTModelID:      m.ID,
+		Name:       "Fixture OLT " + uuid.NewString(),
+		OLTModelID: m.ID,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create olt: %v", err)
@@ -344,7 +331,7 @@ func TestAccessInterfaceRepositoryList(t *testing.T) {
 	}
 
 	// Both were created within this same rolled-back transaction (plus
-	// the fixture PONPort/OLT/AccessNetwork, different tables), so the
+	// the fixture PONPort/OLT, different tables), so the
 	// list is exactly these two, letting us also check the ORDER BY name.
 	if len(interfaces) != 2 {
 		t.Fatalf("len(List()) = %d, want 2; got %+v", len(interfaces), interfaces)

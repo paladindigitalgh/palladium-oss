@@ -18,6 +18,7 @@ import (
 type eventLister interface {
 	ListByEntity(ctx context.Context, entityType string, entityID uuid.UUID) ([]event.Event, error)
 	ListRecent(ctx context.Context, limit int) ([]event.Event, error)
+	List(ctx context.Context) ([]event.Event, error)
 }
 
 // EventHandler serves the Event domain's two REST endpoints:
@@ -25,15 +26,16 @@ type eventLister interface {
 //	GET /api/v1/events?entity_type=&entity_id=
 //	GET /api/v1/events/recent?limit=
 //
-// List's two query parameters are both required: an unbounded "every
-// event ever recorded for this entity_type, but no entity_id filter"
-// listing has no legitimate UI use case (see
-// docs/09-WORKSPACE-SPECIFICATIONS.md — Timeline sections always belong
-// to one object) and would grow without bound. ListRecent is a
-// different, deliberately bounded shape — the Dashboard's system-wide
-// activity feed only ever wants the most recent handful of events, not
-// an unscoped dump — so it needs no entity filter at all, only a capped
-// limit.
+// List's two query parameters are either both present or both absent:
+// both present scopes to one entity's whole history (a Timeline
+// section); both absent returns every Event, unbounded, newest first
+// (the Explorer Activity page, docs/09-WORKSPACE-SPECIFICATIONS.md
+// section 15 — a searchable full history, not a per-entity Timeline or
+// ListRecent's bounded dashboard preview). One present without the
+// other is rejected as ambiguous. ListRecent is a third, distinct,
+// deliberately bounded shape — the Dashboard's system-wide activity feed
+// only ever wants the most recent handful of events, not the full
+// history — so it needs no entity filter at all, only a capped limit.
 type EventHandler struct {
 	events eventLister
 }
@@ -54,15 +56,28 @@ func NewEventHandler(events eventLister) *EventHandler {
 	return &EventHandler{events: events}
 }
 
-// List handles GET /api/v1/events.
+// List handles GET /api/v1/events. See EventHandler's own doc comment
+// for the entity_type/entity_id both-or-neither contract.
 func (h *EventHandler) List(w http.ResponseWriter, r *http.Request) {
 	entityType := r.URL.Query().Get("entity_type")
-	if entityType == "" {
-		httpx.WriteError(w, apperror.Invalid("entity_type is required"))
+	rawEntityID := r.URL.Query().Get("entity_id")
+
+	if entityType == "" && rawEntityID == "" {
+		events, err := h.events.List(r.Context())
+		if err != nil {
+			httpx.WriteError(w, err)
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, newEventListResponse(events))
 		return
 	}
 
-	entityID, err := uuid.Parse(r.URL.Query().Get("entity_id"))
+	if entityType == "" {
+		httpx.WriteError(w, apperror.Invalid("entity_type is required when entity_id is set"))
+		return
+	}
+
+	entityID, err := uuid.Parse(rawEntityID)
 	if err != nil {
 		httpx.WriteError(w, apperror.Invalid("entity_id must be a valid UUID"))
 		return

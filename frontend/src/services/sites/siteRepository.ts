@@ -3,7 +3,7 @@ import { apiFetch, ApiError } from '@/services/api/httpClient'
 
 /**
  * The real Site data source, top of the Inventory hierarchy -- mirrors
- * accessNetworkRepository.ts's shape exactly. GET /sites has no
+ * oltRepository.ts's shape exactly. GET /sites has no
  * server-side filtering (see internal/inventory/httpapi), so search/
  * sort/pagination happen client-side.
  */
@@ -44,7 +44,7 @@ function matchesSearch(site: Site, term: string): boolean {
   return site.name.toLowerCase().includes(needle) || site.id.toLowerCase().includes(needle)
 }
 
-/** Fetches every Site and applies search/sort/pagination client-side. No status field exists to filter or sort by -- unlike AccessNetwork, Site is Name/Description only. */
+/** Fetches every Site and applies search/sort/pagination client-side. No status field exists to filter or sort by -- Site is Name/Description only. */
 export async function listSites(query: SiteListQuery = {}): Promise<SiteListResult> {
   const { search = '', sortDirection = 'asc', page = 1, pageSize = 15 } = query
 

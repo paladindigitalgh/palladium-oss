@@ -6,12 +6,12 @@ import { apiFetch } from '@/services/api/httpClient'
  * docs/09-WORKSPACE-SPECIFICATIONS.md §15). Unlike every other
  * `*Repository.ts` in this codebase, there is no per-row filter/sort/
  * pagination query here at all: a report is fetched once, in full, when
- * an operator picks it in ExplorerView.vue, and every reshaping after
- * that (search, sort, pagination, CSV export) happens entirely
- * client-side against that one fetched array -- see ExplorerView.vue's
- * own doc comment for why that is a deliberate departure from
- * deviceRepository.ts's "refetch on every filter change" shape, not an
- * inconsistency.
+ * an operator picks it in ExplorerReportsView.vue, and every reshaping
+ * after that (search, sort, pagination, CSV export) happens entirely
+ * client-side against that one fetched array -- see
+ * ExplorerReportsView.vue's own doc comment for why that is a deliberate
+ * departure from deviceRepository.ts's "refetch on every filter change"
+ * shape, not an inconsistency.
  */
 
 // NIL_UUID is the wire form of Go's uuid.Nil, exactly as

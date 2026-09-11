@@ -10,8 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
-	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/connectionprofile"
 	connectionprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/connectionprofile/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
@@ -26,11 +24,7 @@ import (
 
 // newTestQuerier opens a transaction against the real test database,
 // rolled back automatically on cleanup — the same pattern as
-// internal/product/postgres/product_test.go. Every OLT test needs a
-// fixture AccessNetwork to satisfy the required AccessNetworkID foreign
-// key, and the fixture must share the same transaction as the repository
-// under test, so tests here call this directly rather than hiding it
-// behind an AccessNetwork-style newTestRepository wrapper.
+// internal/product/postgres/product_test.go.
 func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	t.Helper()
 
@@ -56,28 +50,6 @@ func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	return tx, ctx
 }
 
-// createTestAccessNetwork creates a real AccessNetwork row through
-// internal/accessnetwork/postgres — not internal/olt/postgres — so an
-// OLT fixture failure surfaces as a clear failure of AccessNetwork's own
-// Create, not a confusing failure somewhere else. This is the one place
-// this package imports internal/accessnetwork at all: the domain model
-// (internal/olt) never does (see its package doc comment), only this
-// test, which genuinely needs a real access_networks row for the foreign
-// key to reference.
-func createTestAccessNetwork(t *testing.T, ctx context.Context, q database.Querier) accessnetwork.AccessNetwork {
-	t.Helper()
-
-	repo := accessnetworkpostgres.NewAccessNetworkRepository(q, clock.New(), id.New())
-	a, err := repo.Create(ctx, accessnetwork.AccessNetwork{
-		Name:   "Fixture Access Network " + uuid.NewString(),
-		Status: accessnetwork.AccessNetworkStatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create access network: %v", err)
-	}
-	return a
-}
-
 // createTestOLTModel creates a real OLTModel row through
 // internal/oltmodel/postgres — not internal/olt/postgres — so an OLT
 // fixture failure surfaces as a clear failure of OLTModel's own Create,
@@ -101,11 +73,10 @@ func createTestOLTModel(t *testing.T, ctx context.Context, q database.Querier) o
 	return m
 }
 
-func testOLT(accessNetworkID, oltModelID uuid.UUID, name string) olt.OLT {
+func testOLT(oltModelID uuid.UUID, name string) olt.OLT {
 	return olt.OLT{
-		AccessNetworkID: accessNetworkID,
-		Name:            name,
-		OLTModelID:      oltModelID,
+		Name:       name,
+		OLTModelID: oltModelID,
 	}
 }
 
@@ -134,12 +105,10 @@ func createTestConnectionProfile(t *testing.T, ctx context.Context, q database.Q
 
 func TestOLTRepositoryCreate(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
 	created, err := repo.Create(ctx, olt.OLT{
-		AccessNetworkID:     a.ID,
 		Name:                "OLT-01",
 		OLTModelID:          m.ID,
 		ManagementIPAddress: "10.0.0.1",
@@ -151,9 +120,6 @@ func TestOLTRepositoryCreate(t *testing.T) {
 
 	if created.ID == uuid.Nil {
 		t.Error("Create() did not assign an ID")
-	}
-	if created.AccessNetworkID != a.ID {
-		t.Errorf("AccessNetworkID = %v, want %v", created.AccessNetworkID, a.ID)
 	}
 	if created.Name != "OLT-01" {
 		t.Errorf("Name = %q, want %q", created.Name, "OLT-01")
@@ -177,24 +143,22 @@ func TestOLTRepositoryCreate(t *testing.T) {
 
 func TestOLTRepositoryCreateFailsWhenOLTModelDoesNotExist(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
-	_, err := repo.Create(ctx, testOLT(a.ID, uuid.New(), "Orphan Model OLT")) // olt model does not exist
+	_, err := repo.Create(ctx, testOLT(uuid.New(), "Orphan Model OLT")) // olt model does not exist
 
 	assertConflict(t, err)
 }
 
 func TestOLTRepositoryCreateIgnoresCallerSuppliedIdentity(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
 	bogusID := uuid.New()
 	bogusTime := time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	o := testOLT(a.ID, m.ID, "Edge OLT")
+	o := testOLT(m.ID, "Edge OLT")
 	o.ID = bogusID
 	o.CreatedAt = bogusTime
 	o.UpdatedAt = bogusTime
@@ -212,23 +176,12 @@ func TestOLTRepositoryCreateIgnoresCallerSuppliedIdentity(t *testing.T) {
 	}
 }
 
-func TestOLTRepositoryCreateFailsWhenAccessNetworkDoesNotExist(t *testing.T) {
-	q, ctx := newTestQuerier(t)
-	m := createTestOLTModel(t, ctx, q)
-	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
-
-	_, err := repo.Create(ctx, testOLT(uuid.New(), m.ID, "Orphan OLT")) // access network does not exist
-
-	assertConflict(t, err)
-}
-
 func TestOLTRepositoryGet(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testOLT(a.ID, m.ID, "OLT-Get"))
+	created, err := repo.Create(ctx, testOLT(m.ID, "OLT-Get"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -237,7 +190,7 @@ func TestOLTRepositoryGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() = %v", err)
 	}
-	if got.ID != created.ID || got.AccessNetworkID != created.AccessNetworkID || got.Name != created.Name {
+	if got.ID != created.ID || got.Name != created.Name {
 		t.Errorf("Get() = %+v, want %+v", got, created)
 	}
 	if !got.CreatedAt.Equal(created.CreatedAt) {
@@ -259,15 +212,14 @@ func TestOLTRepositoryGetNotFound(t *testing.T) {
 
 func TestOLTRepositoryList(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
-	first, err := repo.Create(ctx, testOLT(a.ID, m.ID, "Alpha OLT"))
+	first, err := repo.Create(ctx, testOLT(m.ID, "Alpha OLT"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	second, err := repo.Create(ctx, testOLT(a.ID, m.ID, "Beta OLT"))
+	second, err := repo.Create(ctx, testOLT(m.ID, "Beta OLT"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -288,9 +240,8 @@ func TestOLTRepositoryList(t *testing.T) {
 		t.Error("List() did not include the second created OLT")
 	}
 
-	// Both were created within this same rolled-back transaction (plus
-	// the fixture AccessNetwork, a different table), so the list is
-	// exactly these two, letting us also check the ORDER BY name.
+	// Both were created within this same rolled-back transaction, so the
+	// list is exactly these two, letting us also check the ORDER BY name.
 	if len(olts) != 2 {
 		t.Fatalf("len(List()) = %d, want 2; got %+v", len(olts), olts)
 	}
@@ -301,20 +252,17 @@ func TestOLTRepositoryList(t *testing.T) {
 
 func TestOLTRepositoryUpdate(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
-	otherAccessNetwork := createTestAccessNetwork(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
 	otherModel := createTestOLTModel(t, ctx, q)
-	created, err := repo.Create(ctx, testOLT(a.ID, m.ID, "Old Name"))
+	created, err := repo.Create(ctx, testOLT(m.ID, "Old Name"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
 	updated, err := repo.Update(ctx, olt.OLT{
 		ID:                  created.ID,
-		AccessNetworkID:     otherAccessNetwork.ID,
 		Name:                "New Name",
 		OLTModelID:          otherModel.ID,
 		ManagementIPAddress: "10.0.0.2",
@@ -326,9 +274,6 @@ func TestOLTRepositoryUpdate(t *testing.T) {
 
 	if updated.Name != "New Name" {
 		t.Errorf("Name = %q, want %q", updated.Name, "New Name")
-	}
-	if updated.AccessNetworkID != otherAccessNetwork.ID {
-		t.Errorf("AccessNetworkID = %v, want %v (AccessNetworkID must be mutable via Update)", updated.AccessNetworkID, otherAccessNetwork.ID)
 	}
 	if updated.OLTModelID != otherModel.ID {
 		t.Errorf("OLTModelID = %v, want %v (OLTModelID must be mutable via Update)", updated.OLTModelID, otherModel.ID)
@@ -346,11 +291,10 @@ func TestOLTRepositoryUpdate(t *testing.T) {
 
 func TestOLTRepositoryUpdateNotFound(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
-	ghost := testOLT(a.ID, m.ID, "Ghost")
+	ghost := testOLT(m.ID, "Ghost")
 	ghost.ID = uuid.New()
 
 	_, err := repo.Update(ctx, ghost)
@@ -360,11 +304,10 @@ func TestOLTRepositoryUpdateNotFound(t *testing.T) {
 
 func TestOLTRepositoryDelete(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testOLT(a.ID, m.ID, "Temporary"))
+	created, err := repo.Create(ctx, testOLT(m.ID, "Temporary"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -388,39 +331,15 @@ func TestOLTRepositoryDeleteNotFound(t *testing.T) {
 
 func TestOLTRepositoryCreateConflictOnDuplicateID(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	fixedID := uuid.New()
 	repo := postgres.NewOLTRepository(q, clock.New(), id.Static{Value: fixedID})
 
-	if _, err := repo.Create(ctx, testOLT(a.ID, m.ID, "First")); err != nil {
+	if _, err := repo.Create(ctx, testOLT(m.ID, "First")); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
 
-	_, err := repo.Create(ctx, testOLT(a.ID, m.ID, "Second"))
-	assertConflict(t, err)
-}
-
-// TestAccessNetworkRepositoryDeleteBlockedByExistingOLT lives here, not
-// in internal/accessnetwork/postgres, so that package's existing test
-// files stay untouched — the same reasoning
-// internal/product/postgres/product_test.go already documents for why
-// its equivalent test lives with the child, not the parent. It exercises
-// AccessNetworkRepository.Delete against the foreign key this migration
-// adds.
-func TestAccessNetworkRepositoryDeleteBlockedByExistingOLT(t *testing.T) {
-	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
-	m := createTestOLTModel(t, ctx, q)
-	oltRepo := postgres.NewOLTRepository(q, clock.New(), id.New())
-	if _, err := oltRepo.Create(ctx, testOLT(a.ID, m.ID, "Blocking OLT")); err != nil {
-		t.Fatalf("Create() = %v", err)
-	}
-
-	accessNetworkRepo := accessnetworkpostgres.NewAccessNetworkRepository(q, clock.New(), id.New())
-
-	err := accessNetworkRepo.Delete(ctx, a.ID)
-
+	_, err := repo.Create(ctx, testOLT(m.ID, "Second"))
 	assertConflict(t, err)
 }
 
@@ -429,12 +348,11 @@ func TestAccessNetworkRepositoryDeleteBlockedByExistingOLT(t *testing.T) {
 // through Get.
 func TestOLTRepositoryCreateWithConnectionProfileID(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	profile := createTestConnectionProfile(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
-	o := testOLT(a.ID, m.ID, "Bound OLT")
+	o := testOLT(m.ID, "Bound OLT")
 	o.ConnectionProfileID = &profile.ID
 
 	created, err := repo.Create(ctx, o)
@@ -460,11 +378,10 @@ func TestOLTRepositoryCreateWithConnectionProfileID(t *testing.T) {
 // bound (see olt.OLT's own doc comment).
 func TestOLTRepositoryCreateWithoutConnectionProfileID(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testOLT(a.ID, m.ID, "Unbound OLT"))
+	created, err := repo.Create(ctx, testOLT(m.ID, "Unbound OLT"))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -475,12 +392,11 @@ func TestOLTRepositoryCreateWithoutConnectionProfileID(t *testing.T) {
 
 func TestOLTRepositoryCreateFailsWhenConnectionProfileDoesNotExist(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	repo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
 	nonexistent := uuid.New()
-	o := testOLT(a.ID, m.ID, "Orphan Reference OLT")
+	o := testOLT(m.ID, "Orphan Reference OLT")
 	o.ConnectionProfileID = &nonexistent
 
 	_, err := repo.Create(ctx, o)
@@ -491,19 +407,17 @@ func TestOLTRepositoryCreateFailsWhenConnectionProfileDoesNotExist(t *testing.T)
 // TestConnectionProfileRepositoryDeleteBlockedByExistingOLT lives here,
 // not in internal/connectionprofile/postgres, so that package's
 // existing test files stay untouched — the same reasoning
-// internal/olt/postgres/olt_test.go's own
-// TestAccessNetworkRepositoryDeleteBlockedByExistingOLT already
-// documents for why its equivalent test lives with the child, not the
-// parent. It exercises ConnectionProfileRepository.Delete against the
-// foreign key this milestone's migration adds.
+// internal/product/postgres/product_test.go already documents for why
+// its equivalent test lives with the child, not the parent. It exercises
+// ConnectionProfileRepository.Delete against the foreign key this
+// milestone's migration adds.
 func TestConnectionProfileRepositoryDeleteBlockedByExistingOLT(t *testing.T) {
 	q, ctx := newTestQuerier(t)
-	a := createTestAccessNetwork(t, ctx, q)
 	m := createTestOLTModel(t, ctx, q)
 	profile := createTestConnectionProfile(t, ctx, q)
 	oltRepo := postgres.NewOLTRepository(q, clock.New(), id.New())
 
-	o := testOLT(a.ID, m.ID, "Blocking OLT For Connection Profile")
+	o := testOLT(m.ID, "Blocking OLT For Connection Profile")
 	o.ConnectionProfileID = &profile.ID
 	if _, err := oltRepo.Create(ctx, o); err != nil {
 		t.Fatalf("Create() = %v", err)

@@ -10,8 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
-	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/database"
 	"github.com/paladindigitalgh/palladium-oss/internal/olt"
 	oltpostgres "github.com/paladindigitalgh/palladium-oss/internal/olt/postgres"
@@ -27,11 +25,10 @@ import (
 // newTestQuerier opens a transaction against the real test database,
 // rolled back automatically on cleanup — the same pattern as
 // internal/olt/postgres/olt_test.go. Every PONPort test needs a fixture
-// OLT (which itself needs a fixture AccessNetwork) to satisfy the
-// required OLTID foreign key, and the fixture must share the same
-// transaction as the repository under test, so tests here call this
-// directly rather than hiding it behind an OLT-style newTestRepository
-// wrapper.
+// OLT to satisfy the required OLTID foreign key, and the fixture must
+// share the same transaction as the repository under test, so tests here
+// call this directly rather than hiding it behind an OLT-style
+// newTestRepository wrapper.
 func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	t.Helper()
 
@@ -57,26 +54,15 @@ func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	return tx, ctx
 }
 
-// createTestOLT creates a real OLT row (and the fixture AccessNetwork it
-// requires) through internal/olt/postgres and
-// internal/accessnetwork/postgres — not internal/ponport/postgres — so a
-// PONPort fixture failure surfaces as a clear failure of one specific
-// layer, not a confusing failure somewhere else. This is the one place
-// this package imports internal/olt or internal/accessnetwork at all:
-// the domain model (internal/ponport) never does (see its package doc
-// comment), only this test, which genuinely needs a real olts row for
-// the foreign key to reference.
+// createTestOLT creates a real OLT row through internal/olt/postgres —
+// not internal/ponport/postgres — so a PONPort fixture failure surfaces
+// as a clear failure of one specific layer, not a confusing failure
+// somewhere else. This is the one place this package imports
+// internal/olt at all: the domain model (internal/ponport) never does
+// (see its package doc comment), only this test, which genuinely needs
+// a real olts row for the foreign key to reference.
 func createTestOLT(t *testing.T, ctx context.Context, q database.Querier) olt.OLT {
 	t.Helper()
-
-	accessNetworkRepo := accessnetworkpostgres.NewAccessNetworkRepository(q, clock.New(), id.New())
-	a, err := accessNetworkRepo.Create(ctx, accessnetwork.AccessNetwork{
-		Name:   "Fixture Access Network " + uuid.NewString(),
-		Status: accessnetwork.AccessNetworkStatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create access network: %v", err)
-	}
 
 	oltModelRepo := oltmodelpostgres.NewOLTModelRepository(q, clock.New(), id.New())
 	m, err := oltModelRepo.Create(ctx, oltmodel.OLTModel{
@@ -90,9 +76,8 @@ func createTestOLT(t *testing.T, ctx context.Context, q database.Querier) olt.OL
 
 	oltRepo := oltpostgres.NewOLTRepository(q, clock.New(), id.New())
 	o, err := oltRepo.Create(ctx, olt.OLT{
-		AccessNetworkID: a.ID,
-		Name:            "Fixture OLT " + uuid.NewString(),
-		OLTModelID:      m.ID,
+		Name:       "Fixture OLT " + uuid.NewString(),
+		OLTModelID: m.ID,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create olt: %v", err)
@@ -383,7 +368,7 @@ func TestPONPortRepositoryCreateConflictOnDuplicateID(t *testing.T) {
 // internal/olt/postgres, so that package's existing test files stay
 // untouched — the same reasoning
 // internal/olt/postgres/olt_test.go already documents for why its
-// equivalent test (blocking an AccessNetwork delete) lives with the
+// equivalent test (blocking a ConnectionProfile delete) lives with the
 // child, not the parent. It exercises OLTRepository.Delete against the
 // foreign key this migration adds.
 func TestOLTRepositoryDeleteBlockedByExistingPONPort(t *testing.T) {

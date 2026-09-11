@@ -8,7 +8,7 @@
 // not a reference to olt.OLT: the foreign key to olts(id) is a database
 // concept, enforced by internal/ponport/postgres and its migration, not
 // a Go package dependency — the same reasoning internal/olt/model.go
-// documents for why OLT does not import internal/accessnetwork.
+// documents for why OLT does not import internal/oltmodel.
 //
 // A PONPort describes that a numbered port exists on an OLT, nothing
 // about what is happening on it. Per this milestone's explicit scope,
@@ -19,9 +19,9 @@
 //   - VLANs: those belong to a future Network domain (see
 //     docs/ARCHITECTURE.md's Network domain), layered on top of a port,
 //     not folded into it.
-//   - Status: unlike accessnetwork.AccessNetwork, a PON port has no
-//     lifecycle field here at all — "is this port up," "is it
-//     provisioned," and "is it in alarm" are all real-time or
+//   - Status: a PON port has no lifecycle field here at all — "is this
+//     port up," "is it provisioned," and "is it in alarm" are all
+//     real-time or
 //     provisioning questions this milestone explicitly excludes (see
 //     "No monitoring, no alarms, no provisioning" in
 //     internal/olt/model.go's package doc comment, one level up), not

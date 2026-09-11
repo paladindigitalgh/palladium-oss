@@ -15,19 +15,18 @@ import (
 // oltRequest is the JSON body for POST /api/v1/olts and PUT
 // /api/v1/olts/{id}.
 //
-// AccessNetworkID and OLTModelID are left as plain uuid.UUID: neither
-// carries a domain enum type to decouple from in the first place — the
-// same reasoning internal/product/httpapi.productRequest gives for its
-// own CatalogID field. OLTModelID replaced this request's former Vendor
-// and Model string fields when both moved to internal/oltmodel.OLTModel
-// (see internal/olt/model.go's package doc comment) — OLTModelID is
-// what a caller now supplies instead.
+// OLTModelID is left as a plain uuid.UUID: it carries no domain enum type
+// to decouple from in the first place — the same reasoning
+// internal/product/httpapi.productRequest gives for its own CatalogID
+// field. OLTModelID replaced this request's former Vendor and Model
+// string fields when both moved to internal/oltmodel.OLTModel (see
+// internal/olt/model.go's package doc comment) — OLTModelID is what a
+// caller now supplies instead.
 //
 // It intentionally has no ID or timestamp fields. Identity is either
 // server-assigned (POST) or comes from the URL path (PUT); CreatedAt and
 // UpdatedAt are metadata the repository owns and a caller cannot set.
 type oltRequest struct {
-	AccessNetworkID     uuid.UUID  `json:"access_network_id"`
 	Name                string     `json:"name"`
 	OLTModelID          uuid.UUID  `json:"olt_model_id"`
 	ManagementIPAddress string     `json:"management_ip_address"`
@@ -41,7 +40,6 @@ type oltRequest struct {
 func (req oltRequest) toOLT(id uuid.UUID) olt.OLT {
 	return olt.OLT{
 		ID:                  id,
-		AccessNetworkID:     req.AccessNetworkID,
 		Name:                req.Name,
 		OLTModelID:          req.OLTModelID,
 		ManagementIPAddress: req.ManagementIPAddress,
@@ -56,7 +54,6 @@ func (req oltRequest) toOLT(id uuid.UUID) olt.OLT {
 // never silently change the API's JSON shape.
 type oltResponse struct {
 	ID                  uuid.UUID  `json:"id"`
-	AccessNetworkID     uuid.UUID  `json:"access_network_id"`
 	Name                string     `json:"name"`
 	OLTModelID          uuid.UUID  `json:"olt_model_id"`
 	ManagementIPAddress string     `json:"management_ip_address"`
@@ -69,7 +66,6 @@ type oltResponse struct {
 func newOLTResponse(o olt.OLT) oltResponse {
 	return oltResponse{
 		ID:                  o.ID,
-		AccessNetworkID:     o.AccessNetworkID,
 		Name:                o.Name,
 		OLTModelID:          o.OLTModelID,
 		ManagementIPAddress: o.ManagementIPAddress,

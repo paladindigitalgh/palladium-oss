@@ -61,7 +61,7 @@ var _ auth.UserRepository = stubUserRepository{}
 // location_handler_test.go's: those test the handler in isolation, with
 // no middleware in front of it at all.
 func newAuthenticatedTestRouter(svc *fakeLocationService, tokens *auth.TokenIssuer, role auth.Role) http.Handler {
-	handler := httpapi.NewLocationHandler(svc)
+	handler := httpapi.NewLocationHandler(svc, &fakeCustomerGetter{}, &fakeEventRecorder{})
 	authzMiddleware := authz.NewMiddleware(stubUserRepository{role: role})
 
 	r := chi.NewRouter()

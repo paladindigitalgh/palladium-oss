@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { nextTick } from 'vue'
-import { useExplorer } from './useExplorer'
+import { useExplorerReports } from './useExplorerReports'
 
 const { listCustomersWithContacts, listDevicesReport, listCustomersWithDevices } = vi.hoisted(() => ({
   listCustomersWithContacts: vi.fn(),
@@ -34,8 +34,27 @@ beforeEach(() => {
   downloadCsv.mockClear()
 })
 
-it('fetches the first report (Customers & Contacts) on creation', async () => {
-  useExplorer()
+it('fetches nothing on creation -- no report is selected until the user picks one', async () => {
+  const explorer = useExplorerReports()
+  await settle()
+
+  expect(listCustomersWithContacts).not.toHaveBeenCalled()
+  expect(listDevicesReport).not.toHaveBeenCalled()
+  expect(listCustomersWithDevices).not.toHaveBeenCalled()
+  expect(explorer.selectedReport.value).toBeNull()
+})
+
+it('exposes all three reports for the tile picker', () => {
+  const explorer = useExplorerReports()
+
+  expect(explorer.reports.map((r) => r.id)).toEqual(['customers-contacts', 'devices', 'customers-devices'])
+  expect(explorer.reports.every((r) => r.label && r.description)).toBe(true)
+})
+
+it('selectReport fetches the chosen report', async () => {
+  const explorer = useExplorerReports()
+
+  explorer.selectReport('customers-contacts')
   await settle()
 
   expect(listCustomersWithContacts).toHaveBeenCalledTimes(1)
@@ -59,7 +78,8 @@ it('flattens a Customers & Contacts row into the table/CSV shape', async () => {
     },
   ])
 
-  const explorer = useExplorer()
+  const explorer = useExplorerReports()
+  explorer.selectReport('customers-contacts')
   await settle()
 
   expect(explorer.pageRows.value).toEqual([
@@ -75,11 +95,12 @@ it('flattens a Customers & Contacts row into the table/CSV shape', async () => {
 })
 
 it('switching reports fetches only the newly selected report', async () => {
-  const explorer = useExplorer()
+  const explorer = useExplorerReports()
+  explorer.selectReport('customers-contacts')
   await settle()
   listCustomersWithContacts.mockClear()
 
-  explorer.selectedReportId.value = 'devices'
+  explorer.selectReport('devices')
   await settle()
 
   expect(listDevicesReport).toHaveBeenCalledTimes(1)
@@ -87,14 +108,15 @@ it('switching reports fetches only the newly selected report', async () => {
 })
 
 it('switching reports resets search and page', async () => {
-  const explorer = useExplorer()
+  const explorer = useExplorerReports()
+  explorer.selectReport('customers-contacts')
   await settle()
 
   explorer.search.value = 'acme'
   explorer.page.value = 2
   await settle()
 
-  explorer.selectedReportId.value = 'devices'
+  explorer.selectReport('devices')
   await settle()
 
   expect(explorer.search.value).toBe('')
@@ -129,7 +151,8 @@ it('search filters rows client-side without refetching', async () => {
     },
   ])
 
-  const explorer = useExplorer()
+  const explorer = useExplorerReports()
+  explorer.selectReport('customers-contacts')
   await settle()
   listCustomersWithContacts.mockClear()
 
@@ -142,7 +165,8 @@ it('search filters rows client-side without refetching', async () => {
 })
 
 it('search resets to page 1', async () => {
-  const explorer = useExplorer()
+  const explorer = useExplorerReports()
+  explorer.selectReport('customers-contacts')
   await settle()
 
   explorer.page.value = 3
@@ -156,7 +180,8 @@ it('search resets to page 1', async () => {
 
 describe('toggleSort', () => {
   it('flips direction when toggling the same key', async () => {
-    const explorer = useExplorer()
+    const explorer = useExplorerReports()
+    explorer.selectReport('customers-contacts')
     await settle()
 
     explorer.toggleSort('customerName')
@@ -167,7 +192,8 @@ describe('toggleSort', () => {
   })
 
   it('switches key and resets to ascending on a different key', async () => {
-    const explorer = useExplorer()
+    const explorer = useExplorerReports()
+    explorer.selectReport('customers-contacts')
     await settle()
 
     explorer.toggleSort('customerType')
@@ -178,17 +204,16 @@ describe('toggleSort', () => {
 })
 
 it('openRoute for a Customers & Contacts row points at the Customer detail route', async () => {
-  const explorer = useExplorer()
+  const explorer = useExplorerReports()
+  explorer.selectReport('customers-contacts')
   await settle()
 
   expect(explorer.openRoute({ key: 'c1-ct1', customerId: 'c1' })).toBe('/customers/c1')
 })
 
 it('openRoute for a Devices row points at the Device detail route', async () => {
-  const explorer = useExplorer()
-  await settle()
-
-  explorer.selectedReportId.value = 'devices'
+  const explorer = useExplorerReports()
+  explorer.selectReport('devices')
   await settle()
 
   expect(explorer.openRoute({ key: 'd1', deviceId: 'd1' })).toBe('/devices/d1')
@@ -222,7 +247,8 @@ it('exportCsv passes the search-filtered rows (not just the current page) to row
     },
   ])
 
-  const explorer = useExplorer()
+  const explorer = useExplorerReports()
+  explorer.selectReport('customers-contacts')
   await settle()
 
   explorer.search.value = 'acme'
@@ -231,11 +257,20 @@ it('exportCsv passes the search-filtered rows (not just the current page) to row
   explorer.exportCsv()
 
   expect(rowsToCsv).toHaveBeenCalledWith(
-    explorer.selectedReport.value.columns,
+    explorer.selectedReport.value?.columns,
     expect.arrayContaining([expect.objectContaining({ customerName: 'Acme' })]),
   )
   const exportedRows = rowsToCsv.mock.calls[0][1]
   expect(exportedRows).toHaveLength(1)
   expect(downloadCsv).toHaveBeenCalledTimes(1)
   expect(downloadCsv.mock.calls[0][0]).toMatch(/^customers-contacts-\d{4}-\d{2}-\d{2}\.csv$/)
+})
+
+it('exportCsv does nothing when no report is selected', () => {
+  const explorer = useExplorerReports()
+
+  explorer.exportCsv()
+
+  expect(rowsToCsv).not.toHaveBeenCalled()
+  expect(downloadCsv).not.toHaveBeenCalled()
 })

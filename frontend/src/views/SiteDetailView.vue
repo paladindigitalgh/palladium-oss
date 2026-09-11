@@ -25,10 +25,8 @@ import type { TimelineEvent } from '@/types/timelineEvent'
 
 /**
  * The Site Detail Workspace, root of the Inventory hierarchy (Site ->
- * Building -> Room -> Rack -> Device). Mirrors AccessNetworkDetailView.vue's
- * shape -- Summary, a nested Buildings section (add/remove/open, same
- * treatment AccessNetworkDetailView gives OLTs), Timeline,
- * delete-with-conflict-handling.
+ * Building -> Room -> Rack -> Device). Summary, a nested Buildings
+ * section (add/remove/open), Timeline, delete-with-conflict-handling.
  */
 const route = useRoute()
 const router = useRouter()

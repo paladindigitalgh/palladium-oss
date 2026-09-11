@@ -18,6 +18,7 @@ import AttachAccessAttachmentDialog from '@/components/dialogs/AttachAccessAttac
 import DetachAccessAttachmentDialog from '@/components/dialogs/DetachAccessAttachmentDialog.vue'
 import { getAccessInterfaceById, deleteAccessInterface } from '@/services/accessInterfaces/accessInterfaceRepository'
 import { getPONPortById } from '@/services/ponPorts/ponPortRepository'
+import { setBreadcrumb } from '@/composables/useBreadcrumb'
 import { listAccessAttachmentsByAccessInterfaceId, deleteAccessAttachment } from '@/services/accessAttachments/accessAttachmentRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import {
@@ -90,6 +91,14 @@ async function load(id: string) {
   ponPort.value = relatedPONPort
   attachments.value = accessInterfaceAttachments
   timeline.value = events
+
+  if (relatedPONPort) {
+    setBreadcrumb([
+      { label: 'Network', to: '/network' },
+      { label: 'PON Port Details', to: `/network/pon-ports/${relatedPONPort.id}` },
+      { label: 'Access Interface Details' },
+    ])
+  }
 
   loading.value = false
 }

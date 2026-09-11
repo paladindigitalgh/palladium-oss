@@ -18,9 +18,6 @@ import (
 	accessinterfacehttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/httpapi"
 	accessinterfacepostgres "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/postgres"
 	accessinterfaceservice "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/service"
-	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
-	accessnetworkpostgres "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/postgres"
-	accessnetworkservice "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/accesstopology"
 	accesstopologyhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accesstopology/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
@@ -184,6 +181,17 @@ func run() error {
 		database.NewHealthChecker(pool),
 	}
 
+	// Event has no service layer: there is no business logic beyond
+	// append and list (see internal/event's package doc comment), so the
+	// repository is wired directly to whatever depends on it. Built this
+	// early, well before its own eventHandler further down, because most
+	// other domains' handlers now also depend on it directly to record
+	// an Event after a successful mutation (see e.g. deviceHandler
+	// immediately below) -- the same "build it early enough for everyone
+	// who needs it" reasoning userRepo's own comment gives further down
+	// this file.
+	eventRepo := eventpostgres.NewEventRepository(pool, clock.New(), id.New())
+
 	// Site and Device are the only Inventory entities with an HTTP surface
 	// so far; Building and Room follow the same repository -> service ->
 	// handler chain once their own endpoints exist. clock.New() and
@@ -213,7 +221,7 @@ func run() error {
 	// chain as Site, one entity over in the same Inventory hierarchy.
 	deviceRepo := inventorypostgres.NewDeviceRepository(pool, clock.New(), id.New())
 	deviceService := service.NewDeviceService(deviceRepo)
-	deviceHandler := httpapi.NewDeviceHandler(deviceService)
+	deviceHandler := httpapi.NewDeviceHandler(deviceService, eventRepo)
 
 	// DeviceManufacturer and DeviceModel are constructed before Device's
 	// handler is used, mirroring OLTModel/PONPort's own construction
@@ -233,21 +241,21 @@ func run() error {
 	// of internal/inventory).
 	customerRepo := customerpostgres.NewCustomerRepository(pool, clock.New(), id.New())
 	customerSvc := customerservice.NewCustomerService(customerRepo)
-	customerHandler := customerhttpapi.NewCustomerHandler(customerSvc)
+	customerHandler := customerhttpapi.NewCustomerHandler(customerSvc, eventRepo)
 
 	// Location follows the exact same repository -> service -> handler
 	// chain as Site and Customer, one domain package over
 	// (internal/location instead of internal/customer).
 	locationRepo := locationpostgres.NewLocationRepository(pool, clock.New(), id.New())
 	locationSvc := locationservice.NewLocationService(locationRepo)
-	locationHandler := locationhttpapi.NewLocationHandler(locationSvc)
+	locationHandler := locationhttpapi.NewLocationHandler(locationSvc, customerSvc, eventRepo)
 
 	// Contact follows the exact same repository -> service -> handler
 	// chain as Location, one domain package over (internal/contact
 	// instead of internal/location).
 	contactRepo := contactpostgres.NewContactRepository(pool, clock.New(), id.New())
 	contactSvc := contactservice.NewContactService(contactRepo)
-	contactHandler := contacthttpapi.NewContactHandler(contactSvc)
+	contactHandler := contacthttpapi.NewContactHandler(contactSvc, customerSvc, eventRepo)
 
 	// Catalog and Product follow the exact same repository -> service ->
 	// handler chain as every domain above, two packages over
@@ -307,7 +315,7 @@ func run() error {
 	// nothing here actually requires that ordering.
 	serviceRepo := servicepostgres.NewServiceRepository(pool, clock.New(), id.New())
 	serviceSvc := serviceservice.NewServiceService(serviceRepo, serviceEquipmentRepo)
-	serviceHandler := servicehttpapi.NewServiceHandler(serviceSvc)
+	serviceHandler := servicehttpapi.NewServiceHandler(serviceSvc, locationSvc, customerSvc, eventRepo)
 
 	// Customer Device needs Service Equipment's repository too (not
 	// service — see below), for the same "read into the other's domain"
@@ -340,12 +348,8 @@ func run() error {
 	// LocationID -- a set LocationID must belong to the same Customer.
 	customerDeviceSvc := customerdeviceservice.NewCustomerDeviceService(
 		customerDeviceRepo, deviceService, deviceService, serviceEquipmentRepo, locationSvc)
-	customerDeviceHandler := customerdevicehttpapi.NewCustomerDeviceHandler(customerDeviceSvc)
+	customerDeviceHandler := customerdevicehttpapi.NewCustomerDeviceHandler(customerDeviceSvc, deviceService, customerSvc, eventRepo)
 
-	// Event has no service layer: there is no business logic beyond
-	// append and list (see internal/event's package doc comment), so the
-	// repository is wired directly to the handler.
-	eventRepo := eventpostgres.NewEventRepository(pool, clock.New(), id.New())
 	eventHandler := eventhttpapi.NewEventHandler(eventRepo)
 
 	// userRepo is built here, well before the rest of auth's wiring
@@ -412,20 +416,17 @@ func run() error {
 	// transition/event-recording semantics for workflowSvc to add.
 	workflowWorker := workflowworker.New(workflowRepo, workflowEngine, cfg.Workflow.PollInterval, logger)
 
-	// Access Network, OLT, and PON Port follow the same repository ->
-	// service -> handler chain as every domain above, three packages
-	// over (internal/accessnetwork, internal/olt, and internal/ponport).
-	// OLT is constructed after AccessNetwork and PONPort after OLT,
-	// mirroring the FK chain between their tables, though as with every
-	// other pair above nothing here actually requires that ordering.
-	accessNetworkRepo := accessnetworkpostgres.NewAccessNetworkRepository(pool, clock.New(), id.New())
-	accessNetworkSvc := accessnetworkservice.NewAccessNetworkService(accessNetworkRepo)
-	accessNetworkHandler := accessnetworkhttpapi.NewAccessNetworkHandler(accessNetworkSvc)
-
-	// OLTModel and PONPort are both constructed before OLT, not after
-	// (unlike AccessNetwork/OLT/PONPort's usual FK-mirroring order just
-	// above): OLTService.Create depends on oltModelRepo and ponPortRepo
-	// directly to auto-create PON ports on OLT creation (see
+	// OLT, OLT Model, and PON Port follow the same repository -> service
+	// -> handler chain as every domain above, three packages over
+	// (internal/olt, internal/oltmodel, and internal/ponport). OLT is the
+	// root of the Network hierarchy — nothing above it — with PON Port
+	// nested inside it, mirroring the FK from pon_ports into olts, though
+	// as with every other pair above nothing here actually requires that
+	// ordering.
+	//
+	// OLTModel and PONPort are both constructed before OLT: OLTService.
+	// Create depends on oltModelRepo and ponPortRepo directly to
+	// auto-create PON ports on OLT creation (see
 	// internal/olt/service.OLTService's own doc comment), so both must
 	// already exist by the time NewOLTService is called.
 	oltModelRepo := oltmodelpostgres.NewOLTModelRepository(pool, clock.New(), id.New())
@@ -552,7 +553,8 @@ func run() error {
 	serviceEquipmentSvc := serviceequipmentservice.NewServiceEquipmentService(
 		serviceEquipmentRepo, deviceService, deviceService, customerDeviceRepo,
 		onuAuthorizationSvc, accessInterfaceSvc, accessAttachmentSvc, accessAttachmentSvc)
-	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(serviceEquipmentSvc)
+	serviceEquipmentHandler := serviceequipmenthttpapi.NewServiceEquipmentHandler(
+		serviceEquipmentSvc, deviceService, serviceSvc, locationSvc, customerSvc, eventRepo)
 
 	// Kontron ONU authorization (internal/provisioning/kontron) is this
 	// codebase's first real vendor-specific *write* command surface —
@@ -625,7 +627,7 @@ func run() error {
 		oltRepo, oltModelRepo, accessAttachmentRepo, accessAttachmentSvc,
 		onuAuthorizationSvc, onuAuthorizationSvc,
 		deviceService, deviceService, clock.New(), cfg.Kontron.ManagementServiceProfile)
-	provisioningKontronDeauthorizationHandler := provisioningkontronhttpapi.NewDeauthorizationHandler(provisioningKontronDeauthorizationSvc)
+	provisioningKontronDeauthorizationHandler := provisioningkontronhttpapi.NewDeauthorizationHandler(provisioningKontronDeauthorizationSvc, deviceService, eventRepo)
 
 	// Customer removal ("Remove Customer",
 	// internal/customer/removal.RemovalService) cascades a Customer's own
@@ -706,7 +708,6 @@ func run() error {
 		EventHandler:                                       eventHandler,
 		NoteHandler:                                        noteHandler,
 		ReportHandler:                                      reportHandler,
-		AccessNetworkHandler:                               accessNetworkHandler,
 		OLTHandler:                                         oltHandler,
 		OLTModelHandler:                                    oltModelHandler,
 		PONPortHandler:                                     ponPortHandler,

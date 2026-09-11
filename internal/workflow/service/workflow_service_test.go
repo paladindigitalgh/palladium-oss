@@ -65,6 +65,10 @@ func (e *fakeEvents) ListRecent(context.Context, int) ([]event.Event, error) {
 	return e.created, nil
 }
 
+func (e *fakeEvents) List(context.Context) ([]event.Event, error) {
+	return e.created, nil
+}
+
 func TestCreateForcesInitialState(t *testing.T) {
 	repo := newFakeRepo()
 	svc := service.New(repo, &fakeEvents{}, clock.NewFrozen(time.Now()))

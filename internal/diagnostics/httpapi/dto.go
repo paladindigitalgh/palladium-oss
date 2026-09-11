@@ -18,7 +18,7 @@ import (
 // /api/v1/diagnostics/basic-onu-check.
 //
 // ONUID is tagged "onuId" — camelCase, not this codebase's otherwise
-// universal snake_case ("location_id", "product_id", "access_network_id",
+// universal snake_case ("location_id", "product_id", "olt_model_id",
 // ...; see e.g. internal/service/httpapi.serviceRequest). This is a
 // deliberate, one-off deviation, not a new convention: goal 7 of this
 // milestone specifies the exact request body verbatim —

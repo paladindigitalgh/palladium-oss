@@ -13,7 +13,6 @@ import (
 
 	accessattachmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessattachment/httpapi"
 	accessinterfacehttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/httpapi"
-	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	accesstopologyhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accesstopology/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
@@ -82,7 +81,6 @@ type Dependencies struct {
 	EventHandler                                       *eventhttpapi.EventHandler
 	NoteHandler                                        *notehttpapi.NoteHandler
 	ReportHandler                                      *reporthttpapi.ReportHandler
-	AccessNetworkHandler                               *accessnetworkhttpapi.AccessNetworkHandler
 	OLTHandler                                         *olthttpapi.OLTHandler
 	OLTModelHandler                                    *oltmodelhttpapi.OLTModelHandler
 	PONPortHandler                                     *ponporthttpapi.PONPortHandler
@@ -536,43 +534,26 @@ func NewRouter(deps Dependencies) http.Handler {
 			})
 		})
 
-		// /access-networks, /olts, and /pon-ports share one capability
-		// pair (RequireAccessNetworkRead/RequireAccessNetworkWrite),
-		// mirroring /catalogs and /products above: an OLT only exists
-		// nested inside an AccessNetwork, and a PONPort only exists
-		// nested inside an OLT (see authz.CanReadAccessNetwork's doc
-		// comment), so "who can read/write" each of the three is the same
-		// question asked at three levels of one domain, not three domains
-		// that happen to share a rule today. Each still gets its own
-		// route group — the capability is shared, the routing is not.
-		r.Route("/access-networks", func(r chi.Router) {
-			r.Use(auth.Middleware(deps.Tokens))
-
-			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireAccessNetworkRead())
-				r.Get("/", deps.AccessNetworkHandler.List)
-				r.Get("/{id}", deps.AccessNetworkHandler.Get)
-			})
-
-			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireAccessNetworkWrite())
-				r.Post("/", deps.AccessNetworkHandler.Create)
-				r.Put("/{id}", deps.AccessNetworkHandler.Update)
-				r.Delete("/{id}", deps.AccessNetworkHandler.Delete)
-			})
-		})
-
+		// /olts, /olt-models, and /pon-ports share one capability
+		// pair (RequireNetworkRead/RequireNetworkWrite),
+		// mirroring /catalogs and /products above: OLT is the root of the
+		// Network hierarchy, and a PONPort only exists nested inside an
+		// OLT (see authz.CanReadNetwork's doc comment), so "who can
+		// read/write" each of these is the same question asked at
+		// different levels of one domain, not domains that happen to
+		// share a rule today. Each still gets its own route group — the
+		// capability is shared, the routing is not.
 		r.Route("/olts", func(r chi.Router) {
 			r.Use(auth.Middleware(deps.Tokens))
 
 			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireAccessNetworkRead())
+				r.Use(deps.Authz.RequireNetworkRead())
 				r.Get("/", deps.OLTHandler.List)
 				r.Get("/{id}", deps.OLTHandler.Get)
 			})
 
 			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireAccessNetworkWrite())
+				r.Use(deps.Authz.RequireNetworkWrite())
 				r.Post("/", deps.OLTHandler.Create)
 				r.Put("/{id}", deps.OLTHandler.Update)
 				r.Delete("/{id}", deps.OLTHandler.Delete)
@@ -580,22 +561,22 @@ func NewRouter(deps Dependencies) http.Handler {
 		})
 
 		// /olt-models shares /olts' own capability pair
-		// (RequireAccessNetworkRead/RequireAccessNetworkWrite): an
+		// (RequireNetworkRead/RequireNetworkWrite): an
 		// OLTModel is the Administration-managed catalog an OLT's
-		// OLTModelID references (see authz.CanReadAccessNetwork's doc
+		// OLTModelID references (see authz.CanReadNetwork's doc
 		// comment), not a separate resource with its own authorization
 		// question.
 		r.Route("/olt-models", func(r chi.Router) {
 			r.Use(auth.Middleware(deps.Tokens))
 
 			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireAccessNetworkRead())
+				r.Use(deps.Authz.RequireNetworkRead())
 				r.Get("/", deps.OLTModelHandler.List)
 				r.Get("/{id}", deps.OLTModelHandler.Get)
 			})
 
 			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireAccessNetworkWrite())
+				r.Use(deps.Authz.RequireNetworkWrite())
 				r.Post("/", deps.OLTModelHandler.Create)
 				r.Put("/{id}", deps.OLTModelHandler.Update)
 				r.Delete("/{id}", deps.OLTModelHandler.Delete)
@@ -606,13 +587,13 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Use(auth.Middleware(deps.Tokens))
 
 			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireAccessNetworkRead())
+				r.Use(deps.Authz.RequireNetworkRead())
 				r.Get("/", deps.PONPortHandler.List)
 				r.Get("/{id}", deps.PONPortHandler.Get)
 			})
 
 			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireAccessNetworkWrite())
+				r.Use(deps.Authz.RequireNetworkWrite())
 				r.Post("/", deps.PONPortHandler.Create)
 				r.Put("/{id}", deps.PONPortHandler.Update)
 				r.Delete("/{id}", deps.PONPortHandler.Delete)
@@ -621,7 +602,7 @@ func NewRouter(deps Dependencies) http.Handler {
 
 		// /access-interfaces and /access-attachments share one capability
 		// pair (RequireAccessTopologyRead/RequireAccessTopologyWrite),
-		// deliberately distinct from RequireAccessNetworkRead/Write above
+		// deliberately distinct from RequireNetworkRead/Write above
 		// (see authz.CanReadAccessTopology's doc comment): an
 		// AccessAttachment only exists nested inside an AccessInterface,
 		// so "who can read/write" each of the two is the same question

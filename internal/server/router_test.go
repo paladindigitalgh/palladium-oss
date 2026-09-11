@@ -16,8 +16,6 @@ import (
 	accessattachmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessattachment/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/accessinterface"
 	accessinterfacehttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessinterface/httpapi"
-	"github.com/paladindigitalgh/palladium-oss/internal/accessnetwork"
-	accessnetworkhttpapi "github.com/paladindigitalgh/palladium-oss/internal/accessnetwork/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/auth"
 	authhttpapi "github.com/paladindigitalgh/palladium-oss/internal/auth/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/authentication"
@@ -31,6 +29,7 @@ import (
 	customerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/customer/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/diagnostics"
 	diagnosticshttpapi "github.com/paladindigitalgh/palladium-oss/internal/diagnostics/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory"
 	"github.com/paladindigitalgh/palladium-oss/internal/inventory/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/location"
@@ -588,6 +587,17 @@ func TestRouterAdministratorCanWriteRacks(t *testing.T) {
 	}
 }
 
+// stubEventRecorder satisfies the narrow eventRecorder seam several
+// handlers now depend on (DeviceHandler, CustomerHandler, and so on) to
+// record an Event after a successful mutation — shared across every
+// newRouterWith* constructor below that needs one, the same technique
+// stubUserRepository above is shared for authz.
+type stubEventRecorder struct{}
+
+func (stubEventRecorder) Create(_ context.Context, e event.Event) (event.Event, error) {
+	return e, nil
+}
+
 // stubDeviceService satisfies whatever interface httpapi.DeviceHandler
 // needs structurally, the same technique stubSiteService above uses.
 type stubDeviceService struct{}
@@ -619,7 +629,7 @@ func newRouterWithDevices(tokens *auth.TokenIssuer, role auth.Role) http.Handler
 		Logger:        logger,
 		Version:       "test",
 		Commit:        "test",
-		DeviceHandler: httpapi.NewDeviceHandler(stubDeviceService{}),
+		DeviceHandler: httpapi.NewDeviceHandler(stubDeviceService{}, stubEventRecorder{}),
 		Tokens:        tokens,
 		Authz:         authz.NewMiddleware(stubUserRepository{role: role}),
 	})
@@ -737,7 +747,7 @@ func newRouterWithCustomers(tokens *auth.TokenIssuer, role auth.Role) http.Handl
 		Logger:          logger,
 		Version:         "test",
 		Commit:          "test",
-		CustomerHandler: customerhttpapi.NewCustomerHandler(stubCustomerService{}),
+		CustomerHandler: customerhttpapi.NewCustomerHandler(stubCustomerService{}, stubEventRecorder{}),
 		Tokens:          tokens,
 		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
 	})
@@ -859,7 +869,7 @@ func newRouterWithLocations(tokens *auth.TokenIssuer, role auth.Role) http.Handl
 		Logger:          logger,
 		Version:         "test",
 		Commit:          "test",
-		LocationHandler: locationhttpapi.NewLocationHandler(stubLocationService{}),
+		LocationHandler: locationhttpapi.NewLocationHandler(stubLocationService{}, stubCustomerService{}, stubEventRecorder{}),
 		Tokens:          tokens,
 		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
 	})
@@ -1197,7 +1207,7 @@ func newRouterWithServices(tokens *auth.TokenIssuer, role auth.Role) http.Handle
 		Logger:         logger,
 		Version:        "test",
 		Commit:         "test",
-		ServiceHandler: servicehttpapi.NewServiceHandler(stubServiceService{}),
+		ServiceHandler: servicehttpapi.NewServiceHandler(stubServiceService{}, stubLocationService{}, stubCustomerService{}, stubEventRecorder{}),
 		Tokens:         tokens,
 		Authz:          authz.NewMiddleware(stubUserRepository{role: role}),
 	})
@@ -1319,7 +1329,8 @@ func newRouterWithServiceEquipment(tokens *auth.TokenIssuer, role auth.Role) htt
 		Logger:                  logger,
 		Version:                 "test",
 		Commit:                  "test",
-		ServiceEquipmentHandler: serviceequipmenthttpapi.NewServiceEquipmentHandler(stubServiceEquipmentService{}),
+		ServiceEquipmentHandler: serviceequipmenthttpapi.NewServiceEquipmentHandler(
+			stubServiceEquipmentService{}, stubDeviceService{}, stubServiceService{}, stubLocationService{}, stubCustomerService{}, stubEventRecorder{}),
 		Tokens:                  tokens,
 		Authz:                   authz.NewMiddleware(stubUserRepository{role: role}),
 	})
@@ -1577,26 +1588,10 @@ func TestRouterAdministratorCanDriveWorkflowStateTransitions(t *testing.T) {
 	}
 }
 
-// stubAccessNetworkService, stubOLTService, and stubPONPortService each
+// stubOLTService, stubOLTModelService, and stubPONPortService each
 // satisfy whatever interface their respective httpapi.*Handler needs
 // structurally, the same technique stubSiteService and every other stub
 // above uses.
-type stubAccessNetworkService struct{}
-
-func (stubAccessNetworkService) Get(context.Context, uuid.UUID) (accessnetwork.AccessNetwork, error) {
-	return accessnetwork.AccessNetwork{}, apperror.NotFound("access network not found")
-}
-func (stubAccessNetworkService) List(context.Context) ([]accessnetwork.AccessNetwork, error) {
-	return nil, nil
-}
-func (stubAccessNetworkService) Create(_ context.Context, a accessnetwork.AccessNetwork) (accessnetwork.AccessNetwork, error) {
-	return a, nil
-}
-func (stubAccessNetworkService) Update(_ context.Context, a accessnetwork.AccessNetwork) (accessnetwork.AccessNetwork, error) {
-	return a, nil
-}
-func (stubAccessNetworkService) Delete(context.Context, uuid.UUID) error { return nil }
-
 type stubOLTService struct{}
 
 func (stubOLTService) Get(context.Context, uuid.UUID) (olt.OLT, error) {
@@ -1639,50 +1634,36 @@ func (stubPONPortService) Update(_ context.Context, p ponport.PONPort) (ponport.
 }
 func (stubPONPortService) Delete(context.Context, uuid.UUID) error { return nil }
 
-// newRouterWithAccessNetwork mirrors newRouterWithCatalog exactly, one
-// domain over: it proves /api/v1/access-networks, /api/v1/olts,
-// /api/v1/olt-models, and /api/v1/pon-ports are all wired up behind
-// auth.Middleware and authz.Middleware in the real production router,
-// sharing RequireAccessNetworkRead/RequireAccessNetworkWrite (see
-// authz.CanReadAccessNetwork's doc comment for why one capability pair
-// guards all four resources). See each domain's own
+// newRouterWithOLT mirrors newRouterWithCatalog exactly, one domain
+// over: it proves /api/v1/olts, /api/v1/olt-models, and
+// /api/v1/pon-ports are all wired up behind auth.Middleware and
+// authz.Middleware in the real production router, sharing
+// RequireNetworkRead/RequireNetworkWrite (see
+// authz.CanReadNetwork's doc comment for why one capability pair
+// guards all three resources). See each domain's own
 // httpapi/authenticated_test.go for far more thorough versions of the
 // same checks, scoped to that package.
-func newRouterWithAccessNetwork(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
+func newRouterWithOLT(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return api.NewRouter(api.Dependencies{
-		Logger:               logger,
-		Version:              "test",
-		Commit:               "test",
-		AccessNetworkHandler: accessnetworkhttpapi.NewAccessNetworkHandler(stubAccessNetworkService{}),
-		OLTHandler:           olthttpapi.NewOLTHandler(stubOLTService{}),
-		OLTModelHandler:      oltmodelhttpapi.NewOLTModelHandler(stubOLTModelService{}),
-		PONPortHandler:       ponporthttpapi.NewPONPortHandler(stubPONPortService{}),
-		Tokens:               tokens,
-		Authz:                authz.NewMiddleware(stubUserRepository{role: role}),
+		Logger:          logger,
+		Version:         "test",
+		Commit:          "test",
+		OLTHandler:      olthttpapi.NewOLTHandler(stubOLTService{}),
+		OLTModelHandler: oltmodelhttpapi.NewOLTModelHandler(stubOLTModelService{}),
+		PONPortHandler:  ponporthttpapi.NewPONPortHandler(stubPONPortService{}),
+		Tokens:          tokens,
+		Authz:           authz.NewMiddleware(stubUserRepository{role: role}),
 	})
 }
 
-const validAccessNetworkBody = `{"name":"Test Access Network","status":"Active"}`
-const validOLTBody = `{"access_network_id":"11111111-1111-1111-1111-111111111111","name":"Test OLT","olt_model_id":"22222222-2222-2222-2222-222222222222"}`
+const validOLTBody = `{"name":"Test OLT","olt_model_id":"22222222-2222-2222-2222-222222222222"}`
 const validOLTModelBody = `{"vendor":"Kontron","name":"C16","pon_port_count":16}`
 const validPONPortBody = `{"olt_id":"11111111-1111-1111-1111-111111111111","port_number":1}`
 
-func TestRouterRejectsUnauthenticatedAccessNetworkRequests(t *testing.T) {
-	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
-
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/access-networks/", nil))
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
-	}
-}
-
 func TestRouterRejectsUnauthenticatedOLTRequests(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+	router := newRouterWithOLT(tokens, auth.RoleAdministrator)
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/olts/", nil))
@@ -1694,7 +1675,7 @@ func TestRouterRejectsUnauthenticatedOLTRequests(t *testing.T) {
 
 func TestRouterRejectsUnauthenticatedOLTModelRequests(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+	router := newRouterWithOLT(tokens, auth.RoleAdministrator)
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/olt-models/", nil))
@@ -1706,7 +1687,7 @@ func TestRouterRejectsUnauthenticatedOLTModelRequests(t *testing.T) {
 
 func TestRouterRejectsUnauthenticatedPONPortRequests(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+	router := newRouterWithOLT(tokens, auth.RoleAdministrator)
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/pon-ports/", nil))
@@ -1716,15 +1697,15 @@ func TestRouterRejectsUnauthenticatedPONPortRequests(t *testing.T) {
 	}
 }
 
-// TestRouterViewerCanReadAccessNetworkOLTsAndPONPorts is "apply the
+// TestRouterViewerCanReadNetworkOLTsAndPONPorts is "apply the
 // standard RBAC matrix", proven through the real, fully wired router,
-// for all four resources at once.
-func TestRouterViewerCanReadAccessNetworkOLTsAndPONPorts(t *testing.T) {
+// for all three resources at once.
+func TestRouterViewerCanReadNetworkOLTsAndPONPorts(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithAccessNetwork(tokens, auth.RoleViewer)
+	router := newRouterWithOLT(tokens, auth.RoleViewer)
 	token := mustIssueToken(t, tokens)
 
-	for _, path := range []string{"/api/v1/access-networks/", "/api/v1/olts/", "/api/v1/olt-models/", "/api/v1/pon-ports/"} {
+	for _, path := range []string{"/api/v1/olts/", "/api/v1/olt-models/", "/api/v1/pon-ports/"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		rec := httptest.NewRecorder()
@@ -1736,19 +1717,18 @@ func TestRouterViewerCanReadAccessNetworkOLTsAndPONPorts(t *testing.T) {
 	}
 }
 
-// TestRouterViewerCannotWriteAccessNetworkOLTsOrPONPorts is "apply the
+// TestRouterViewerCannotWriteOLTsOLTModelsOrPONPorts is "apply the
 // standard RBAC matrix", proven through the real, fully wired router,
 // for all three resources at once.
-func TestRouterViewerCannotWriteAccessNetworkOLTsOrPONPorts(t *testing.T) {
+func TestRouterViewerCannotWriteOLTsOLTModelsOrPONPorts(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithAccessNetwork(tokens, auth.RoleViewer)
+	router := newRouterWithOLT(tokens, auth.RoleViewer)
 	token := mustIssueToken(t, tokens)
 
 	cases := []struct {
 		path string
 		body string
 	}{
-		{"/api/v1/access-networks/", validAccessNetworkBody},
 		{"/api/v1/olts/", validOLTBody},
 		{"/api/v1/olt-models/", validOLTModelBody},
 		{"/api/v1/pon-ports/", validPONPortBody},
@@ -1765,19 +1745,18 @@ func TestRouterViewerCannotWriteAccessNetworkOLTsOrPONPorts(t *testing.T) {
 	}
 }
 
-// TestRouterOperatorCanWriteAccessNetworkOLTsAndPONPorts is "apply the
+// TestRouterOperatorCanWriteNetworkOLTsAndPONPorts is "apply the
 // standard RBAC matrix", proven through the real, fully wired router,
 // for all three resources at once.
-func TestRouterOperatorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
+func TestRouterOperatorCanWriteNetworkOLTsAndPONPorts(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithAccessNetwork(tokens, auth.RoleOperator)
+	router := newRouterWithOLT(tokens, auth.RoleOperator)
 	token := mustIssueToken(t, tokens)
 
 	cases := []struct {
 		path string
 		body string
 	}{
-		{"/api/v1/access-networks/", validAccessNetworkBody},
 		{"/api/v1/olts/", validOLTBody},
 		{"/api/v1/olt-models/", validOLTModelBody},
 		{"/api/v1/pon-ports/", validPONPortBody},
@@ -1794,19 +1773,18 @@ func TestRouterOperatorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
 	}
 }
 
-// TestRouterAdministratorCanWriteAccessNetworkOLTsAndPONPorts is "apply
+// TestRouterAdministratorCanWriteNetworkOLTsAndPONPorts is "apply
 // the standard RBAC matrix", proven through the real, fully wired
 // router, for all three resources at once.
-func TestRouterAdministratorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
+func TestRouterAdministratorCanWriteNetworkOLTsAndPONPorts(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithAccessNetwork(tokens, auth.RoleAdministrator)
+	router := newRouterWithOLT(tokens, auth.RoleAdministrator)
 	token := mustIssueToken(t, tokens)
 
 	cases := []struct {
 		path string
 		body string
 	}{
-		{"/api/v1/access-networks/", validAccessNetworkBody},
 		{"/api/v1/olts/", validOLTBody},
 		{"/api/v1/olt-models/", validOLTModelBody},
 		{"/api/v1/pon-ports/", validPONPortBody},
@@ -1825,7 +1803,7 @@ func TestRouterAdministratorCanWriteAccessNetworkOLTsAndPONPorts(t *testing.T) {
 
 // stubAccessInterfaceService and stubAccessAttachmentService each
 // satisfy whatever interface their respective httpapi.*Handler needs
-// structurally, the same technique stubAccessNetworkService and every
+// structurally, the same technique stubOLTService and every
 // other stub above uses.
 type stubAccessInterfaceService struct{}
 
@@ -1859,7 +1837,7 @@ func (stubAccessAttachmentService) Update(_ context.Context, a accessattachment.
 }
 func (stubAccessAttachmentService) Delete(context.Context, uuid.UUID) error { return nil }
 
-// newRouterWithAccessTopology mirrors newRouterWithAccessNetwork exactly,
+// newRouterWithAccessTopology mirrors newRouterWithOLT exactly,
 // one domain over: it proves /api/v1/access-interfaces and
 // /api/v1/access-attachments are both wired up behind auth.Middleware and
 // authz.Middleware in the real production router, sharing

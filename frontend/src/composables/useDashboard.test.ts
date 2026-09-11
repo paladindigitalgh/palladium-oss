@@ -15,7 +15,6 @@ const {
   listServices,
   listDevices,
   listAllWorkflowInstances,
-  listAccessNetworks,
   listOLTs,
   listPONPorts,
   listAccessInterfaces,
@@ -25,7 +24,6 @@ const {
   listServices: vi.fn(),
   listDevices: vi.fn(),
   listAllWorkflowInstances: vi.fn(),
-  listAccessNetworks: vi.fn(),
   listOLTs: vi.fn(),
   listPONPorts: vi.fn(),
   listAccessInterfaces: vi.fn(),
@@ -36,7 +34,6 @@ vi.mock('@/services/customers/customerRepository', () => ({ listCustomers }))
 vi.mock('@/services/services/serviceRepository', () => ({ listServices }))
 vi.mock('@/services/devices/deviceRepository', () => ({ listDevices }))
 vi.mock('@/services/workflow/workflowRepository', () => ({ listAllWorkflowInstances }))
-vi.mock('@/services/accessNetworks/accessNetworkRepository', () => ({ listAccessNetworks }))
 vi.mock('@/services/olts/oltRepository', () => ({ listOLTs }))
 vi.mock('@/services/ponPorts/ponPortRepository', () => ({ listPONPorts }))
 vi.mock('@/services/accessInterfaces/accessInterfaceRepository', () => ({ listAccessInterfaces }))
@@ -91,7 +88,6 @@ function stubHappyPath() {
     workflowInstance({ id: 'w4', status: 'Running' }),
     workflowInstance({ id: 'w5', status: 'Cancelled' }),
   ])
-  listAccessNetworks.mockResolvedValue({ items: [], total: 3 })
   listOLTs.mockResolvedValue([{ id: 'olt1' }, { id: 'olt2' }])
   listPONPorts.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }])
   listAccessInterfaces.mockResolvedValue([
@@ -108,7 +104,6 @@ beforeEach(() => {
     listServices,
     listDevices,
     listAllWorkflowInstances,
-    listAccessNetworks,
     listOLTs,
     listPONPorts,
     listAccessInterfaces,
@@ -128,7 +123,6 @@ it('fetches every source in parallel on creation', async () => {
   expect(listServices).toHaveBeenCalledWith({ status: 'Active', pageSize: 1 })
   expect(listDevices).toHaveBeenCalledWith({ pageSize: 1 })
   expect(listAllWorkflowInstances).toHaveBeenCalled()
-  expect(listAccessNetworks).toHaveBeenCalledWith({ pageSize: 1 })
   expect(listOLTs).toHaveBeenCalled()
   expect(listPONPorts).toHaveBeenCalled()
   expect(listAccessInterfaces).toHaveBeenCalled()
@@ -152,7 +146,6 @@ it('derives network overview counts, splitting access interfaces by status', asy
   await settle()
 
   expect(dashboard.networkOverview.value).toEqual({
-    accessNetworks: 3,
     olts: 2,
     ponPorts: 3,
     activeInterfaces: 2,

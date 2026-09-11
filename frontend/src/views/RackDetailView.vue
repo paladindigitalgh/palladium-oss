@@ -17,6 +17,7 @@ import ConfirmationDialog from '@/components/dialogs/ConfirmationDialog.vue'
 import RackFormDialog from '@/components/dialogs/RackFormDialog.vue'
 import { getRackById, deleteRack } from '@/services/racks/rackRepository'
 import { getRoomById } from '@/services/rooms/roomRepository'
+import { setBreadcrumb } from '@/composables/useBreadcrumb'
 import { listDevicesByRackId } from '@/services/devices/deviceRepository'
 import { listEvents } from '@/services/events/eventRepository'
 import { formatDisplayDate as formatDate } from '@/lib/dates'
@@ -70,6 +71,15 @@ async function load(id: string) {
   room.value = relatedRoom
   devices.value = rackDevices
   timeline.value = events
+
+  if (relatedRoom) {
+    setBreadcrumb([
+      { label: 'Administration' },
+      { label: 'Inventory', to: '/administration/inventory' },
+      { label: 'Room Details', to: `/administration/inventory/rooms/${relatedRoom.id}` },
+      { label: 'Rack Details' },
+    ])
+  }
 
   loading.value = false
 }

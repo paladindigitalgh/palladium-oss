@@ -33,7 +33,7 @@ import "github.com/paladindigitalgh/palladium-oss/internal/auth"
 // Buildings, Rooms, Racks, and Devices), plus the Device Manufacturer
 // and Device Model catalogs (internal/devicemanufacturer,
 // internal/devicemodel) a Device's DeviceModelID references — the same
-// reasoning authz.CanReadAccessNetwork's doc comment gives for OLTModel
+// reasoning authz.CanReadNetwork's doc comment gives for OLTModel
 // sharing OLT's capability pair rather than defining its own. All three
 // built-in roles can.
 func CanReadInventory(role auth.Role) bool {
@@ -369,31 +369,29 @@ func CanWriteWorkflow(role auth.Role) bool {
 	}
 }
 
-// CanReadAccessNetwork reports whether role may read Access Network
-// data — AccessNetwork, OLT, and PONPort records alike (see
-// internal/accessnetwork, internal/olt, internal/ponport), plus the OLT
-// Model catalog (internal/oltmodel) an OLT's OLTModelID references. All
-// three built-in roles can — identical to CanReadWorkflow's rule today.
+// CanReadNetwork reports whether role may read Network
+// data — OLT and PONPort records alike (see internal/olt,
+// internal/ponport), plus the OLT Model catalog (internal/oltmodel) an
+// OLT's OLTModelID references. All three built-in roles can — identical
+// to CanReadWorkflow's rule today.
 //
-// A single capability pair (CanReadAccessNetwork/CanWriteAccessNetwork)
+// A single capability pair (CanReadNetwork/CanWriteNetwork)
 // guards all four resources, the same reasoning
 // authz.CanReadCatalog's doc comment gives for Catalog and Product: an
-// OLT only exists nested inside an AccessNetwork (see olt.OLT's required
-// AccessNetworkID), a PONPort only exists nested inside an OLT (see
-// ponport.PONPort's required OLTID), and an OLTModel is only ever looked
-// up by, or referenced from, an OLT (see olt.OLT's required
-// OLTModelID) — so "who can see the access network," "who can see an
-// OLT in it," "who can see a port on that OLT," and "who can see the
+// A PONPort only exists nested inside an OLT (see ponport.PONPort's
+// required OLTID), and an OLTModel is only ever looked up by, or
+// referenced from, an OLT (see olt.OLT's required OLTModelID) — so "who
+// can see an OLT," "who can see a port on it," and "who can see the
 // catalog entry naming that OLT's chassis type" are the same question
-// asked at four levels of one domain, not four domains that happen to
+// asked at three levels of one domain, not three domains that happen to
 // share a rule today. This is a separate function from
 // CanReadServices/CanReadServiceEquipment/CanReadWorkflow, not a call to
 // any of them, for the same reason those are each separate from one
-// another — a future access requirement specific to the physical access
+// another — a future access requirement specific to the physical
 // network (e.g. field technicians needing OLT visibility without
 // Service visibility) must never require touching another domain's
 // code.
-func CanReadAccessNetwork(role auth.Role) bool {
+func CanReadNetwork(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
 		return true
@@ -402,13 +400,13 @@ func CanReadAccessNetwork(role auth.Role) bool {
 	}
 }
 
-// CanWriteAccessNetwork reports whether role may create, update, or
-// delete Access Network data — AccessNetwork, OLT, PONPort, and OLTModel
-// records alike. Administrator and Operator can; Viewer cannot. See
-// CanReadAccessNetwork's doc comment for why one capability pair guards
-// all four resources, and for why this is not implemented in terms of
-// any other domain's capability despite the identical rule today.
-func CanWriteAccessNetwork(role auth.Role) bool {
+// CanWriteNetwork reports whether role may create, update, or
+// delete Network data — OLT, PONPort, and OLTModel records alike.
+// Administrator and Operator can; Viewer cannot. See CanReadNetwork's
+// doc comment for why one capability pair guards all three resources,
+// and for why this is not implemented in terms of any other domain's
+// capability despite the identical rule today.
+func CanWriteNetwork(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator:
 		return true
@@ -420,11 +418,11 @@ func CanWriteAccessNetwork(role auth.Role) bool {
 // CanReadAccessTopology reports whether role may read Access Topology
 // data — AccessInterface and AccessAttachment records alike (see
 // internal/accessinterface, internal/accessattachment). All three
-// built-in roles can — identical to CanReadAccessNetwork's rule today.
+// built-in roles can — identical to CanReadNetwork's rule today.
 //
 // A single capability pair (CanReadAccessTopology/CanWriteAccessTopology)
-// guards both resources, the same reasoning authz.CanReadAccessNetwork's
-// doc comment gives for AccessNetwork/OLT/PONPort: an AccessAttachment
+// guards both resources, the same reasoning authz.CanReadNetwork's
+// doc comment gives for OLT/PONPort: an AccessAttachment
 // only exists nested inside an AccessInterface (see
 // accessattachment.AccessAttachment's required AccessInterfaceID), so
 // "who can see an interface" and "who can see what's attached to it" are
@@ -432,8 +430,8 @@ func CanWriteAccessNetwork(role auth.Role) bool {
 // that happen to share a rule today.
 //
 // This is a deliberately separate capability from
-// CanReadAccessNetwork/CanReadServiceEquipment, not a call to either,
-// even though AccessInterface references a PONPort (Access Network's
+// CanReadNetwork/CanReadServiceEquipment, not a call to either,
+// even though AccessInterface references a PONPort (Network's
 // domain) and AccessAttachment references a ServiceEquipment record
 // (Service Equipment's domain) — the same reasoning
 // authz.CanReadServiceEquipment's own doc comment gives for not
@@ -442,7 +440,7 @@ func CanWriteAccessNetwork(role auth.Role) bool {
 // own access question, not a restatement of "who can see an OLT" or "who
 // can see a piece of subscriber equipment." A future requirement scoped
 // specifically to access topology (e.g. a field-operations role that can
-// see interface-to-equipment mappings without full Access Network or
+// see interface-to-equipment mappings without full Network or
 // Service Equipment visibility) must never require touching either of
 // those domains' code, and vice versa.
 func CanReadAccessTopology(role auth.Role) bool {
@@ -459,7 +457,7 @@ func CanReadAccessTopology(role auth.Role) bool {
 // records alike. Administrator and Operator can; Viewer cannot. See
 // CanReadAccessTopology's doc comment for why one capability pair guards
 // both resources, and for why this is not implemented in terms of
-// CanWriteAccessNetwork/CanWriteServiceEquipment despite the identical
+// CanWriteNetwork/CanWriteServiceEquipment despite the identical
 // rule today.
 func CanWriteAccessTopology(role auth.Role) bool {
 	switch role {

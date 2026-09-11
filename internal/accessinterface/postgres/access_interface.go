@@ -58,7 +58,7 @@ func (r *AccessInterfaceRepository) Get(ctx context.Context, interfaceID uuid.UU
 
 // List returns every AccessInterface, ordered by name for stable,
 // human-useful output — the same reasoning
-// internal/accessnetwork/postgres.AccessNetworkRepository.List gives for
+// internal/product/postgres.ProductRepository.List gives for
 // its own ordering.
 func (r *AccessInterfaceRepository) List(ctx context.Context) ([]accessinterface.AccessInterface, error) {
 	const query = `

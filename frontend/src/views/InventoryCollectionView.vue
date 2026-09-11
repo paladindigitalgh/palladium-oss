@@ -16,11 +16,10 @@ import { useSiteCollection } from '@/composables/useSiteCollection'
  * The Inventory Collection View: discovery over the Inventory
  * hierarchy's root (Site -> Building -> Room -> Rack -> Device,
  * docs/03-DOMAIN-MODEL.md), built entirely from the same Collection
- * Workspace components NetworkCollectionView.vue introduced -- nothing
+ * Workspace components DeviceCollectionView.vue introduced -- nothing
  * inventory-specific lives in those components, only in this view and
- * its own composable/repository. Site has no status field, so unlike
- * NetworkCollectionView there is no status filter and only one sortable
- * column (name).
+ * its own composable/repository. Site has no status field, so there is
+ * no status filter and only one sortable column (name).
  */
 const router = useRouter()
 

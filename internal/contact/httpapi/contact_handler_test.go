@@ -14,8 +14,36 @@ import (
 
 	"github.com/paladindigitalgh/palladium-oss/internal/contact"
 	"github.com/paladindigitalgh/palladium-oss/internal/contact/httpapi"
+	"github.com/paladindigitalgh/palladium-oss/internal/customer"
+	"github.com/paladindigitalgh/palladium-oss/internal/event"
 	"github.com/paladindigitalgh/palladium-oss/internal/platform/apperror"
 )
+
+// fakeCustomerGetter is the seam httpapi.ContactHandler uses to resolve
+// the owning Customer's Name for its Event message.
+type fakeCustomerGetter struct {
+	customers map[uuid.UUID]customer.Customer
+}
+
+func (f *fakeCustomerGetter) Get(_ context.Context, id uuid.UUID) (customer.Customer, error) {
+	c, ok := f.customers[id]
+	if !ok {
+		return customer.Customer{}, apperror.NotFound("customer not found")
+	}
+	return c, nil
+}
+
+// fakeEventRecorder is the seam httpapi.ContactHandler uses to record an
+// Event after a successful Create. Records every Event it's given so
+// tests can assert on the exact message written.
+type fakeEventRecorder struct {
+	created []event.Event
+}
+
+func (f *fakeEventRecorder) Create(_ context.Context, e event.Event) (event.Event, error) {
+	f.created = append(f.created, e)
+	return e, nil
+}
 
 // fakeContactService is the seam httpapi.ContactHandler depends on (see
 // its unexported contactService interface in contact_handler.go). It
@@ -95,9 +123,16 @@ func (f *fakeContactService) Delete(_ context.Context, id uuid.UUID) error {
 // newTestRouter mounts a ContactHandler backed by svc on a real
 // chi.Router, so tests that need a URL path parameter (Get/Update/
 // Delete's {id}) get one populated the same way production code does,
-// rather than faking chi's route context by hand.
-func newTestRouter(svc *fakeContactService) http.Handler {
-	handler := httpapi.NewContactHandler(svc)
+// rather than faking chi's route context by hand. Returns the
+// fakeEventRecorder alongside the router so tests that care about the
+// Event written on Create can inspect it; most tests discard it. The
+// seeded customerGetter always knows validCustomerID as "Acme Corp".
+func newTestRouter(svc *fakeContactService) (http.Handler, *fakeEventRecorder) {
+	customers := &fakeCustomerGetter{customers: map[uuid.UUID]customer.Customer{
+		validCustomerID: {ID: validCustomerID, Name: "Acme Corp"},
+	}}
+	events := &fakeEventRecorder{}
+	handler := httpapi.NewContactHandler(svc, customers, events)
 
 	r := chi.NewRouter()
 	r.Post("/contacts", handler.Create)
@@ -105,13 +140,15 @@ func newTestRouter(svc *fakeContactService) http.Handler {
 	r.Get("/contacts/{id}", handler.Get)
 	r.Put("/contacts/{id}", handler.Update)
 	r.Delete("/contacts/{id}", handler.Delete)
-	return r
+	return r, events
 }
+
+var validCustomerID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
 
 const validBody = `{"customer_id":"11111111-1111-1111-1111-111111111111","name":"Jane Doe","role":"Primary","status":"Active"}`
 
 func TestContactHandlerCreate(t *testing.T) {
-	router := newTestRouter(newFakeContactService())
+	router, events := newTestRouter(newFakeContactService())
 
 	req := httptest.NewRequest(http.MethodPost, "/contacts", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -140,10 +177,27 @@ func TestContactHandlerCreate(t *testing.T) {
 	if body.Name != "Jane Doe" || body.Role != "Primary" || body.Status != "Active" {
 		t.Errorf("body = %+v, want Name=Jane Doe Role=Primary Status=Active", body)
 	}
+
+	if len(events.created) != 1 {
+		t.Fatalf("len(events.created) = %d, want 1", len(events.created))
+	}
+	got := events.created[0]
+	if got.EntityType != "contact" || got.EntityID.String() != body.ID {
+		t.Errorf("event EntityType/EntityID = %q/%v, want \"contact\"/%s", got.EntityType, got.EntityID, body.ID)
+	}
+	if got.Type != "contact.created" {
+		t.Errorf("event Type = %q, want %q", got.Type, "contact.created")
+	}
+	if got.Message != "Added contact Jane Doe to Acme Corp" {
+		t.Errorf("event Message = %q, want %q", got.Message, "Added contact Jane Doe to Acme Corp")
+	}
+	if got.Metadata["customer_id"] != validCustomerID.String() {
+		t.Errorf("event Metadata[customer_id] = %v, want %v", got.Metadata["customer_id"], validCustomerID.String())
+	}
 }
 
 func TestContactHandlerCreateRejectsMalformedJSON(t *testing.T) {
-	router := newTestRouter(newFakeContactService())
+	router, _ := newTestRouter(newFakeContactService())
 
 	req := httptest.NewRequest(http.MethodPost, "/contacts", strings.NewReader(`{not json`))
 	rec := httptest.NewRecorder()
@@ -157,7 +211,7 @@ func TestContactHandlerCreateRejectsMalformedJSON(t *testing.T) {
 func TestContactHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 	svc := newFakeContactService()
 	svc.err = apperror.Invalid("name: is required")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/contacts", strings.NewReader(`{"name":""}`))
 	rec := httptest.NewRecorder()
@@ -171,7 +225,7 @@ func TestContactHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 func TestContactHandlerCreatePropagatesConflictOnUnknownCustomer(t *testing.T) {
 	svc := newFakeContactService()
 	svc.err = apperror.Conflict("create contact: violates a foreign key relationship")
-	router := newTestRouter(svc)
+	router, _ := newTestRouter(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/contacts", strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -185,7 +239,7 @@ func TestContactHandlerCreatePropagatesConflictOnUnknownCustomer(t *testing.T) {
 func TestContactHandlerList(t *testing.T) {
 	a := contact.Contact{ID: uuid.New(), CustomerID: uuid.New(), Name: "A", Role: contact.ContactRolePrimary, Status: contact.ContactStatusActive}
 	b := contact.Contact{ID: uuid.New(), CustomerID: uuid.New(), Name: "B", Role: contact.ContactRoleBilling, Status: contact.ContactStatusActive}
-	router := newTestRouter(newFakeContactService(a, b))
+	router, _ := newTestRouter(newFakeContactService(a, b))
 
 	req := httptest.NewRequest(http.MethodGet, "/contacts", nil)
 	rec := httptest.NewRecorder()
@@ -210,7 +264,7 @@ func TestContactHandlerList(t *testing.T) {
 
 func TestContactHandlerGet(t *testing.T) {
 	c := contact.Contact{ID: uuid.New(), CustomerID: uuid.New(), Name: "Jane Doe", Role: contact.ContactRolePrimary, Status: contact.ContactStatusActive}
-	router := newTestRouter(newFakeContactService(c))
+	router, _ := newTestRouter(newFakeContactService(c))
 
 	req := httptest.NewRequest(http.MethodGet, "/contacts/"+c.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -222,7 +276,7 @@ func TestContactHandlerGet(t *testing.T) {
 }
 
 func TestContactHandlerGetNotFound(t *testing.T) {
-	router := newTestRouter(newFakeContactService())
+	router, _ := newTestRouter(newFakeContactService())
 
 	req := httptest.NewRequest(http.MethodGet, "/contacts/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
@@ -234,7 +288,7 @@ func TestContactHandlerGetNotFound(t *testing.T) {
 }
 
 func TestContactHandlerGetRejectsMalformedID(t *testing.T) {
-	router := newTestRouter(newFakeContactService())
+	router, _ := newTestRouter(newFakeContactService())
 
 	req := httptest.NewRequest(http.MethodGet, "/contacts/not-a-uuid", nil)
 	rec := httptest.NewRecorder()
@@ -247,7 +301,7 @@ func TestContactHandlerGetRejectsMalformedID(t *testing.T) {
 
 func TestContactHandlerUpdate(t *testing.T) {
 	c := contact.Contact{ID: uuid.New(), CustomerID: uuid.New(), Name: "Old Name", Role: contact.ContactRolePrimary, Status: contact.ContactStatusActive}
-	router := newTestRouter(newFakeContactService(c))
+	router, _ := newTestRouter(newFakeContactService(c))
 
 	req := httptest.NewRequest(http.MethodPut, "/contacts/"+c.ID.String(),
 		strings.NewReader(`{"customer_id":"`+c.CustomerID.String()+`","name":"New Name","role":"Billing","status":"Inactive"}`))
@@ -272,7 +326,7 @@ func TestContactHandlerUpdate(t *testing.T) {
 }
 
 func TestContactHandlerUpdateNotFound(t *testing.T) {
-	router := newTestRouter(newFakeContactService())
+	router, _ := newTestRouter(newFakeContactService())
 
 	req := httptest.NewRequest(http.MethodPut, "/contacts/"+uuid.New().String(), strings.NewReader(validBody))
 	rec := httptest.NewRecorder()
@@ -285,7 +339,7 @@ func TestContactHandlerUpdateNotFound(t *testing.T) {
 
 func TestContactHandlerDelete(t *testing.T) {
 	c := contact.Contact{ID: uuid.New(), CustomerID: uuid.New(), Name: "Temporary", Role: contact.ContactRolePrimary, Status: contact.ContactStatusActive}
-	router := newTestRouter(newFakeContactService(c))
+	router, _ := newTestRouter(newFakeContactService(c))
 
 	req := httptest.NewRequest(http.MethodDelete, "/contacts/"+c.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -300,7 +354,7 @@ func TestContactHandlerDelete(t *testing.T) {
 }
 
 func TestContactHandlerDeleteNotFound(t *testing.T) {
-	router := newTestRouter(newFakeContactService())
+	router, _ := newTestRouter(newFakeContactService())
 
 	req := httptest.NewRequest(http.MethodDelete, "/contacts/"+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
