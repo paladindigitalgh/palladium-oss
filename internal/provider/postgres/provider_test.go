@@ -18,7 +18,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 )
 
-// newTestRepository mirrors internal/serviceprofile/postgres/service_profile_test.go's
+// newTestRepository mirrors internal/catalog/postgres/catalog_test.go's
 // helper of the same name: open a transaction against the real test
 // database, build the repository under test on it, and roll the
 // transaction back on cleanup so tests never leave data behind or observe

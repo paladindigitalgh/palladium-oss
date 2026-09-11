@@ -167,7 +167,7 @@ func newTestRouter(svc *fakeServiceService) (http.Handler, *fakeEventRecorder) {
 	return r, events
 }
 
-const validBody = `{"location_id":"11111111-1111-1111-1111-111111111111","product_id":"22222222-2222-2222-2222-222222222222","service_profile_id":"33333333-3333-3333-3333-333333333333","status":"Pending"}`
+const validBody = `{"location_id":"11111111-1111-1111-1111-111111111111","product_id":"22222222-2222-2222-2222-222222222222","status":"Pending"}`
 
 func TestServiceHandlerCreate(t *testing.T) {
 	router, events := newTestRouter(newFakeServiceService())
@@ -181,11 +181,10 @@ func TestServiceHandlerCreate(t *testing.T) {
 	}
 
 	var body struct {
-		ID               string `json:"id"`
-		LocationID       string `json:"location_id"`
-		ProductID        string `json:"product_id"`
-		ServiceProfileID string `json:"service_profile_id"`
-		Status           string `json:"status"`
+		ID         string `json:"id"`
+		LocationID string `json:"location_id"`
+		ProductID  string `json:"product_id"`
+		Status     string `json:"status"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -198,9 +197,6 @@ func TestServiceHandlerCreate(t *testing.T) {
 	}
 	if body.ProductID != "22222222-2222-2222-2222-222222222222" {
 		t.Errorf("product_id = %q, want %q", body.ProductID, "22222222-2222-2222-2222-222222222222")
-	}
-	if body.ServiceProfileID != "33333333-3333-3333-3333-333333333333" {
-		t.Errorf("service_profile_id = %q, want %q", body.ServiceProfileID, "33333333-3333-3333-3333-333333333333")
 	}
 	if body.Status != "Pending" {
 		t.Errorf("status = %q, want %q", body.Status, "Pending")

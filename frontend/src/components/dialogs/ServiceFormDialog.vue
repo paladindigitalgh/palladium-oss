@@ -9,11 +9,9 @@ import { createServiceEquipment, deleteServiceEquipment } from '@/services/servi
 import { runWorkflow } from '@/services/workflow/workflowRepository'
 import { listProducts } from '@/services/products/productRepository'
 import { listProviders } from '@/services/providers/providerRepository'
-import { listServiceProfiles } from '@/services/serviceProfiles/serviceProfileRepository'
 import { ApiError } from '@/services/api/httpClient'
 import type { Service } from '@/types/service'
-import type { Product } from '@/types/product'
-import type { ServiceProfile } from '@/types/serviceProfile'
+import type { Product, ServiceType } from '@/types/product'
 import type { Device } from '@/types/device'
 import { UNI_PORT_OPTIONS } from '@/types/serviceEquipment'
 
@@ -76,6 +74,19 @@ import { UNI_PORT_OPTIONS } from '@/types/serviceEquipment'
  * Remove Service (see internal/service/postgres's own migration
  * 00040 comment) was also relaxed around the same time: an operator who
  * finds one of those orphans must still be able to clear it out by hand.
+ *
+ * Service Type (Residential/Business/Internal -- see types/product.ts)
+ * is a Product field, not a Service field: there is no serviceType on
+ * Service at all (see types/service.ts's own doc comment on why -- it
+ * is reached by joining through Product, never duplicated). The picker
+ * here is purely a UI narrowing device for the Product list, the same
+ * cascading-parent-picker pattern DeviceFormDialog.vue's Manufacturer
+ * picker uses to narrow Model: a computed filters productOptions by the
+ * chosen Service Type, a watcher clears productId only when it stops
+ * matching a user-driven Service Type change, and edit mode
+ * reverse-derives the initial Service Type from the existing Service's
+ * Product rather than reading a field that was never sent over the
+ * wire.
  */
 const props = defineProps<{
   open: boolean
@@ -103,11 +114,10 @@ const deviceOptions = computed(() =>
 const products = ref<Product[]>([])
 const providerNameById = ref<Map<string, string>>(new Map())
 const showProvider = ref(false)
-const serviceProfiles = ref<ServiceProfile[]>([])
 const loadingOptions = ref(false)
 
 const productId = ref('')
-const serviceProfileId = ref('')
+const serviceType = ref<ServiceType>('Residential')
 const status = ref<Service['status']>('Active')
 const description = ref('')
 const submitting = ref(false)
@@ -121,6 +131,12 @@ const statusOptions = [
   { value: 'Disconnected', label: 'Disconnected' },
 ]
 
+const serviceTypeOptions: { value: ServiceType; label: string }[] = [
+  { value: 'Residential', label: 'Residential' },
+  { value: 'Business', label: 'Business' },
+  { value: 'Internal', label: 'Internal' },
+]
+
 /**
  * "<Provider name> > <Product name>", or just the Product name once
  * showProvider is false -- the exact same "only show Provider once it's
@@ -129,48 +145,59 @@ const statusOptions = [
  * (CustomerDetailView.vue's Services table, ServiceDetailView.vue's
  * header), applied here to the picker that chooses one in the first
  * place, so the two never disagree about what a Product is called.
+ *
+ * Filtered to the chosen Service Type first -- the cascading-child half
+ * of the Manufacturer/Model pattern this component's own doc comment
+ * describes (see DeviceFormDialog.vue's modelOptions).
  */
 const productOptions = computed(() =>
-  products.value.map((product) => ({
-    value: product.id,
-    label:
-      showProvider.value && providerNameById.value.has(product.providerId)
-        ? `${providerNameById.value.get(product.providerId)} > ${product.name}`
-        : product.name,
-  })),
+  products.value
+    .filter((product) => product.serviceType === serviceType.value)
+    .map((product) => ({
+      value: product.id,
+      label:
+        showProvider.value && providerNameById.value.has(product.providerId)
+          ? `${providerNameById.value.get(product.providerId)} > ${product.name}`
+          : product.name,
+    })),
 )
 
-// Products/Providers/Service Profiles are fetched fresh each time the
-// dialog opens rather than once at app startup -- there is no
-// Product/Provider/Service Profile Workspace to keep a cached copy fresh
-// against, and this dataset is small enough that refetching is simpler
-// than inventing a cache to invalidate. Needed in both modes: create
-// defaults to the first option, edit needs the options list to show the
-// service's current selection.
+// Switching Service Type clears Product whenever it no longer belongs
+// to the newly-selected Service Type -- mirrors DeviceFormDialog.vue's
+// manufacturerId watcher exactly, including why it never fights the
+// fetch-then-populate watcher below (see that watcher's own comment).
+watch(serviceType, () => {
+  if (!products.value.some((p) => p.id === productId.value && p.serviceType === serviceType.value)) {
+    productId.value = ''
+  }
+})
+
+// Products and Providers are fetched fresh each time the dialog opens
+// rather than once at app startup -- there is no Product/Provider
+// Workspace to keep a cached copy fresh against, and this dataset is
+// small enough that refetching is simpler than inventing a cache to
+// invalidate. Needed in both modes: create defaults to the first
+// option, edit needs the options list to show the service's current
+// selection.
 watch(
   () => props.open,
   async (isOpen) => {
     if (!isOpen) return
     error.value = null
     loadingOptions.value = true
-    const [productList, providerList, profileList] = await Promise.all([
-      listProducts(),
-      listProviders(),
-      listServiceProfiles(),
-    ])
+    const [productList, providerList] = await Promise.all([listProducts(), listProviders()])
     products.value = productList
     providerNameById.value = new Map(providerList.map((provider) => [provider.id, provider.name]))
     showProvider.value = providerList.length > 1
-    serviceProfiles.value = profileList
 
     if (props.service) {
       productId.value = props.service.productId
-      serviceProfileId.value = props.service.serviceProfileId
+      serviceType.value = productList.find((p) => p.id === props.service?.productId)?.serviceType ?? 'Residential'
       status.value = props.service.status
       description.value = props.service.description
     } else {
-      productId.value = productList[0]?.id ?? ''
-      serviceProfileId.value = profileList[0]?.id ?? ''
+      serviceType.value = 'Residential'
+      productId.value = productList.find((p) => p.serviceType === serviceType.value)?.id ?? ''
       status.value = 'Active'
       description.value = ''
       deviceId.value = props.devices[0]?.id ?? ''
@@ -193,7 +220,6 @@ async function handleSubmit() {
       const updated = await updateService(props.service.id, {
         locationId: props.service.locationId,
         productId: productId.value,
-        serviceProfileId: serviceProfileId.value,
         status: status.value,
         description: description.value,
         activatedAt: props.service.activatedAt,
@@ -205,7 +231,6 @@ async function handleSubmit() {
       const service = await createService({
         locationId: props.locationId,
         productId: productId.value,
-        serviceProfileId: serviceProfileId.value,
         status: status.value,
         description: description.value,
       })
@@ -279,14 +304,11 @@ async function handleSubmit() {
 
 <template>
   <BaseModal :open="open" :title="service ? 'Edit Service' : 'Add Service'" @close="close">
-    <p v-if="loadingOptions" class="service-form__loading">Loading products and service profiles…</p>
+    <p v-if="loadingOptions" class="service-form__loading">Loading products…</p>
 
     <form v-else class="service-form" @submit.prevent="handleSubmit">
       <p v-if="products.length === 0" class="service-form__error" role="alert">
         No products exist yet — create one in the catalog before adding a service.
-      </p>
-      <p v-else-if="serviceProfiles.length === 0" class="service-form__error" role="alert">
-        No service profiles exist yet — create one before adding a service.
       </p>
       <p v-else-if="!service && devices.length === 0" class="service-form__error" role="alert">
         This customer has no device available for a new service — attach one first.
@@ -299,12 +321,8 @@ async function handleSubmit() {
           :options="deviceOptions"
         />
         <BaseSelect v-if="!service" v-model="uniPort" label="LAN Port" :options="UNI_PORT_OPTIONS" />
+        <BaseSelect v-model="serviceType" label="Service Type" :options="serviceTypeOptions" />
         <BaseSelect v-model="productId" label="Product" :options="productOptions" />
-        <BaseSelect
-          v-model="serviceProfileId"
-          label="Service Profile"
-          :options="serviceProfiles.map((p) => ({ value: p.id, label: p.name }))"
-        />
         <BaseSelect v-if="service" v-model="status" label="Status" :options="statusOptions" />
         <BaseInput v-model="description" label="Description" />
       </template>
@@ -314,7 +332,7 @@ async function handleSubmit() {
       <div class="service-form__actions">
         <BaseButton type="button" variant="secondary" :disabled="submitting" @click="close">Cancel</BaseButton>
         <BaseButton
-          v-if="products.length > 0 && serviceProfiles.length > 0 && (service || devices.length > 0)"
+          v-if="products.length > 0 && (service || devices.length > 0)"
           type="submit"
           variant="primary"
           :disabled="submitting"

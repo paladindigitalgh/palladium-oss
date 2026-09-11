@@ -14,14 +14,19 @@
 // documents for why Location does not import internal/customer.
 //
 // ProviderID and CatalogID are two required FKs answering two different
-// questions, the same "two required FKs, two different questions"
-// pattern internal/service.Service already uses for ProductID and
-// ServiceProfileID: CatalogID says which grouping this Product is
-// organized under (Residential vs. Business), while ProviderID says
-// which retail ISP identity owns and sells it (see internal/provider's
-// package doc comment on why this distinction only matters in an
-// open-access deployment with more than one ISP on one physical
-// network). Neither is derived from the other.
+// questions: CatalogID says which grouping this Product is organized
+// under, while ProviderID says which retail ISP identity owns and
+// sells it (see internal/provider's package doc comment on why this
+// distinction only matters in an open-access deployment with more than
+// one ISP on one physical network). Neither is derived from the other.
+//
+// ServiceType (see service_type.go) classifies which subscriber segment
+// this Product is sold to — Residential, Business, or Internal. A
+// Service (internal/service) references a Product, never a ServiceType
+// of its own: it inherits this classification by joining through the
+// Product it references, the same "obtained through a join, not a
+// redundant field" reasoning internal/service/model.go documents for
+// why Service has no CustomerID of its own either.
 //
 // A Product describes what the ISP offers, never a subscriber's actual
 // service. Per this milestone's explicit scope:
@@ -55,12 +60,13 @@ import (
 // buys it (see the package doc comment for what this deliberately
 // excludes).
 type Product struct {
-	ID         uuid.UUID
-	CatalogID  uuid.UUID
-	ProviderID uuid.UUID
-	Name       string
-	Category   ProductCategory
-	Status     ProductStatus
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID          uuid.UUID
+	CatalogID   uuid.UUID
+	ProviderID  uuid.UUID
+	Name        string
+	Category    ProductCategory
+	ServiceType ServiceType
+	Status      ProductStatus
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

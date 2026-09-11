@@ -27,7 +27,7 @@
 
 ## Phase 2 — Authentication
 
-- [x] User model (gained optional First Name/Last Name, 2026-09-10 -- see docs/03-DOMAIN-MODEL.md section 25)
+- [x] User model (gained optional First Name/Last Name, 2026-09-10 -- see docs/03-DOMAIN-MODEL.md section 24)
 - [x] Roles
 - [x] Permissions (RBAC capabilities, see internal/authz)
 - [x] JWT
@@ -76,8 +76,8 @@ Connection Profile (internal/connectionprofile) has a complete backend domain an
 - [x] Locations
 - [x] Contacts
 - [x] Service Equipment (Service <-> Device assignment)
-- [x] Customer Device (internal/customerdevice, added 2026-09-09 -- Customer <-> Device placement, independent of any Service; the one deliberate exception to "equipment is associated through Services," see docs/03-DOMAIN-MODEL.md section 26. Attach/Detach live on the Customer Workspace's own Devices section. Gained an optional Location field 2026-09-10 -- which of the Customer's own Locations the Device sits at, for tracking purposes only; a side effect is that a Location can never be hard-deleted once any Device was ever placed there, even long after detached, since that history row is never erased -- internal/location's delete-conflict error now names this specifically instead of guessing "still has a Service attached")
-- [x] Remove Customer (internal/customer/removal -- cascades Location/Service/equipment to Archived/Inactive/Disconnected/RemovedAt, real OLT teardown when needed, un-ties Devices rather than deleting them; does not yet detach active Customer Device placements -- a known gap, see docs/03-DOMAIN-MODEL.md section 26)
+- [x] Customer Device (internal/customerdevice, added 2026-09-09 -- Customer <-> Device placement, independent of any Service; the one deliberate exception to "equipment is associated through Services," see docs/03-DOMAIN-MODEL.md section 25. Attach/Detach live on the Customer Workspace's own Devices section. Gained an optional Location field 2026-09-10 -- which of the Customer's own Locations the Device sits at, for tracking purposes only; a side effect is that a Location can never be hard-deleted once any Device was ever placed there, even long after detached, since that history row is never erased -- internal/location's delete-conflict error now names this specifically instead of guessing "still has a Service attached")
+- [x] Remove Customer (internal/customer/removal -- cascades Location/Service/equipment to Archived/Inactive/Disconnected/RemovedAt, real OLT teardown when needed, un-ties Devices rather than deleting them; does not yet detach active Customer Device placements -- a known gap, see docs/03-DOMAIN-MODEL.md section 25)
 - [x] Notes (internal/note, added 2026-09-10 -- free-text, operator-authored, immutable commentary attached to a Customer, Device, or Service; newest-first, paginated Notes section on all three Detail Workspaces, author/timestamp always shown)
 
 CustomerType dropped its "Government" value 2026-09-10 (Residential, Business, and Internal are the three that remain) -- modeled since early on but never actually used.
@@ -89,6 +89,16 @@ CustomerType dropped its "Government" value 2026-09-10 (Residential, Business, a
 - [x] Products
 - [ ] Packages
 - [x] Service lifecycle
+
+Products carry a required Service Type (Residential/Business/Internal,
+2026-09-11) set once at Plan creation. This replaces the earlier
+standalone Service Profile domain a Service referenced independently
+of its Product -- Service Profile is removed outright (backend, DB
+table, and frontend), and Service derives its Service Type by joining
+through the Product it already references, never a duplicate field of
+its own. Add Service now shows a Service Type picker before the
+Product picker that filters the Product list to that type (see
+docs/09-WORKSPACE-SPECIFICATIONS.md section 8).
 
 Adding a Service from the Customer Workspace (2026-09-09) is now device-specific and self-provisioning, not three separate steps: it is disabled until the Customer has an eligible Device (attached, not already fulfilling a different Service), defaults to Active status with no Status field shown, ties the chosen Device via a real Service Equipment record, and runs the real provision-service Workflow against it in the same action -- see docs/09-WORKSPACE-SPECIFICATIONS.md section 8. Creating that Service Equipment record now also auto-syncs an Access Attachment (2026-09-10, `ServiceEquipmentService.syncAccessAttachment`) whenever the Device has a known `OnuAuthorization` and matching Access Interface on file -- closing the gap where an operator had to build one by hand in the Network workspace first, for any Device authorized through Palladium's own OLT blacklist flow (see docs/03-DOMAIN-MODEL.md section 7). Since 2026-09-10, Add Service is also all-or-nothing: a failed provisioning attempt deletes the Service and its Service Equipment record again rather than leaving an unprovisioned one behind, with the error shown inline in the still-open dialog instead of a dismissible banner. The Device picker itself is shown whenever the Customer has more than one attached Device at all, not just more than one *eligible* one.
 
@@ -136,7 +146,7 @@ Palladium is not deferring the Capability Model further out of necessity — VLA
 - [x] Workflow UI (Provision/Suspend/Resume actions + workflow history on the Service Detail Workspace; no dedicated workflow-instance browser). Provision-service also runs automatically now from the Customer Workspace's Add Service (2026-09-09), not only this manual button
 - [x] Network UI (OLT -> PONPort -> AccessInterface, plus Attach/Detach for equipment). Access Network removed as a domain concept (2026-09-11, user's explicit request, single-network-per-instance deployments only): OLT is now the hierarchy's root and the Network Collection View lists OLTs directly
 - [x] Notes UI (internal/note -- collapsible, paginated, newest-first Notes section with an inline add-note textarea, on the Customer, Device, and Service Detail Workspaces, added 2026-09-10). Notes (and the account menu) now show an author's First/Last Name when set, falling back to Email otherwise (2026-09-10)
-- [x] Explorer UI (2026-09-11 -- docs/09-WORKSPACE-SPECIFICATIONS.md section 15, docs/03-DOMAIN-MODEL.md section 28): three curated cross-domain reports (Customers & Contacts, Devices, Customers & Devices) backed by real internal/report SQL joins, not a dynamic ad hoc query builder. A report is fetched once and searched/sorted/exported to CSV entirely client-side; a result row opens into its own Customer or Device Detail Workspace. Restructured into a sidebar dropdown the same day (user's explicit request, mirroring Administration): Reports (the above) and a new Activity page -- a searchable, unbounded history of every Event, reached from the sidebar and from the Dashboard's Recent Activity "View All" link
+- [x] Explorer UI (2026-09-11 -- docs/09-WORKSPACE-SPECIFICATIONS.md section 15, docs/03-DOMAIN-MODEL.md section 27): three curated cross-domain reports (Customers & Contacts, Devices, Customers & Devices) backed by real internal/report SQL joins, not a dynamic ad hoc query builder. A report is fetched once and searched/sorted/exported to CSV entirely client-side; a result row opens into its own Customer or Device Detail Workspace. Restructured into a sidebar dropdown the same day (user's explicit request, mirroring Administration): Reports (the above) and a new Activity page -- a searchable, unbounded history of every Event, reached from the sidebar and from the Dashboard's Recent Activity "View All" link
 - [x] Frontend test suite (Vitest + @vue/test-utils)
 - [x] Collection View default filters (Customers/Devices/Users hide Archived/Retired-Disposed/Inactive by default, with an "Include..." checkbox -- see docs/09-WORKSPACE-SPECIFICATIONS.md section 5)
 - [x] Directory-style shell breadcrumb + back-a-level arrow (2026-09-11, user's explicit request, docs/04-NAVIGATION.md section 6): replaced the static "Palladium / <page>" top bar label (which fell back to the raw route name for every Detail view) with a real trail that grows one segment per navigation level, e.g. "Network / OLT Details / PON Port Details" -- see `useBreadcrumb.ts`. Depth is root + immediate parent + self only, never full ancestry, so no Detail view needed a new fetch beyond what it already does for its own relationship link. Search moved to sit next to notifications/user menu instead of immediately after the breadcrumb

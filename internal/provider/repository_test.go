@@ -12,7 +12,7 @@ import (
 // stubProviderRepository has no SQL implementation to test yet — that is
 // internal/provider/postgres's job. It exists solely to prove
 // ProviderRepository is satisfiable with a sane, consistent method
-// shape, mirroring internal/serviceprofile/repository_test.go's stub for
+// shape, mirroring internal/catalog/repository_test.go's stub for
 // the same reason: the var block's compile-time assertion is the actual
 // check — this file fails to build if the interface and this stub ever
 // drift apart.

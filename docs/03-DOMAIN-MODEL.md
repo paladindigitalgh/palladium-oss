@@ -2,7 +2,7 @@
 document: 03-DOMAIN-MODEL
 status: Draft
 title: Domain Model
-version: 1.9-draft
+version: 1.10-draft
 ---
 
 # Domain Model
@@ -135,7 +135,7 @@ A Customer **owns Services**.
 
 Customers do **not** directly own network equipment. Equipment is
 associated through services — with one deliberate, narrow exception: see
-section 26 (Customer Device), added 2026-09-09 to model a Device
+section 25 (Customer Device), added 2026-09-09 to model a Device
 physically placed at a Customer's premises before, or entirely without,
 an active Service (a real install can precede activation by days). That
 exception never grows into a general "Customer owns Devices" model — it
@@ -210,7 +210,7 @@ A Device is responsible for maintaining:
 -   Current assignment
 
 Devices exist independently of customers, with the one narrow exception
-of a Customer Device placement (section 26).
+of a Customer Device placement (section 25).
 
 A Device sitting in a warehouse, not yet racked or assigned, is still a
 Device.
@@ -219,7 +219,7 @@ Operational status (2026-09-09, revised) is a flat, three-value set —
 Unused, Active, Retired — not the longer procurement-style progression
 this document originally described (see section 16's Device row for the
 correction). Active means "currently in use," which as of the Customer
-Device addition (section 26) can now come from either of two
+Device addition (section 25) can now come from either of two
 independent sources: an active Customer Device placement, or an active
 Service Equipment assignment (section 7) — a Device stays Active as long
 as *either* is true, and only drops to Unused once *both* are gone.
@@ -368,7 +368,7 @@ Building → Site — a Device may also exist unracked, belonging to no
 Site yet)
 
 Customer → optionally has one or more Devices placed at its premises
-directly (Customer Device, section 26), independent of any Service —
+directly (Customer Device, section 25), independent of any Service —
 the one deliberate exception to this document's general rule that
 equipment is only ever associated through Services (see section 4)
 
@@ -623,7 +623,7 @@ which never matched how Device is actually scoped: CPE out in customer
 homes and businesses, not shelf/rack inventory, so "on order" /
 "received" / "in maintenance" never had real meaning here). Active is
 set automatically from two independent sources — an active Customer
-Device placement (section 26) or an active Service Equipment assignment
+Device placement (section 25) or an active Service Equipment assignment
 (section 7) — not chosen by an operator; see section 6's own note on
 the two-source rule. Retired is one-way and reached only by fully
 deauthorizing a Device from its OLT.
@@ -651,7 +651,7 @@ generate corresponding operational events.
 ## Note
 
 Created → Immutable Archive — the same shape as Event, for the same
-reason (section 27): once an operator writes one, it is never changed or
+reason (section 26): once an operator writes one, it is never changed or
 removed.
 
 ------------------------------------------------------------------------
@@ -666,11 +666,11 @@ The following rules must always remain true.
 -   A Device may have only one active Service Equipment assignment at a
     time.
 -   A Device may have only one active Customer Device placement at a
-    time (section 26) — the same one-active-record-per-device rule as
+    time (section 25) — the same one-active-record-per-device rule as
     Service Equipment, applied to the Customer-placement side.
 -   A Device with an active Service Equipment assignment cannot be
     detached from its Customer Device placement until that assignment
-    is removed first (section 26) — detaching never cascades a removal
+    is removed first (section 25) — detaching never cascades a removal
     onto the Service side.
 -   A Device is never permanently deleted, by design — there is no
     delete action for it at all (2026-09-09; superseded the original
@@ -687,7 +687,7 @@ The following rules must always remain true.
 -   Workflow Instances are permanent historical records.
 -   Events are immutable.
 -   Notes are immutable once written — there is no update or delete
-    action for one at all (section 27).
+    action for one at all (section 26).
 -   A Location can never be permanently deleted once a Service has ever
     been sold at it or a Device has ever been placed there, even long
     after both are gone — `services.location_id` and
@@ -783,43 +783,33 @@ it and how it is delivered.
 A Product records:
 
 -   Owning Product Catalog
--   Owning Provider (see section 23)
+-   Owning Provider (see section 22)
 -   Category (Internet, Voice, IPTV, Transport, Managed WiFi, Other)
+-   Service Type (Residential, Business, or Internal) -- which
+    subscriber segment this Product is sold to. A fixed, closed set of
+    values rather than a free-CRUD entity: earlier milestones modeled
+    this as a standalone Service Profile domain a Service referenced
+    independently of its Product, but that added a second required
+    foreign key answering a question Product itself already answers
+    once assigned here. Set once, at Plan creation, and not
+    operator-editable afterward in this milestone.
 -   Name
 -   Current status (Active / Retired -- one-way, unlike most other
     status fields in this document)
 
 A Service (section 5) references exactly one Product -- "what was
-sold" -- and, separately, exactly one Service Profile (section 22) --
-"how it is meant to operate." Neither is derived from the other; both
-are required. A Product carries no pricing, no bandwidth profile, and
-no vendor-specific configuration of its own -- the OLT profile that
-actually delivers it is a separate concern (see section 24,
+sold" -- and derives its Service Type from that Product by join, never
+from a field of its own (the same "obtained through a join, not a
+redundant field" reasoning section 5 already gives for why Service has
+no CustomerID of its own either, reached instead through Location). A
+Product carries no pricing, no bandwidth profile, and no
+vendor-specific configuration of its own -- the OLT profile that
+actually delivers it is a separate concern (see section 23,
 Provisioning Profile).
 
 ------------------------------------------------------------------------
 
-# 22. Service Profile
-
-A Service Profile is a named, reusable description of a Service's
-operational intent -- e.g. "Residential Standard" versus "Business
-Ethernet" -- distinct from which Product was sold.
-
-## Responsibilities
-
-A Service Profile records:
-
--   Name
--   Current status (Active / Inactive)
-
-Like Product, a Service Profile carries no bandwidth, QoS, VLAN, or
-vendor-specific detail of its own -- that remains a future Network
-domain's concern, layered on top of a Service, never folded into its
-Service Profile.
-
-------------------------------------------------------------------------
-
-# 23. Provider
+# 22. Provider
 
 A Provider is the retail ISP identity a Product belongs to -- the
 company selling it -- distinct from the network operator that owns the
@@ -836,13 +826,13 @@ This distinction is invisible in a single-ISP deployment: exactly one
 Provider exists, and nothing in the product surfaces it. It becomes
 real on an open-access network, where more than one ISP sells service
 over one shared physical network -- each Provider's Products, and the
-OLT vendor profiles that deliver them (see section 24), stay fully
+OLT vendor profiles that deliver them (see section 23), stay fully
 isolated from one another even when they happen to share an identical
 speed tier.
 
 ------------------------------------------------------------------------
 
-# 24. Provisioning Profile
+# 23. Provisioning Profile
 
 A Provisioning Profile maps one Product to the exact configuration
 profile a specific OLT vendor already has running for it -- the rate
@@ -866,7 +856,7 @@ vendor's profile name identifies exactly one Product.
 
 ------------------------------------------------------------------------
 
-# 25. User & Role
+# 24. User & Role
 
 A User is an authentication identity — someone who can log in to
 Palladium itself, distinct from every Customer and Contact this system
@@ -916,7 +906,7 @@ Philosophy already draws between Customers and Resources.
 
 ------------------------------------------------------------------------
 
-# 26. Customer Device
+# 25. Customer Device
 
 A Customer Device records that a physical Device is placed at a
 Customer's premises — installed, sitting there, plugged in — regardless
@@ -999,7 +989,7 @@ does for Service Equipment and Access Attachment.
 
 ------------------------------------------------------------------------
 
-# 27. Note
+# 26. Note
 
 A Note is free-text, operator-authored commentary attached to a
 Customer, Device, or Service (added 2026-09-10) — "called the customer
@@ -1035,7 +1025,7 @@ AuthorEmail is a deliberate snapshot, not resolved by joining against
 the User's current record at read time: a Note keeps showing who wrote
 it even if that User's email later changes, and every Role that can read
 Notes can see who left one without also needing User Management
-permission (section 25) just to resolve a name.
+permission (section 24) just to resolve a name.
 
 A Note is immutable once written — there is no update or delete anywhere
 in this domain, the same "operational history, never changed or
@@ -1051,7 +1041,7 @@ Detail Workspaces — see docs/09-WORKSPACE-SPECIFICATIONS.md sections 8,
 
 ------------------------------------------------------------------------
 
-# 28. Report
+# 27. Report
 
 A Report is a curated, read-only cross-domain query backing the
 Explorer Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md section 15,
@@ -1078,7 +1068,7 @@ need:
 -   **Customers & Devices** — every currently-active Customer-Device
     relationship, covering both of the two ways section 9's Relationship
     Overview says a Device reaches a Customer: a direct Customer Device
-    placement (section 26), or delivery through an active Service
+    placement (section 25), or delivery through an active Service
     Equipment assignment (section 7). A Device reaching the same
     Customer both ways at once produces two rows, one per relationship —
     this Report never collapses them into one, unlike the Devices
@@ -1144,6 +1134,7 @@ understandable, extensible, and maintainable as it grows.
   1.7 Draft   2026-09-11   Added optional First Name/Last Name to section 25 (User & Role), and documented that a User edits their own name/password through a self-service Profile screen, not the Administrator-only User Management flow. Added section 28 (Report), documenting the new `internal/report` domain backing Explorer (docs/09-WORKSPACE-SPECIFICATIONS.md section 15): three curated cross-domain reports (Customers & Contacts, Devices, Customers & Devices), not a dynamic ad hoc query builder
   1.8 Draft   2026-09-11   Removed Access Network as a domain concept: Palladium only ever manages a single physical network per instance, so requiring every OLT to belong to a named Access Network grouping was an unused layer of indirection nothing else in the domain model ever referenced. OLT is now the root of the Network hierarchy (OLT → PON Port → Access Interface → Access Attachment). Corrected the Device, Site, and Relationship Overview sections' "Access Network" callouts accordingly
   1.9 Draft   2026-09-11   Corrected section 12 (Event): most of its example Events are now real (Customer/Device/Contact/Location created, Device retired, Service added/removed, Service Equipment attached/detached), each written directly from its own domain's httpapi handler rather than through a Workflow -- corrected the Architectural Principle's "Workflows create Events" to describe Workflow's own relationship to Event specifically, not an exclusivity claim. ONU discovered and Router synchronized remain aspirational
+  1.10 Draft  2026-09-11   Removed Service Profile as a standalone domain concept: it is replaced by a Service Type field (Residential, Business, or Internal -- a fixed set, not a free-CRUD entity) on Product itself, set once at Plan creation. A Service derives its Service Type from the Product it references by join, never a field of its own -- the same "obtained through a join, not a redundant field" reasoning already documented for why Service has no CustomerID. Section 22 (Service Profile) removed outright; sections 23-28 renumbered to 22-27
 
 ------------------------------------------------------------------------
 

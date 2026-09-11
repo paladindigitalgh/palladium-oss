@@ -111,10 +111,9 @@ func (f *fakeActiveEquipmentLister) ListActiveByServiceID(_ context.Context, ser
 
 func validService() domainservice.Service {
 	return domainservice.Service{
-		LocationID:       uuid.New(),
-		ProductID:        uuid.New(),
-		ServiceProfileID: uuid.New(),
-		Status:           domainservice.ServiceStatusPending,
+		LocationID: uuid.New(),
+		ProductID:  uuid.New(),
+		Status:     domainservice.ServiceStatusPending,
 	}
 }
 

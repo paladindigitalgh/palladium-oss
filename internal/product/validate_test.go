@@ -31,11 +31,12 @@ func assertInvalid(t *testing.T, err error) {
 
 func validProduct() product.Product {
 	return product.Product{
-		CatalogID:  uuid.New(),
-		ProviderID: uuid.New(),
-		Name:       "Residential Internet 100/20",
-		Category:   product.ProductCategoryInternet,
-		Status:     product.ProductStatusActive,
+		CatalogID:   uuid.New(),
+		ProviderID:  uuid.New(),
+		Name:        "Residential Internet 100/20",
+		Category:    product.ProductCategoryInternet,
+		ServiceType: product.ServiceTypeResidential,
+		Status:      product.ProductStatusActive,
 	}
 }
 
@@ -89,6 +90,28 @@ func TestProductValidateRequiresKnownCategory(t *testing.T) {
 		p.Category = c
 		if err := p.Validate(); err != nil {
 			t.Errorf("Validate() (category %q) = %v, want nil", c, err)
+		}
+	}
+}
+
+func TestProductValidateRequiresKnownServiceType(t *testing.T) {
+	unrecognized := validProduct()
+	unrecognized.ServiceType = product.ServiceType("Enterprise")
+	assertInvalid(t, unrecognized.Validate())
+
+	unset := validProduct()
+	unset.ServiceType = ""
+	assertInvalid(t, unset.Validate())
+
+	for _, tt := range []product.ServiceType{
+		product.ServiceTypeResidential,
+		product.ServiceTypeBusiness,
+		product.ServiceTypeInternal,
+	} {
+		p := validProduct()
+		p.ServiceType = tt
+		if err := p.Validate(); err != nil {
+			t.Errorf("Validate() (service type %q) = %v, want nil", tt, err)
 		}
 	}
 }

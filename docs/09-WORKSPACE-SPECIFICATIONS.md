@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.20-draft
+version: 1.21-draft
 ---
 
 # Workspace Specifications
@@ -504,7 +504,7 @@ Service Workspace.
 -   Locations -- every Location on the account, with Add/Edit/Remove
 -   Devices (added 2026-09-09) -- every Device placed at this Customer's
     premises directly, independent of any Service
-    (`internal/customerdevice` -- docs/03-DOMAIN-MODEL.md section 26,
+    (`internal/customerdevice` -- docs/03-DOMAIN-MODEL.md section 25,
     the one deliberate exception to "equipment is associated through
     Services"), with Attach/Detach. Detach is blocked with an inline
     error while the Device still fulfills an active Service -- remove it
@@ -522,8 +522,16 @@ Service Workspace.
     a different Service, with an always-visible hint (not just a hover
     tooltip -- hovering a disabled, unfocusable button is easy to never
     discover) naming why; the Product picker in that dialog uses the
-    same Provider-prefixed label convention just described; there is no
-    Status field (a new Service always starts Active) and no separate
+    same Provider-prefixed label convention just described.
+    A Service Type picker (Residential/Business/Internal -- added
+    2026-09-11, docs/03-DOMAIN-MODEL.md section 21) precedes the Product
+    picker and narrows it to Plans of that type -- a purely client-side
+    filter over the already-fetched Product list, the same
+    cascading-parent-picker shape the Device Workspace's Manufacturer/
+    Model pickers already use; switching Service Type clears a Product
+    selection that no longer matches rather than silently keeping an
+    invalid one. There is no Status field (a new Service always starts
+    Active) and no separate
     "Assign Equipment" step afterward -- creating the Service, tying it
     to the chosen Device (Service Equipment), and running the real
     provision-service Workflow against it are all one action. A Device
@@ -573,7 +581,7 @@ Workflow history still belongs to a Service, not a Customer directly --
 see the Service Workspace instead. Equipment is the one part of that
 rule with its own documented exception: a Device can now be attached to
 a Customer directly, independent of any Service (the Devices section
-above; docs/03-DOMAIN-MODEL.md section 26). ONU Diagnostics is a
+above; docs/03-DOMAIN-MODEL.md section 25). ONU Diagnostics is a
 separate exception again: it reads live from the OLT rather than from
 Palladium's own records, and an operator checking on a customer's
 connectivity wants it on the Customer Workspace, not one hop down on
@@ -616,9 +624,11 @@ The raw Service id moves to header metadata (`Service <id>`), the same
 Workspaces already use -- not the title itself. Customer and Location
 are shown as their own sections below, not header fields. Product now
 has a real read/write frontend model (Administration → Plans, see
-docs/09-WORKSPACE-SPECIFICATIONS.md section 16); Service Profile still
-does not, and richer service detail beyond the Product name shown here
-(technology, speed tier as their own fields) remains out of scope.
+section 16); Service Type (Residential/Business/Internal) is set on
+that Plan, not on the Service itself -- it has no field or picker here,
+only implicitly via the Product shown. Richer service detail beyond
+the Product name shown here (technology, speed tier as their own
+fields) remains out of scope.
 
 ## Primary Actions
 
@@ -1102,7 +1112,7 @@ Site Workspace, section 12, and the future Network Topology workspace,
 section 20).
 
 As of 2026-09-11, Explorer's Reports page ships as three curated reports
-(`internal/report`; docs/03-DOMAIN-MODEL.md section 28), not the dynamic
+(`internal/report`; docs/03-DOMAIN-MODEL.md section 27), not the dynamic
 ad hoc query builder this section originally described -- a decision
 made explicitly with the user before building it (see that section's own
 reasoning for why: it matches how every other domain in this codebase
@@ -1120,7 +1130,7 @@ remain a future direction, not something this Workspace does today.
 ## Primary Actions
 
 -   Select a report (Customers & Contacts, Devices, or Customers &
-    Devices -- see docs/03-DOMAIN-MODEL.md section 28 for what each one
+    Devices -- see docs/03-DOMAIN-MODEL.md section 27 for what each one
     returns) or open the Activity page
 -   Search and sort results (entirely client-side against the
     already-fetched rows -- see each page's own Interaction with Display
@@ -1303,7 +1313,14 @@ the Product and ProvisioningProfile together in one guided step,
 scoped to that Provider (PlanFormDialog.vue receives that one Provider
 as its `providers` prop, so its own Provider picker -- shown only when
 more than one Provider is passed in -- never appears here; see that
-dialog's own doc comment). Neither Product nor ProvisioningProfile has
+dialog's own doc comment). "New Plan" also requires a Service Type
+(Residential/Business/Internal, added 2026-09-11 -- see that field's
+own bullet in docs/03-DOMAIN-MODEL.md section 21): the Customer
+Workspace's Add Service dialog uses it to filter which Plans an
+operator can pick for a given Service, so every Plan must declare one
+up front rather than leaving it to be sorted out later; there is no
+edit flow for changing it afterward, the same "create-only" scope this
+whole panel already has. Neither Product nor ProvisioningProfile has
 a dedicated Detail Workspace of its own yet -- each Provider's nested
 Plans list is a flat create-and-list table, not a Collection View.
 
@@ -1316,7 +1333,7 @@ Administrator-only (RequireUserManagement guards every verb on /users,
 no read/write split -- the same shape /diagnostics uses). "New User"
 creates an account with an Administrator-typed initial password (there
 is no invite/email infrastructure to send one through instead) and
-optional First/Last Name (docs/03-DOMAIN-MODEL.md section 25); Role
+optional First/Last Name (docs/03-DOMAIN-MODEL.md section 24); Role
 is changed inline via a per-row select, not a dialog. There is no
 Delete: both events.actor_user_id and
 workflow_instances.requested_by_user_id reference users(id) with
@@ -1487,6 +1504,7 @@ understanding, investigating, and acting on the network.
   1.18 Draft  2026-09-11   Rewrote the Network Workspace (section 11) at the user's explicit request: Access Network removed as a domain concept (Palladium only ever manages a single physical network per instance), so the Network Collection View now lists OLTs directly instead of Access Networks, and OLT is the root of a three-level hierarchy (OLT / PON Port / Access Interface), not four. Removed the Access Network line from the Dashboard's Network Overview widget (section 7) and corrected a stray "Access Network" reference in the Customer Workspace's Add Service description (section 8)
   1.19 Draft  2026-09-11   Corrected Explorer (section 15) at the user's explicit request: the report picker is now a tile row (name + description) that runs nothing automatically on landing, replacing the corner dropdown that auto-ran the first report -- the same tiles double as the switcher once a report is active
   1.20 Draft  2026-09-11   Restructured Explorer (section 15) into a sidebar dropdown with two pages, Reports and Activity, mirroring Administration's own structure (section 16) -- at the user's explicit request. Added the Activity page: a searchable, unbounded history of every Event, now covering real Device/Customer/Contact/Location/Service/Service-Equipment/Customer-Device actions, not just workflow transitions (see docs/03-DOMAIN-MODEL.md section 12). Corrected the Dashboard's Recent Activity widget description (section 7): "View All" now opens the Activity page, and GET /events is no longer unbounded-refused
+  1.21 Draft  2026-09-11   Documented the new Service Type picker (Residential/Business/Internal, docs/03-DOMAIN-MODEL.md section 21) in the Customer Workspace's Add Service description (section 8): it precedes and filters the Product picker, the same cascading-picker shape the Device Workspace's Manufacturer/Model pickers use. Documented that "New Plan" (section 16) now also requires a Service Type. Corrected the Service Workspace Header's now-false "Service Profile still does not have a frontend model" claim (section 9) -- Service Profile no longer exists as a domain concept at all, replaced by this Product field. Corrected stale docs/03-DOMAIN-MODEL.md section cross-references throughout (Customer Device, User & Role, and Report all shifted down by one when section 22, Service Profile, was removed there)
 
 ------------------------------------------------------------------------
 

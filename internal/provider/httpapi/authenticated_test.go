@@ -21,7 +21,7 @@ import (
 // stubUserRepository satisfies auth.UserRepository structurally, always
 // reporting the configured role for GetByID regardless of which ID is
 // asked for — enough for authz.Middleware, which is all these tests need
-// it for. Mirrors internal/serviceprofile/httpapi/authenticated_test.go's
+// it for. Mirrors internal/catalog/httpapi/authenticated_test.go's
 // stub of the same name.
 type stubUserRepository struct {
 	role auth.Role
@@ -55,7 +55,7 @@ var _ auth.UserRepository = stubUserRepository{}
 // auth.Middleware and authz.Middleware, exactly as
 // internal/server/router.go wires /api/v1/providers in production —
 // using RequireProvidersRead/RequireProvidersWrite, a dedicated
-// capability pair, not a reuse of Catalog's or ServiceProfile's (see
+// capability pair, not a reuse of Catalog's (see
 // authz.CanReadProviders's doc comment). The fake service and stub user
 // repository are the only stand-ins; everything about how a request
 // reaches the handler (routing, authentication, authorization, context

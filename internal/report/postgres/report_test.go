@@ -39,8 +39,6 @@ import (
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 	serviceequipmentpostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/postgres"
-	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
-	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
 )
 
 // newTestQuerier opens a transaction against the real test database,
@@ -189,8 +187,8 @@ func attachCustomerDevice(t *testing.T, ctx context.Context, q database.Querier,
 }
 
 // createTestServiceForCustomer creates a real Service row delivered to
-// customerID (and the fixture Location/Catalog/Provider/Product/
-// ServiceProfile chain it requires), the same fixture chain
+// customerID (and the fixture Location/Catalog/Provider/Product chain
+// it requires), the same fixture chain
 // internal/serviceequipment/postgres/service_equipment_test.go's own
 // createTestService builds, parameterized on an existing Customer so a
 // test can put more than one Service under the same Customer.
@@ -228,31 +226,22 @@ func createTestServiceForCustomer(t *testing.T, ctx context.Context, q database.
 
 	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
 	p, err := productRepo.Create(ctx, product.Product{
-		CatalogID:  cat.ID,
-		ProviderID: pr.ID,
-		Name:       "Fixture Product " + uuid.NewString(),
-		Category:   product.ProductCategoryInternet,
-		Status:     product.ProductStatusActive,
+		CatalogID:   cat.ID,
+		ProviderID:  pr.ID,
+		Name:        "Fixture Product " + uuid.NewString(),
+		Category:    product.ProductCategoryInternet,
+		ServiceType: product.ServiceTypeResidential,
+		Status:      product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create product: %v", err)
 	}
 
-	profileRepo := serviceprofilepostgres.NewServiceProfileRepository(q, clock.New(), id.New())
-	sp, err := profileRepo.Create(ctx, serviceprofile.ServiceProfile{
-		Name:   "Fixture Service Profile " + uuid.NewString(),
-		Status: serviceprofile.StatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create service profile: %v", err)
-	}
-
 	serviceRepo := servicepostgres.NewServiceRepository(q, clock.New(), id.New())
 	s, err := serviceRepo.Create(ctx, domainservice.Service{
-		LocationID:       l.ID,
-		ProductID:        p.ID,
-		ServiceProfileID: sp.ID,
-		Status:           domainservice.ServiceStatusActive,
+		LocationID: l.ID,
+		ProductID:  p.ID,
+		Status:     domainservice.ServiceStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create service: %v", err)

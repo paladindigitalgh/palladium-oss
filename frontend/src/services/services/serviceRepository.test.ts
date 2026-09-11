@@ -15,7 +15,6 @@ function serviceDto(overrides: Partial<Record<string, unknown>> = {}) {
     id: 's1',
     location_id: 'l1',
     product_id: 'p1',
-    service_profile_id: 'sp1',
     status: 'Active',
     description: '',
     activated_at: null,
@@ -127,7 +126,6 @@ describe('createService', () => {
     await createService({
       locationId: 'l1',
       productId: 'p1',
-      serviceProfileId: 'sp1',
       status: 'Pending',
       description: 'New service',
     })
@@ -137,7 +135,6 @@ describe('createService', () => {
       body: {
         location_id: 'l1',
         product_id: 'p1',
-        service_profile_id: 'sp1',
         status: 'Pending',
         description: 'New service',
         activated_at: null,
@@ -155,7 +152,6 @@ describe('updateService', () => {
     await updateService('s1', {
       locationId: 'l1',
       productId: 'p1',
-      serviceProfileId: 'sp1',
       status: 'Suspended',
       description: 'Updated',
       activatedAt: '2026-02-01T00:00:00Z',
@@ -168,7 +164,6 @@ describe('updateService', () => {
       body: {
         location_id: 'l1',
         product_id: 'p1',
-        service_profile_id: 'sp1',
         status: 'Suspended',
         description: 'Updated',
         activated_at: '2026-02-01T00:00:00Z',

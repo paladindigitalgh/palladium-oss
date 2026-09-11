@@ -8,7 +8,7 @@ import (
 
 // ProviderRepository persists Providers. It follows the exact shape of
 // every other repository in this codebase (see e.g.
-// internal/serviceprofile.ServiceProfileRepository): Get, List, Create,
+// internal/catalog.CatalogRepository): Get, List, Create,
 // Update, Delete, with Create and Update returning the persisted entity
 // so a caller sees anything the store sets (e.g. timestamps) without a
 // second read.

@@ -12,8 +12,8 @@ import (
 )
 
 // fakeProviderRepository is an in-memory provider.ProviderRepository.
-// Like internal/serviceprofile/service/service_profile_service_test.go's
-// fakeServiceProfileRepository, it exists so ProviderService's business
+// Like internal/catalog/service/catalog_service_test.go's
+// fakeCatalogRepository, it exists so ProviderService's business
 // logic — validate, then delegate — is tested without a real database;
 // internal/provider/postgres/provider_test.go already covers the
 // repository itself against real PostgreSQL.

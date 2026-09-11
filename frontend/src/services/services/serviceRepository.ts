@@ -10,7 +10,6 @@ interface ServiceDto {
   id: string
   location_id: string
   product_id: string
-  service_profile_id: string
   status: Service['status']
   description: string
   activated_at: string | null
@@ -25,7 +24,6 @@ function fromDto(dto: ServiceDto): Service {
     id: dto.id,
     locationId: dto.location_id,
     productId: dto.product_id,
-    serviceProfileId: dto.service_profile_id,
     status: dto.status,
     description: dto.description,
     activatedAt: dto.activated_at,
@@ -97,7 +95,6 @@ export async function getServiceById(id: string): Promise<Service | null> {
 export interface CreateServiceInput {
   locationId: string
   productId: string
-  serviceProfileId: string
   status: Service['status']
   description: string
 }
@@ -108,7 +105,6 @@ export async function createService(input: CreateServiceInput): Promise<Service>
     body: {
       location_id: input.locationId,
       product_id: input.productId,
-      service_profile_id: input.serviceProfileId,
       status: input.status,
       description: input.description,
       activated_at: null,
@@ -122,7 +118,6 @@ export async function createService(input: CreateServiceInput): Promise<Service>
 export interface UpdateServiceInput {
   locationId: string
   productId: string
-  serviceProfileId: string
   status: Service['status']
   description: string
   /**
@@ -145,7 +140,6 @@ export async function updateService(id: string, input: UpdateServiceInput): Prom
     body: {
       location_id: input.locationId,
       product_id: input.productId,
-      service_profile_id: input.serviceProfileId,
       status: input.status,
       description: input.description,
       activated_at: input.activatedAt,

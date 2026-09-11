@@ -25,7 +25,6 @@ const { createService, updateService, deleteService } = vi.hoisted(() => ({
 }))
 const { listProducts } = vi.hoisted(() => ({ listProducts: vi.fn() }))
 const { listProviders } = vi.hoisted(() => ({ listProviders: vi.fn() }))
-const { listServiceProfiles } = vi.hoisted(() => ({ listServiceProfiles: vi.fn() }))
 const { createServiceEquipment, deleteServiceEquipment } = vi.hoisted(() => ({
   createServiceEquipment: vi.fn(),
   deleteServiceEquipment: vi.fn(),
@@ -35,7 +34,6 @@ const { runWorkflow } = vi.hoisted(() => ({ runWorkflow: vi.fn() }))
 vi.mock('@/services/services/serviceRepository', () => ({ createService, updateService, deleteService }))
 vi.mock('@/services/products/productRepository', () => ({ listProducts }))
 vi.mock('@/services/providers/providerRepository', () => ({ listProviders }))
-vi.mock('@/services/serviceProfiles/serviceProfileRepository', () => ({ listServiceProfiles }))
 vi.mock('@/services/serviceEquipment/serviceEquipmentRepository', () => ({ createServiceEquipment, deleteServiceEquipment }))
 vi.mock('@/services/workflow/workflowRepository', () => ({ runWorkflow }))
 
@@ -60,7 +58,6 @@ function existingService(overrides: Partial<Service> = {}): Service {
     id: 's1',
     locationId: 'l1',
     productId: 'p1',
-    serviceProfileId: 'sp1',
     status: 'Pending',
     description: '',
     activatedAt: null,
@@ -76,6 +73,13 @@ function productSelect() {
   return body()
     .findAll('.base-select')
     .find((el) => el.find('.base-select__label').text() === 'Product')!
+    .find('select')
+}
+
+function serviceTypeSelect() {
+  return body()
+    .findAll('.base-select')
+    .find((el) => el.find('.base-select__label').text() === 'Service Type')!
     .find('select')
 }
 
@@ -121,7 +125,6 @@ beforeEach(() => {
   // Single Provider by default (the common case): no test below cares
   // about Provider-prefixed labels unless it overrides this itself.
   listProviders.mockResolvedValue([{ id: 'pr1', name: 'Acme Fiber', status: 'Active' }])
-  listServiceProfiles.mockReset()
   createServiceEquipment.mockReset()
   createServiceEquipment.mockResolvedValue({ id: 'se1' })
   deleteServiceEquipment.mockReset()
@@ -131,9 +134,8 @@ beforeEach(() => {
 })
 
 describe('create mode (no service prop)', () => {
-  it('preselects the first product and service profile once loaded, auto-selects the sole device, and submits them with the required fields', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+  it('preselects Residential and its first product once loaded, auto-selects the sole device, and submits them with the required fields', async () => {
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockResolvedValue(existingService())
 
     const wrapper = mount(ServiceFormDialog, {
@@ -155,7 +157,6 @@ describe('create mode (no service prop)', () => {
     expect(createService).toHaveBeenCalledWith({
       locationId: 'l1',
       productId: 'p1',
-      serviceProfileId: 'sp1',
       status: 'Active',
       description: '',
     })
@@ -172,9 +173,37 @@ describe('create mode (no service prop)', () => {
     expect(wrapper.emitted('created')?.[0]).toEqual([existingService()])
   })
 
+  // Service Type is the cascading parent, Product the child (see
+  // ServiceFormDialog.vue's own doc comment) -- the same
+  // computed-filter-plus-clearing-watcher pattern DeviceFormDialog.vue's
+  // Manufacturer/Model picker uses.
+  it('narrows the Product picker to the chosen Service Type, and clears a Product that no longer matches', async () => {
+    listProducts.mockResolvedValue([
+      { id: 'p1', name: 'Fiber 1G', status: 'Active', serviceType: 'Residential' },
+      { id: 'p2', name: 'Enterprise 10G', status: 'Active', serviceType: 'Business' },
+    ])
+
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
+    })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    // Defaults to Residential, so only the Residential product is offered.
+    expect(productSelect().findAll('option').map((o) => o.text())).toEqual(['Fiber 1G'])
+    expect((productSelect().element as HTMLSelectElement).value).toBe('p1')
+
+    await serviceTypeSelect().setValue('Business')
+    await settle()
+
+    expect(productSelect().findAll('option').map((o) => o.text())).toEqual(['Enterprise 10G'])
+    // The old Residential selection no longer matches, so it was cleared
+    // rather than silently kept as an invalid, no-longer-listed value.
+    expect((productSelect().element as HTMLSelectElement).value).toBe('')
+  })
+
   it('labels each Product option with just its name when there is only one Provider', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Residential 100mb/s', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Residential 100mb/s', status: 'Active' , serviceType: 'Residential' }])
 
     const wrapper = mount(ServiceFormDialog, {
       props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
@@ -187,12 +216,11 @@ describe('create mode (no service prop)', () => {
   })
 
   it('labels each Product option "<Provider> > <Product>" once more than one Provider exists', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', providerId: 'pr1', name: 'Residential 100mb/s', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', providerId: 'pr1', name: 'Residential 100mb/s', status: 'Active' , serviceType: 'Residential' }])
     listProviders.mockResolvedValue([
       { id: 'pr1', name: 'Acme Internet Provider', status: 'Active' },
       { id: 'pr2', name: 'Other ISP', status: 'Active' },
     ])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
 
     const wrapper = mount(ServiceFormDialog, {
       props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
@@ -205,8 +233,7 @@ describe('create mode (no service prop)', () => {
   })
 
   it('shows a Device picker when the customer has more than one eligible device, and submits the chosen one', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockResolvedValue(existingService())
 
     const devices = [fixtureDevice({ id: 'd1', name: 'ONT-Main-01' }), fixtureDevice({ id: 'd2', name: 'ONT-Main-02' })]
@@ -238,8 +265,7 @@ describe('create mode (no service prop)', () => {
   // exactly this reason -- devices.length alone could not distinguish
   // this case from the truly-only-one-device-ever case above.
   it('shows the Device picker naming the sole eligible device when the customer has a second, already-in-service device', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockResolvedValue(existingService())
 
     const wrapper = mount(ServiceFormDialog, {
@@ -262,8 +288,7 @@ describe('create mode (no service prop)', () => {
   })
 
   it('defaults the LAN Port to 10GE (uni 1), and submits 1GE (uni 2) once chosen -- never both', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockResolvedValue(existingService())
 
     const wrapper = mount(ServiceFormDialog, {
@@ -288,8 +313,7 @@ describe('create mode (no service prop)', () => {
   })
 
   it('blocks submission and shows a message when the customer has no eligible device', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
 
     const wrapper = mount(ServiceFormDialog, {
       props: { open: false, locationId: 'l1', devices: [], attachedDeviceCount: 0 },
@@ -307,8 +331,7 @@ describe('create mode (no service prop)', () => {
   // than leaving a Service behind that was never actually applied.
 
   it('rolls back the just-created Service, and never attempts provisioning, when attaching the device fails', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockResolvedValue(existingService())
     createServiceEquipment.mockRejectedValue(new ApiError('device already assigned', 'conflict', 409))
 
@@ -330,8 +353,7 @@ describe('create mode (no service prop)', () => {
   })
 
   it('rolls back both the Service and its ServiceEquipment when provisioning the real ONU times out', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockResolvedValue(existingService())
     runWorkflow.mockRejectedValue(new Error('This workflow is taking longer than expected -- check back shortly for its result.'))
 
@@ -360,8 +382,7 @@ describe('create mode (no service prop)', () => {
   // (e.g. the Device has no AccessAttachment yet), verified live against
   // the real Kontron plugin during development of this feature.
   it('rolls back both the Service and its ServiceEquipment when the provisioning workflow itself fails cleanly', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockResolvedValue(existingService())
     runWorkflow.mockResolvedValue({
       id: 'wf1',
@@ -385,8 +406,7 @@ describe('create mode (no service prop)', () => {
   })
 
   it('still shows the rollback error even when the compensating deletes themselves fail', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockResolvedValue(existingService())
     runWorkflow.mockResolvedValue({ id: 'wf1', status: 'Failed', errorMessage: 'VLAN profile does not exist' })
     deleteServiceEquipment.mockRejectedValue(new ApiError('already gone', 'not_found', 404))
@@ -407,7 +427,6 @@ describe('create mode (no service prop)', () => {
 
   it('shows "no products" and hides the submit button when no products exist yet', async () => {
     listProducts.mockResolvedValue([])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
 
     const wrapper = mount(ServiceFormDialog, {
       props: { open: false, locationId: 'l1', devices: [fixtureDevice()], attachedDeviceCount: 1 },
@@ -420,8 +439,7 @@ describe('create mode (no service prop)', () => {
   })
 
   it('surfaces the API error message on a failed submit, and does not emit created', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     createService.mockRejectedValue(new ApiError('a service already exists for this location', 'conflict', 409))
 
     const wrapper = mount(ServiceFormDialog, {
@@ -439,12 +457,11 @@ describe('create mode (no service prop)', () => {
 })
 
 describe('edit mode (service prop present)', () => {
-  it('prefills product/profile/status/description from the service and shows an "Edit Service" title', async () => {
+  it('prefills product/status/description from the service and shows an "Edit Service" title', async () => {
     listProducts.mockResolvedValue([
-      { id: 'p1', name: 'Fiber 1G', status: 'Active' },
-      { id: 'p2', name: 'Fiber 500M', status: 'Active' },
+      { id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' },
+      { id: 'p2', name: 'Fiber 500M', status: 'Active' , serviceType: 'Residential' },
     ])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
     const service = existingService({ productId: 'p2', status: 'Active', description: 'Existing service' })
 
     const wrapper = mount(ServiceFormDialog, {
@@ -459,9 +476,29 @@ describe('edit mode (service prop present)', () => {
     expect((statusSelect()!.element as HTMLSelectElement).value).toBe('Active')
   })
 
+  // Service Type is a Product field, never stored on Service itself (see
+  // types/service.ts) -- edit mode has to reverse-derive it by looking up
+  // the Service's current Product, exactly like DeviceFormDialog.vue's
+  // populateFrom reverse-derives Manufacturer from a Device's Model.
+  it('reverse-derives Service Type from the service\'s current product, not the Residential default', async () => {
+    listProducts.mockResolvedValue([
+      { id: 'p1', name: 'Fiber 1G', status: 'Active', serviceType: 'Residential' },
+      { id: 'p2', name: 'Enterprise 10G', status: 'Active', serviceType: 'Business' },
+    ])
+    const service = existingService({ productId: 'p2' })
+
+    const wrapper = mount(ServiceFormDialog, {
+      props: { open: false, locationId: 'l1', service, devices: [], attachedDeviceCount: 0 },
+    })
+    await wrapper.setProps({ open: true })
+    await settle()
+
+    expect((serviceTypeSelect().element as HTMLSelectElement).value).toBe('Business')
+    expect((productSelect().element as HTMLSelectElement).value).toBe('p2')
+  })
+
   it('submits the edited fields to updateService, ignoring the locationId prop in favor of the service\'s own, and passing through activated/suspended/disconnected unchanged', async () => {
-    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' }])
-    listServiceProfiles.mockResolvedValue([{ id: 'sp1', name: 'Residential Standard', status: 'Active' }])
+    listProducts.mockResolvedValue([{ id: 'p1', name: 'Fiber 1G', status: 'Active' , serviceType: 'Residential' }])
     // locationId prop deliberately differs from service.locationId, so a
     // wrong implementation that used the prop instead of the service's
     // own location would fail this assertion, not pass it by accident.
@@ -485,7 +522,6 @@ describe('edit mode (service prop present)', () => {
     expect(updateService).toHaveBeenCalledWith('s1', {
       locationId: 'l-actual',
       productId: 'p1',
-      serviceProfileId: 'sp1',
       status: 'Active',
       description: 'Updated',
       activatedAt: '2026-02-01T00:00:00Z',

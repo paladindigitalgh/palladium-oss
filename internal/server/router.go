@@ -43,7 +43,6 @@ import (
 	reporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/report/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
-	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
 	workflowhttpapi "github.com/paladindigitalgh/palladium-oss/internal/workflow/httpapi"
 )
 
@@ -86,7 +85,6 @@ type Dependencies struct {
 	PONPortHandler                                     *ponporthttpapi.PONPortHandler
 	AccessInterfaceHandler                             *accessinterfacehttpapi.AccessInterfaceHandler
 	AccessAttachmentHandler                            *accessattachmenthttpapi.AccessAttachmentHandler
-	ServiceProfileHandler                              *serviceprofilehttpapi.ServiceProfileHandler
 	DiagnosticsHandler                                 *diagnosticshttpapi.DiagnosticsHandler
 	KontronHandler                                     *kontronhttpapi.KontronHandler
 	AccessTopologyHandler                              *accesstopologyhttpapi.AccessTopologyHandler
@@ -643,35 +641,9 @@ func NewRouter(deps Dependencies) http.Handler {
 			})
 		})
 
-		// /service-profiles gets its own dedicated capability pair
-		// (RequireServiceProfilesRead/RequireServiceProfilesWrite), not a
-		// reuse of /catalogs' or /products' — per this milestone's
-		// explicit instruction ("do not reuse Product permissions"). A
-		// Service references both a Product and a ServiceProfile, but
-		// they represent different business concepts that may diverge in
-		// authorization requirements later (see
-		// authz.CanReadServiceProfiles's doc comment).
-		r.Route("/service-profiles", func(r chi.Router) {
-			r.Use(auth.Middleware(deps.Tokens))
-
-			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireServiceProfilesRead())
-				r.Get("/", deps.ServiceProfileHandler.List)
-				r.Get("/{id}", deps.ServiceProfileHandler.Get)
-			})
-
-			r.Group(func(r chi.Router) {
-				r.Use(deps.Authz.RequireServiceProfilesWrite())
-				r.Post("/", deps.ServiceProfileHandler.Create)
-				r.Put("/{id}", deps.ServiceProfileHandler.Update)
-				r.Delete("/{id}", deps.ServiceProfileHandler.Delete)
-			})
-		})
-
 		// /providers gets its own dedicated capability pair
 		// (RequireProvidersRead/RequireProvidersWrite), not a reuse of
-		// /catalogs' or /products' — the same reasoning as
-		// /service-profiles above: a Product now references both a
+		// /catalogs' or /products'. A Product now references both a
 		// Catalog and a Provider, but they represent different business
 		// concepts that may diverge in authorization requirements later
 		// (see authz.CanReadProviders's doc comment).

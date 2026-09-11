@@ -1,6 +1,6 @@
 // Package postgres implements the Provider domain's ProviderRepository
 // against PostgreSQL using pgx directly — no ORM — following the exact
-// pattern established by internal/serviceprofile/postgres.ServiceProfileRepository.
+// pattern established by internal/catalog/postgres.CatalogRepository.
 package postgres
 
 import (

@@ -25,8 +25,6 @@ import (
 	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
-	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
-	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/workflow"
 	"github.com/paladindigitalgh/palladium-oss/internal/workflow/postgres"
 )
@@ -35,8 +33,8 @@ import (
 // rolled back automatically on cleanup — the same pattern as
 // internal/service/postgres/service_test.go. A WorkflowInstance's one
 // required foreign key (ServiceID) needs a full fixture Service, which
-// itself needs a fixture Location, Product, and ServiceProfile — see
-// createTestService below.
+// itself needs a fixture Location and Product — see createTestService
+// below.
 func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	t.Helper()
 
@@ -114,31 +112,22 @@ func createTestService(t *testing.T, ctx context.Context, q database.Querier) se
 
 	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
 	p, err := productRepo.Create(ctx, product.Product{
-		CatalogID:  cat.ID,
-		ProviderID: pr.ID,
-		Name:       "Fixture Product " + uuid.NewString(),
-		Category:   product.ProductCategoryInternet,
-		Status:     product.ProductStatusActive,
+		CatalogID:   cat.ID,
+		ProviderID:  pr.ID,
+		Name:        "Fixture Product " + uuid.NewString(),
+		Category:    product.ProductCategoryInternet,
+		ServiceType: product.ServiceTypeResidential,
+		Status:      product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create product: %v", err)
 	}
 
-	profileRepo := serviceprofilepostgres.NewServiceProfileRepository(q, clock.New(), id.New())
-	sp, err := profileRepo.Create(ctx, serviceprofile.ServiceProfile{
-		Name:   "Fixture Service Profile " + uuid.NewString(),
-		Status: serviceprofile.StatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create service profile: %v", err)
-	}
-
 	serviceRepo := servicepostgres.NewServiceRepository(q, clock.New(), id.New())
 	svc, err := serviceRepo.Create(ctx, service.Service{
-		LocationID:       l.ID,
-		ProductID:        p.ID,
-		ServiceProfileID: sp.ID,
-		Status:           service.ServiceStatusPending,
+		LocationID: l.ID,
+		ProductID:  p.ID,
+		Status:     service.ServiceStatusPending,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create service: %v", err)

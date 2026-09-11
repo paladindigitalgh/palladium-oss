@@ -110,9 +110,6 @@ import (
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 	serviceequipmentpostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/postgres"
 	serviceequipmentservice "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/service"
-	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
-	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
-	serviceprofileservice "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/version"
 	workflowengine "github.com/paladindigitalgh/palladium-oss/internal/workflow/engine"
 	workflowhttpapi "github.com/paladindigitalgh/palladium-oss/internal/workflow/httpapi"
@@ -268,10 +265,10 @@ func run() error {
 	catalogHandler := cataloghttpapi.NewCatalogHandler(catalogSvc)
 
 	// Provider follows the exact same repository -> service -> handler
-	// chain as every domain above, mirroring internal/serviceprofile's
-	// own standalone (non-nested) shape -- constructed before Product
-	// since products.provider_id references providers(id), though
-	// nothing here actually requires that ordering.
+	// chain as every domain above, mirroring internal/catalog's own
+	// standalone (non-nested) shape -- constructed before Product since
+	// products.provider_id references providers(id), though nothing
+	// here actually requires that ordering.
 	providerRepo := providerpostgres.NewProviderRepository(pool, clock.New(), id.New())
 	providerSvc := providerservice.NewProviderService(providerRepo)
 	providerHandler := providerhttpapi.NewProviderHandler(providerSvc)
@@ -288,13 +285,6 @@ func run() error {
 	provisioningProfileRepo := provisioningpostgres.NewProvisioningProfileRepository(pool, clock.New(), id.New())
 	provisioningProfileSvc := provisioningservice.NewProvisioningProfileService(provisioningProfileRepo)
 	provisioningProfileHandler := provisioninghttpapi.NewProvisioningProfileHandler(provisioningProfileSvc)
-
-	// Service Profile follows the exact same repository -> service ->
-	// handler chain as every domain above, mirroring internal/catalog's
-	// own standalone (non-nested) shape.
-	serviceProfileRepo := serviceprofilepostgres.NewServiceProfileRepository(pool, clock.New(), id.New())
-	serviceProfileSvc := serviceprofileservice.NewServiceProfileService(serviceProfileRepo)
-	serviceProfileHandler := serviceprofilehttpapi.NewServiceProfileHandler(serviceProfileSvc)
 
 	// Service Equipment's repository is built here, ahead of Service
 	// itself, even though the "repository -> service -> handler" chain
@@ -697,30 +687,29 @@ func run() error {
 		ProvisioningKontronHandler: provisioningKontronHandler,
 		ProvisioningKontronDeauthorizationHandler:          provisioningKontronDeauthorizationHandler,
 		ProvisioningKontronAuthorizeAndCreateDeviceHandler: provisioningKontronAuthorizeAndCreateDeviceHandler,
-		ServiceProfileHandler:                              serviceProfileHandler,
-		DiagnosticsHandler:                                 diagnosticsHandler,
-		KontronHandler:                                     kontronHandler,
-		AccessTopologyHandler:                              accessTopologyHandler,
-		ServiceHandler:                                     serviceHandler,
-		ServiceEquipmentHandler:                            serviceEquipmentHandler,
-		CustomerDeviceHandler:                              customerDeviceHandler,
-		WorkflowHandler:                                    workflowHandler,
-		EventHandler:                                       eventHandler,
-		NoteHandler:                                        noteHandler,
-		ReportHandler:                                      reportHandler,
-		OLTHandler:                                         oltHandler,
-		OLTModelHandler:                                    oltModelHandler,
-		PONPortHandler:                                     ponPortHandler,
-		AccessInterfaceHandler:                             accessInterfaceHandler,
-		AccessAttachmentHandler:                            accessAttachmentHandler,
-		AuthenticationHandler:                              authenticationHandler,
-		ConnectionProfileHandler:                           connectionProfileHandler,
-		Tokens:                                             tokenIssuer,
-		LoginHandler:                                       loginHandler,
-		UserHandler:                                        userHandler,
-		ProfileHandler:                                     profileHandler,
-		Authz:                                              authzMiddleware,
-		AllowedOrigin:                                      cfg.HTTP.AllowedOrigin,
+		DiagnosticsHandler:       diagnosticsHandler,
+		KontronHandler:           kontronHandler,
+		AccessTopologyHandler:    accessTopologyHandler,
+		ServiceHandler:           serviceHandler,
+		ServiceEquipmentHandler:  serviceEquipmentHandler,
+		CustomerDeviceHandler:    customerDeviceHandler,
+		WorkflowHandler:          workflowHandler,
+		EventHandler:             eventHandler,
+		NoteHandler:              noteHandler,
+		ReportHandler:            reportHandler,
+		OLTHandler:               oltHandler,
+		OLTModelHandler:          oltModelHandler,
+		PONPortHandler:           ponPortHandler,
+		AccessInterfaceHandler:   accessInterfaceHandler,
+		AccessAttachmentHandler:  accessAttachmentHandler,
+		AuthenticationHandler:    authenticationHandler,
+		ConnectionProfileHandler: connectionProfileHandler,
+		Tokens:                   tokenIssuer,
+		LoginHandler:             loginHandler,
+		UserHandler:              userHandler,
+		ProfileHandler:           profileHandler,
+		Authz:                    authzMiddleware,
+		AllowedOrigin:            cfg.HTTP.AllowedOrigin,
 	})
 
 	srv := httpserver.New(httpserver.Config{

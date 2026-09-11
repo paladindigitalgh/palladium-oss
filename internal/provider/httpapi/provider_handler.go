@@ -14,7 +14,7 @@ import (
 
 // providerService is the seam ProviderHandler depends on instead of a
 // concrete *service.ProviderService — the same reasoning
-// internal/serviceprofile/httpapi's serviceProfileService interface
+// internal/catalog/httpapi's catalogService interface
 // documents: it lets handler tests exercise HTTP behavior (status
 // codes, JSON shapes, routing, error mapping) against a fake, with no
 // real service, repository, or database involved.

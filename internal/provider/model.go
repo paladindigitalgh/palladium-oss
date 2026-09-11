@@ -17,7 +17,7 @@
 //
 // This package holds only the domain model, field validation, and the
 // repository interface — no SQL, no migrations, no HTTP CRUD —
-// mirroring internal/serviceprofile's own package exactly. Per this
+// mirroring internal/catalog's own package exactly. Per this
 // milestone's explicit scope, this package does not model:
 //
 //   - Billing, contracts, or revenue share agreements between the

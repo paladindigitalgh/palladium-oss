@@ -51,8 +51,6 @@ import (
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
-	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
-	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
 	"github.com/paladindigitalgh/palladium-oss/internal/workflow"
 	workflowhttpapi "github.com/paladindigitalgh/palladium-oss/internal/workflow/httpapi"
 )
@@ -1213,7 +1211,7 @@ func newRouterWithServices(tokens *auth.TokenIssuer, role auth.Role) http.Handle
 	})
 }
 
-const validServiceBody = `{"location_id":"11111111-1111-1111-1111-111111111111","product_id":"22222222-2222-2222-2222-222222222222","service_profile_id":"33333333-3333-3333-3333-333333333333","status":"Pending"}`
+const validServiceBody = `{"location_id":"11111111-1111-1111-1111-111111111111","product_id":"22222222-2222-2222-2222-222222222222","status":"Pending"}`
 
 func TestRouterRejectsUnauthenticatedServiceRequests(t *testing.T) {
 	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
@@ -1326,13 +1324,13 @@ func (stubServiceEquipmentService) Delete(context.Context, uuid.UUID) error { re
 func newRouterWithServiceEquipment(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return api.NewRouter(api.Dependencies{
-		Logger:                  logger,
-		Version:                 "test",
-		Commit:                  "test",
+		Logger:  logger,
+		Version: "test",
+		Commit:  "test",
 		ServiceEquipmentHandler: serviceequipmenthttpapi.NewServiceEquipmentHandler(
 			stubServiceEquipmentService{}, stubDeviceService{}, stubServiceService{}, stubLocationService{}, stubCustomerService{}, stubEventRecorder{}),
-		Tokens:                  tokens,
-		Authz:                   authz.NewMiddleware(stubUserRepository{role: role}),
+		Tokens: tokens,
+		Authz:  authz.NewMiddleware(stubUserRepository{role: role}),
 	})
 }
 
@@ -1987,132 +1985,9 @@ func TestRouterAdministratorCanWriteAccessInterfacesAndAccessAttachments(t *test
 	}
 }
 
-// stubServiceProfileService satisfies whatever interface
-// serviceprofilehttpapi.ServiceProfileHandler needs structurally, the
-// same technique stubServiceService and every other stub above uses.
-type stubServiceProfileService struct{}
-
-func (stubServiceProfileService) Get(context.Context, uuid.UUID) (serviceprofile.ServiceProfile, error) {
-	return serviceprofile.ServiceProfile{}, apperror.NotFound("service profile not found")
-}
-func (stubServiceProfileService) List(context.Context) ([]serviceprofile.ServiceProfile, error) {
-	return nil, nil
-}
-func (stubServiceProfileService) Create(_ context.Context, p serviceprofile.ServiceProfile) (serviceprofile.ServiceProfile, error) {
-	return p, nil
-}
-func (stubServiceProfileService) Update(_ context.Context, p serviceprofile.ServiceProfile) (serviceprofile.ServiceProfile, error) {
-	return p, nil
-}
-func (stubServiceProfileService) Delete(context.Context, uuid.UUID) error { return nil }
-
-// newRouterWithServiceProfiles mirrors newRouterWithServices exactly,
-// one domain over: it proves /api/v1/service-profiles is wired up
-// behind auth.Middleware and authz.Middleware in the real production
-// router, using its own dedicated
-// RequireServiceProfilesRead/RequireServiceProfilesWrite (see
-// authz.CanReadServiceProfiles's doc comment for why Service Profile
-// does not share Catalog's/Product's capability pair, per this
-// milestone's explicit instruction). See
-// internal/serviceprofile/httpapi/authenticated_test.go for a far more
-// thorough version of the same checks, scoped to that package.
-func newRouterWithServiceProfiles(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return api.NewRouter(api.Dependencies{
-		Logger:                logger,
-		Version:               "test",
-		Commit:                "test",
-		ServiceProfileHandler: serviceprofilehttpapi.NewServiceProfileHandler(stubServiceProfileService{}),
-		Tokens:                tokens,
-		Authz:                 authz.NewMiddleware(stubUserRepository{role: role}),
-	})
-}
-
-const validServiceProfileBody = `{"name":"Residential Internet","status":"Active"}`
-
-func TestRouterRejectsUnauthenticatedServiceProfileRequests(t *testing.T) {
-	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithServiceProfiles(tokens, auth.RoleAdministrator)
-
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/service-profiles/", nil))
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
-	}
-}
-
-// TestRouterViewerCanReadServiceProfiles is "apply the standard RBAC
-// matrix", proven through the real, fully wired router.
-func TestRouterViewerCanReadServiceProfiles(t *testing.T) {
-	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithServiceProfiles(tokens, auth.RoleViewer)
-	token := mustIssueToken(t, tokens)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/service-profiles/", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-}
-
-// TestRouterViewerCannotWriteServiceProfiles is "apply the standard RBAC
-// matrix", proven through the real, fully wired router.
-func TestRouterViewerCannotWriteServiceProfiles(t *testing.T) {
-	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithServiceProfiles(tokens, auth.RoleViewer)
-	token := mustIssueToken(t, tokens)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/service-profiles/", strings.NewReader(validServiceProfileBody))
-	req.Header.Set("Authorization", "Bearer "+token)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
-	}
-}
-
-// TestRouterOperatorCanWriteServiceProfiles is "apply the standard RBAC
-// matrix", proven through the real, fully wired router.
-func TestRouterOperatorCanWriteServiceProfiles(t *testing.T) {
-	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithServiceProfiles(tokens, auth.RoleOperator)
-	token := mustIssueToken(t, tokens)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/service-profiles/", strings.NewReader(validServiceProfileBody))
-	req.Header.Set("Authorization", "Bearer "+token)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
-	}
-}
-
-// TestRouterAdministratorCanWriteServiceProfiles is "apply the standard
-// RBAC matrix", proven through the real, fully wired router.
-func TestRouterAdministratorCanWriteServiceProfiles(t *testing.T) {
-	tokens := auth.NewTokenIssuer([]byte("test-secret"), time.Hour, clock.New())
-	router := newRouterWithServiceProfiles(tokens, auth.RoleAdministrator)
-	token := mustIssueToken(t, tokens)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/service-profiles/", strings.NewReader(validServiceProfileBody))
-	req.Header.Set("Authorization", "Bearer "+token)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
-	}
-}
-
 // stubProviderService satisfies whatever interface
 // providerhttpapi.ProviderHandler needs structurally, the same
-// technique stubServiceProfileService and every other stub above uses.
+// technique stubServiceService and every other stub above uses.
 type stubProviderService struct{}
 
 func (stubProviderService) Get(context.Context, uuid.UUID) (provider.Provider, error) {
@@ -2129,12 +2004,12 @@ func (stubProviderService) Update(_ context.Context, p provider.Provider) (provi
 }
 func (stubProviderService) Delete(context.Context, uuid.UUID) error { return nil }
 
-// newRouterWithProviders mirrors newRouterWithServiceProfiles exactly,
-// one domain over: it proves /api/v1/providers is wired up behind
+// newRouterWithProviders mirrors newRouterWithServices exactly, one
+// domain over: it proves /api/v1/providers is wired up behind
 // auth.Middleware and authz.Middleware in the real production router,
 // using its own dedicated RequireProvidersRead/RequireProvidersWrite
 // (see authz.CanReadProviders's doc comment for why Provider does not
-// share Catalog's/ServiceProfile's capability pair). See
+// share Catalog's capability pair). See
 // internal/provider/httpapi/authenticated_test.go for a far more
 // thorough version of the same checks, scoped to that package.
 func newRouterWithProviders(tokens *auth.TokenIssuer, role auth.Role) http.Handler {
@@ -2246,7 +2121,7 @@ func (stubDiagnosticsService) Run(context.Context, string, diagnostics.Request) 
 	return &diagnostics.Result{Name: diagnostics.BasicONUCheckName}, nil
 }
 
-// newRouterWithDiagnostics mirrors newRouterWithServiceProfiles exactly,
+// newRouterWithDiagnostics mirrors newRouterWithProviders exactly,
 // one domain over: it proves /api/v1/diagnostics/basic-onu-check is
 // wired up behind auth.Middleware and authz.Middleware in the real
 // production router, using RequireDiagnostics — the single capability
@@ -2352,8 +2227,8 @@ func (stubAuthenticationService) Update(_ context.Context, a authentication.Auth
 }
 func (stubAuthenticationService) Delete(context.Context, uuid.UUID) error { return nil }
 
-// newRouterWithAuthentication mirrors newRouterWithServiceProfiles
-// exactly, one domain over: it proves /api/v1/authentication-methods is
+// newRouterWithAuthentication mirrors newRouterWithProviders exactly,
+// one domain over: it proves /api/v1/authentication-methods is
 // wired up behind auth.Middleware and authz.Middleware in the real
 // production router, using its own dedicated
 // RequireAuthenticationRead/RequireAuthenticationWrite (see

@@ -96,11 +96,12 @@ func createTestProvider(t *testing.T, ctx context.Context, q database.Querier) p
 
 func testProduct(catalogID, providerID uuid.UUID, name string) product.Product {
 	return product.Product{
-		CatalogID:  catalogID,
-		ProviderID: providerID,
-		Name:       name,
-		Category:   product.ProductCategoryInternet,
-		Status:     product.ProductStatusActive,
+		CatalogID:   catalogID,
+		ProviderID:  providerID,
+		Name:        name,
+		Category:    product.ProductCategoryInternet,
+		ServiceType: product.ServiceTypeResidential,
+		Status:      product.ProductStatusActive,
 	}
 }
 
@@ -111,11 +112,12 @@ func TestProductRepositoryCreate(t *testing.T) {
 	repo := postgres.NewProductRepository(q, clock.New(), id.New())
 
 	created, err := repo.Create(ctx, product.Product{
-		CatalogID:  c.ID,
-		ProviderID: pr.ID,
-		Name:       "Residential Internet 100/20",
-		Category:   product.ProductCategoryInternet,
-		Status:     product.ProductStatusActive,
+		CatalogID:   c.ID,
+		ProviderID:  pr.ID,
+		Name:        "Residential Internet 100/20",
+		Category:    product.ProductCategoryInternet,
+		ServiceType: product.ServiceTypeResidential,
+		Status:      product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -135,6 +137,9 @@ func TestProductRepositoryCreate(t *testing.T) {
 	}
 	if created.Category != product.ProductCategoryInternet {
 		t.Errorf("Category = %q, want %q", created.Category, product.ProductCategoryInternet)
+	}
+	if created.ServiceType != product.ServiceTypeResidential {
+		t.Errorf("ServiceType = %q, want %q", created.ServiceType, product.ServiceTypeResidential)
 	}
 	if created.Status != product.ProductStatusActive {
 		t.Errorf("Status = %q, want %q", created.Status, product.ProductStatusActive)
@@ -285,12 +290,13 @@ func TestProductRepositoryUpdate(t *testing.T) {
 	}
 
 	updated, err := repo.Update(ctx, product.Product{
-		ID:         created.ID,
-		CatalogID:  otherCatalog.ID,
-		ProviderID: otherProvider.ID,
-		Name:       "New Name",
-		Category:   product.ProductCategoryVoice,
-		Status:     product.ProductStatusRetired,
+		ID:          created.ID,
+		CatalogID:   otherCatalog.ID,
+		ProviderID:  otherProvider.ID,
+		Name:        "New Name",
+		Category:    product.ProductCategoryVoice,
+		ServiceType: product.ServiceTypeBusiness,
+		Status:      product.ProductStatusRetired,
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
@@ -307,6 +313,9 @@ func TestProductRepositoryUpdate(t *testing.T) {
 	}
 	if updated.Category != product.ProductCategoryVoice {
 		t.Errorf("Category = %q, want %q", updated.Category, product.ProductCategoryVoice)
+	}
+	if updated.ServiceType != product.ServiceTypeBusiness {
+		t.Errorf("ServiceType = %q, want %q", updated.ServiceType, product.ServiceTypeBusiness)
 	}
 	if updated.Status != product.ProductStatusRetired {
 		t.Errorf("Status = %q, want %q", updated.Status, product.ProductStatusRetired)

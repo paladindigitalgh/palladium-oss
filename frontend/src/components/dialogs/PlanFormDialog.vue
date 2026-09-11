@@ -8,7 +8,7 @@ import { listCatalogs } from '@/services/catalogs/catalogRepository'
 import { createProduct } from '@/services/products/productRepository'
 import { createProvisioningProfile } from '@/services/provisioningProfiles/provisioningProfileRepository'
 import { ApiError } from '@/services/api/httpClient'
-import type { Product, ProductCategory } from '@/types/product'
+import type { Product, ProductCategory, ServiceType } from '@/types/product'
 import type { Provider } from '@/types/provider'
 import type { ProvisioningProfile } from '@/types/provisioningProfile'
 
@@ -39,6 +39,13 @@ import type { ProvisioningProfile } from '@/types/provisioningProfile'
  * Provider) it is silently the default, the same "irrelevant until it
  * isn't" reasoning internal/provider's package doc comment gives for the
  * domain itself.
+ *
+ * Service Type (Residential/Business/Internal, see types/product.ts) is
+ * set here, once, at Plan creation -- it is never edited from a Service
+ * (there is no "edit a plan" flow at all, per the note above). Add
+ * Service uses it purely to filter which Plans are selectable for a
+ * chosen Service Type (see ServiceFormDialog.vue's cascading picker);
+ * it is never stored on the Service itself.
  */
 const props = defineProps<{ open: boolean; providers: Provider[] }>()
 const emit = defineEmits<{
@@ -48,6 +55,7 @@ const emit = defineEmits<{
 
 const name = ref('')
 const category = ref<ProductCategory>('Internet')
+const serviceType = ref<ServiceType>('Residential')
 const vendor = ref('Kontron')
 const profileName = ref('')
 const providerId = ref('')
@@ -66,9 +74,16 @@ const categoryOptions: { value: ProductCategory; label: string }[] = [
   { value: 'Other', label: 'Other' },
 ]
 
+const serviceTypeOptions: { value: ServiceType; label: string }[] = [
+  { value: 'Residential', label: 'Residential' },
+  { value: 'Business', label: 'Business' },
+  { value: 'Internal', label: 'Internal' },
+]
+
 function reset() {
   name.value = ''
   category.value = 'Internet'
+  serviceType.value = 'Residential'
   vendor.value = 'Kontron'
   profileName.value = ''
   providerId.value = props.providers[0]?.id ?? ''
@@ -105,6 +120,7 @@ async function handleSubmit() {
       providerId: providerId.value,
       name: name.value,
       category: category.value,
+      serviceType: serviceType.value,
     })
     const profile = await createProvisioningProfile({
       productId: product.id,
@@ -130,6 +146,7 @@ async function handleSubmit() {
       <BaseSelect v-if="providers.length > 1" v-model="providerId" label="Provider" :options="providerOptions" />
       <BaseInput v-model="name" label="Name" placeholder="Residential Internet 500/500" required />
       <BaseSelect v-model="category" label="Category" :options="categoryOptions" />
+      <BaseSelect v-model="serviceType" label="Service Type" :options="serviceTypeOptions" />
       <BaseInput v-model="vendor" label="OLT Vendor" required />
       <BaseInput v-model="profileName" label="OLT Profile Name" placeholder="RES-500M" required />
 

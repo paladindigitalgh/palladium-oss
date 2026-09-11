@@ -8,7 +8,7 @@ import (
 	"github.com/paladindigitalgh/palladium-oss/internal/provider"
 )
 
-// assertInvalid mirrors internal/serviceprofile/validate_test.go's
+// assertInvalid mirrors internal/catalog/validate_test.go's
 // helper of the same name: every domain package's Validate() must
 // return an *apperror.Error of KindInvalid.
 func assertInvalid(t *testing.T, err error) {

@@ -26,14 +26,13 @@ const (
 // op names the operation that failed, for context in the wrapped message.
 //
 // This mirrors internal/product/postgres/errors.go's translateError —
-// including the foreign-key-violation branch: services.location_id,
-// services.product_id, and services.service_profile_id all reference
-// their parent tables ON DELETE RESTRICT, so a foreign key violation is
-// a real, reachable outcome here in five directions — creating/updating
-// a Service with a LocationID, ProductID, or ServiceProfileID that does
-// not exist, and deleting a Location, Product, or ServiceProfile that
-// still has a Service. It maps to apperror.KindConflict for the same
-// reasoning given there: the request conflicts with the current
+// including the foreign-key-violation branch: services.location_id and
+// services.product_id both reference their parent tables ON DELETE
+// RESTRICT, so a foreign key violation is a real, reachable outcome
+// here in four directions — creating/updating a Service with a
+// LocationID or ProductID that does not exist, and deleting a Location
+// or Product that still has a Service. It maps to apperror.KindConflict
+// for the same reasoning given there: the request conflicts with the current
 // relational state of the data. This package was written with that
 // branch present from the start, learning the lesson
 // internal/customer/postgres/errors.go had to be corrected for after the

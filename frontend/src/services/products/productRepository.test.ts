@@ -13,7 +13,15 @@ describe('listProducts', () => {
   it('fetches from /products/ and maps the DTO fields', async () => {
     apiFetch.mockResolvedValue({
       products: [
-        { id: 'p1', catalog_id: 'c1', provider_id: 'pv1', name: 'Fiber 1G', category: 'Internet', status: 'Active' },
+        {
+          id: 'p1',
+          catalog_id: 'c1',
+          provider_id: 'pv1',
+          name: 'Fiber 1G',
+          category: 'Internet',
+          service_type: 'Residential',
+          status: 'Active',
+        },
       ],
     })
 
@@ -21,7 +29,15 @@ describe('listProducts', () => {
 
     expect(apiFetch).toHaveBeenCalledWith('/products/')
     expect(result).toEqual([
-      { id: 'p1', catalogId: 'c1', providerId: 'pv1', name: 'Fiber 1G', category: 'Internet', status: 'Active' },
+      {
+        id: 'p1',
+        catalogId: 'c1',
+        providerId: 'pv1',
+        name: 'Fiber 1G',
+        category: 'Internet',
+        serviceType: 'Residential',
+        status: 'Active',
+      },
     ])
   })
 })
@@ -34,10 +50,17 @@ describe('createProduct', () => {
       provider_id: 'pv1',
       name: 'Fiber 500M',
       category: 'Internet',
+      service_type: 'Business',
       status: 'Active',
     })
 
-    const result = await createProduct({ catalogId: 'c1', providerId: 'pv1', name: 'Fiber 500M', category: 'Internet' })
+    const result = await createProduct({
+      catalogId: 'c1',
+      providerId: 'pv1',
+      name: 'Fiber 500M',
+      category: 'Internet',
+      serviceType: 'Business',
+    })
 
     expect(apiFetch).toHaveBeenCalledWith('/products/', {
       method: 'POST',
@@ -46,6 +69,7 @@ describe('createProduct', () => {
         provider_id: 'pv1',
         name: 'Fiber 500M',
         category: 'Internet',
+        service_type: 'Business',
         status: 'Active',
       },
     })

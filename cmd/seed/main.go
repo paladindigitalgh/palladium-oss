@@ -44,8 +44,6 @@ import (
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/serviceequipment"
 	serviceequipmentpostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/postgres"
-	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
-	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
 )
 
 // demoCustomerName identifies the seeded Customer, both as the record's
@@ -86,7 +84,6 @@ func run() error {
 	catalogs := catalogpostgres.NewCatalogRepository(pool, clock.New(), id.New())
 	providers := providerpostgres.NewProviderRepository(pool, clock.New(), id.New())
 	products := productpostgres.NewProductRepository(pool, clock.New(), id.New())
-	serviceProfiles := serviceprofilepostgres.NewServiceProfileRepository(pool, clock.New(), id.New())
 	services := servicepostgres.NewServiceRepository(pool, clock.New(), id.New())
 	deviceManufacturers := devicemanufacturerpostgres.NewDeviceManufacturerRepository(pool, clock.New(), id.New())
 	deviceModels := devicemodelpostgres.NewDeviceModelRepository(pool, clock.New(), id.New())
@@ -145,30 +142,22 @@ func run() error {
 	}
 
 	demoProduct, err := products.Create(ctx, product.Product{
-		CatalogID:  demoCatalog.ID,
-		ProviderID: demoProvider.ID,
-		Name:       "Fiber 500/500",
-		Category:   product.ProductCategoryInternet,
-		Status:     product.ProductStatusActive,
+		CatalogID:   demoCatalog.ID,
+		ProviderID:  demoProvider.ID,
+		Name:        "Fiber 500/500",
+		Category:    product.ProductCategoryInternet,
+		ServiceType: product.ServiceTypeResidential,
+		Status:      product.ProductStatusActive,
 	})
 	if err != nil {
 		return fmt.Errorf("create demo product: %w", err)
 	}
 
-	demoServiceProfile, err := serviceProfiles.Create(ctx, serviceprofile.ServiceProfile{
-		Name:   "Residential Standard",
-		Status: serviceprofile.StatusActive,
-	})
-	if err != nil {
-		return fmt.Errorf("create demo service profile: %w", err)
-	}
-
 	demoService, err := services.Create(ctx, service.Service{
-		LocationID:       demoLocation.ID,
-		ProductID:        demoProduct.ID,
-		ServiceProfileID: demoServiceProfile.ID,
-		Status:           service.ServiceStatusActive,
-		Description:      "Demo service for exercising the Workflow Engine without real hardware",
+		LocationID:  demoLocation.ID,
+		ProductID:   demoProduct.ID,
+		Status:      service.ServiceStatusActive,
+		Description: "Demo service for exercising the Workflow Engine without real hardware",
 	})
 	if err != nil {
 		return fmt.Errorf("create demo service: %w", err)

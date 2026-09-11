@@ -5,7 +5,7 @@ import "strings"
 // Status is a Provider's lifecycle state. It is a distinct type, not a
 // raw string, following the exact pattern of catalog.CatalogStatus.
 //
-// Like CatalogStatus and serviceprofile.Status, this is a flat,
+// Like CatalogStatus, this is a flat,
 // two-value, reversible lifecycle: a wholesale partner pausing
 // operations is expected to reactivate later, unlike product.ProductStatus's
 // one-way Retired.

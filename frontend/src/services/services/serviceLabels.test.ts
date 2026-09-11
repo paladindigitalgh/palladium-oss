@@ -14,7 +14,6 @@ function service(overrides: Partial<Service> = {}): Service {
     id: 's1',
     locationId: 'l1',
     productId: 'p1',
-    serviceProfileId: 'sp1',
     status: 'Active',
     description: '',
     activatedAt: null,
@@ -33,6 +32,7 @@ function product(overrides: Partial<Product> = {}): Product {
     providerId: 'pv1',
     name: 'Residential Internet 500 Mbps',
     category: 'Internet',
+    serviceType: 'Residential',
     status: 'Active',
     ...overrides,
   }

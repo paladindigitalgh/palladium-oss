@@ -21,7 +21,7 @@ import (
 // stubUserRepository satisfies auth.UserRepository structurally, always
 // reporting the configured role for GetByID regardless of which ID is
 // asked for — enough for authz.Middleware, which is all these tests need
-// it for. Mirrors internal/serviceprofile/httpapi/authenticated_test.go's
+// it for. Mirrors internal/catalog/httpapi/authenticated_test.go's
 // stub of the same name.
 type stubUserRepository struct {
 	role auth.Role

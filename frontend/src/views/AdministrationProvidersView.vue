@@ -73,6 +73,7 @@ onMounted(load)
 const planColumns: SimpleTableColumn[] = [
   { key: 'name', label: 'Name' },
   { key: 'category', label: 'Category' },
+  { key: 'serviceType', label: 'Service Type' },
   { key: 'profiles', label: 'OLT Profiles' },
   { key: 'status', label: 'Status' },
 ]
@@ -157,6 +158,7 @@ function handlePlanCreated(payload: { product: Product; profile: ProvisioningPro
           >
             <template #cell-name="{ row }">{{ row.name }}</template>
             <template #cell-category="{ row }">{{ row.category }}</template>
+            <template #cell-serviceType="{ row }">{{ row.serviceType }}</template>
             <template #cell-profiles="{ row }">
               <span v-if="profilesForProduct(row.id).length === 0" class="no-profile">No OLT profile mapped</span>
               <span v-else class="cell-mono">

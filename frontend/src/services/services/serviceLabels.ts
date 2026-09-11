@@ -4,7 +4,7 @@ import { listProviders } from '@/services/providers/providerRepository'
 
 /**
  * A Service record itself is deliberately lean (see types/service.ts's
- * own doc comment) -- no name, just a ProductID and a ServiceProfileID.
+ * own doc comment) -- no name, just a LocationID and a ProductID.
  * Every place that lists Services for a human (CustomerDetailView.vue,
  * ServiceDetailView.vue's own header) needs something better than the
  * raw id to show, so this resolves each

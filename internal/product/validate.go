@@ -9,9 +9,9 @@ import (
 )
 
 // Validate reports whether p has every required field set: a present
-// CatalogID, a present ProviderID, a present Name, and a Category and
-// Status that are each one of their defined values (see category.go and
-// status.go).
+// CatalogID, a present ProviderID, a present Name, and a Category,
+// ServiceType, and Status that are each one of their defined values
+// (see category.go, service_type.go, and status.go).
 func (p Product) Validate() error {
 	errs := validate.New()
 
@@ -26,6 +26,9 @@ func (p Product) Validate() error {
 	}
 	if !p.Category.Valid() {
 		errs.Add("category", fmt.Sprintf("must be one of: %s", productCategoryNames()))
+	}
+	if !p.ServiceType.Valid() {
+		errs.Add("service_type", fmt.Sprintf("must be one of: %s", serviceTypeNames()))
 	}
 	if !p.Status.Valid() {
 		errs.Add("status", fmt.Sprintf("must be one of: %s", productStatusNames()))

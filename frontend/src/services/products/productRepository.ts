@@ -1,4 +1,4 @@
-import type { Product, ProductCategory } from '@/types/product'
+import type { Product, ProductCategory, ServiceType } from '@/types/product'
 import { apiFetch } from '@/services/api/httpClient'
 
 /**
@@ -16,6 +16,7 @@ interface ProductDto {
   provider_id: string
   name: string
   category: ProductCategory
+  service_type: ServiceType
   status: Product['status']
 }
 
@@ -26,6 +27,7 @@ function fromDto(dto: ProductDto): Product {
     providerId: dto.provider_id,
     name: dto.name,
     category: dto.category,
+    serviceType: dto.service_type,
     status: dto.status,
   }
 }
@@ -40,6 +42,7 @@ export interface CreateProductInput {
   providerId: string
   name: string
   category: ProductCategory
+  serviceType: ServiceType
 }
 
 /**
@@ -58,6 +61,7 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
       provider_id: input.providerId,
       name: input.name,
       category: input.category,
+      service_type: input.serviceType,
       status: 'Active',
     },
   })

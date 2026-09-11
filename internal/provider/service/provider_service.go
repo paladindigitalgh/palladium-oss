@@ -4,7 +4,7 @@
 // repositories never validate or otherwise reason about business rules
 // (see internal/provider/postgres, which trusts its caller) — this is
 // where those two responsibilities meet. It mirrors
-// internal/serviceprofile/service exactly.
+// internal/catalog/service exactly.
 package service
 
 import (
@@ -36,7 +36,7 @@ func (s *ProviderService) List(ctx context.Context) ([]provider.Provider, error)
 }
 
 // Create validates p and, if valid, persists it. See
-// serviceprofile/service.ServiceProfileService.Create for why validation
+// catalog/service.CatalogService.Create for why validation
 // happens here rather than in the handler or repository.
 func (s *ProviderService) Create(ctx context.Context, p provider.Provider) (provider.Provider, error) {
 	if err := p.Validate(); err != nil {

@@ -468,62 +468,18 @@ func CanWriteAccessTopology(role auth.Role) bool {
 	}
 }
 
-// CanReadServiceProfiles reports whether role may read Service Profile
-// data — the named, reusable description of a Service's operational
-// intent (see internal/serviceprofile). All three built-in roles can —
-// identical to CanReadCatalog's rule today.
-//
-// This is a separate function from CanReadCatalog, not a call to it,
-// per this milestone's explicit instruction ("do not reuse Product
-// permissions"). A Service references both a Product (see
-// internal/product, guarded by CanReadCatalog) and a ServiceProfile —
-// "what was sold" and "how it is meant to operate" are different
-// business concepts that merely happen to both be referenced by Service
-// (see service.Service's doc comment), the same reasoning
-// CanReadServices's own doc comment gives for not deferring to
-// CanReadCatalog or CanReadLocations. Today's identical answer is a
-// coincidence of this being RBAC v1, not a reason to wire the two
-// together — a future requirement specific to Service Profiles (e.g. a
-// network-engineering role that curates profiles without full Catalog
-// visibility) must never require touching Catalog's or Product's code,
-// and vice versa.
-func CanReadServiceProfiles(role auth.Role) bool {
-	switch role {
-	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
-		return true
-	default:
-		return false
-	}
-}
-
-// CanWriteServiceProfiles reports whether role may create, update, or
-// delete Service Profile data. Administrator and Operator can; Viewer
-// cannot. See CanReadServiceProfiles's doc comment for why this is not
-// implemented in terms of CanWriteCatalog despite the identical rule
-// today.
-func CanWriteServiceProfiles(role auth.Role) bool {
-	switch role {
-	case auth.RoleAdministrator, auth.RoleOperator:
-		return true
-	default:
-		return false
-	}
-}
-
 // CanReadProviders reports whether role may read Provider data — the
 // retail ISP identity a Product belongs to (see internal/provider). All
-// three built-in roles can — identical to CanReadServiceProfiles's rule
-// today.
+// three built-in roles can — identical to CanReadCatalog's rule today.
 //
-// This is a separate function from CanReadCatalog and
-// CanReadServiceProfiles, not a call to either, for the same reasoning
-// CanReadServiceProfiles's own doc comment gives: Product now references
-// a Provider in addition to a Catalog, but "which company sells this"
-// and "what catalog is it organized under" are different business
-// concepts that merely happen to both be referenced by Product — a
-// future requirement specific to Providers (e.g. restricting which
-// operator staff may create a new Provider identity) must never require
-// touching Catalog's or Product's code, and vice versa.
+// This is a separate function from CanReadCatalog, not a call to it.
+// Product now references a Provider in addition to a Catalog, but
+// "which company sells this" and "what catalog is it organized under"
+// are different business concepts that merely happen to both be
+// referenced by Product — a future requirement specific to Providers
+// (e.g. restricting which operator staff may create a new Provider
+// identity) must never require touching Catalog's or Product's code,
+// and vice versa.
 func CanReadProviders(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
@@ -536,8 +492,7 @@ func CanReadProviders(role auth.Role) bool {
 // CanWriteProviders reports whether role may create, update, or delete
 // Provider data. Administrator and Operator can; Viewer cannot. See
 // CanReadProviders's doc comment for why this is not implemented in
-// terms of CanWriteCatalog or CanWriteServiceProfiles despite the
-// identical rule today.
+// terms of CanWriteCatalog despite the identical rule today.
 func CanWriteProviders(role auth.Role) bool {
 	switch role {
 	case auth.RoleAdministrator, auth.RoleOperator:
@@ -579,10 +534,10 @@ func CanRunDiagnostics(role auth.Role) bool {
 // — the reusable credential records future infrastructure components
 // (Connection Profiles today; SSH-driven vendor adapters later) resolve
 // by ID (see internal/authentication). All three built-in roles can —
-// identical to CanReadServiceProfiles's rule today.
+// identical to CanReadProviders's rule today.
 //
 // This is a separate function from every other capability in this file,
-// not a call to any of them, for the same reason CanReadServiceProfiles's
+// not a call to any of them, for the same reason CanReadProviders's
 // own doc comment gives: a Connection Profile references an Authentication
 // record (see connectionprofile.ConnectionProfile's AuthenticationID), but
 // "who can see a stored credential" and "who can see a connection's

@@ -24,24 +24,27 @@ import (
 // would for a request built any other way — this handler does not
 // duplicate that check (the service is where validation lives).
 //
-// LocationID, ProductID, ServiceProfileID, and the three lifecycle
-// timestamps are left as their plain primitive types (uuid.UUID,
-// *time.Time) rather than following that same string-everywhere rule:
-// they carry no domain enum type to decouple from in the first place —
-// the same reasoning internal/location/httpapi.locationRequest gives for
-// its own CustomerID field, and internal/location/httpapi gives for
-// Latitude/Longitude.
+// LocationID, ProductID, and the three lifecycle timestamps are left as
+// their plain primitive types (uuid.UUID, *time.Time) rather than
+// following that same string-everywhere rule: they carry no domain enum
+// type to decouple from in the first place — the same reasoning
+// internal/location/httpapi.locationRequest gives for its own CustomerID
+// field, and internal/location/httpapi gives for Latitude/Longitude.
+//
+// There is deliberately no ServiceType/ServiceProfileID field here: a
+// Service's Service Type is reached by joining through the Product it
+// references, not carried on the wire as a field of its own — see
+// internal/service/model.go's package doc comment.
 //
 // It intentionally has no ID or CreatedAt/UpdatedAt fields. Identity is
 // either server-assigned (POST) or comes from the URL path (PUT);
 // CreatedAt and UpdatedAt are metadata the repository owns and a caller
 // cannot set.
 type serviceRequest struct {
-	LocationID       uuid.UUID `json:"location_id"`
-	ProductID        uuid.UUID `json:"product_id"`
-	ServiceProfileID uuid.UUID `json:"service_profile_id"`
-	Status           string    `json:"status"`
-	Description      string    `json:"description"`
+	LocationID  uuid.UUID `json:"location_id"`
+	ProductID   uuid.UUID `json:"product_id"`
+	Status      string    `json:"status"`
+	Description string    `json:"description"`
 
 	ActivatedAt    *time.Time `json:"activated_at"`
 	SuspendedAt    *time.Time `json:"suspended_at"`
@@ -53,12 +56,11 @@ type serviceRequest struct {
 // the URL path parameter's UUID for Update.
 func (req serviceRequest) toService(id uuid.UUID) domainservice.Service {
 	return domainservice.Service{
-		ID:               id,
-		LocationID:       req.LocationID,
-		ProductID:        req.ProductID,
-		ServiceProfileID: req.ServiceProfileID,
-		Status:           domainservice.ServiceStatus(req.Status),
-		Description:      req.Description,
+		ID:          id,
+		LocationID:  req.LocationID,
+		ProductID:   req.ProductID,
+		Status:      domainservice.ServiceStatus(req.Status),
+		Description: req.Description,
 
 		ActivatedAt:    req.ActivatedAt,
 		SuspendedAt:    req.SuspendedAt,
@@ -71,12 +73,11 @@ func (req serviceRequest) toService(id uuid.UUID) domainservice.Service {
 // types means a change to how the domain model is composed internally
 // can never silently change the API's JSON shape.
 type serviceResponse struct {
-	ID               uuid.UUID `json:"id"`
-	LocationID       uuid.UUID `json:"location_id"`
-	ProductID        uuid.UUID `json:"product_id"`
-	ServiceProfileID uuid.UUID `json:"service_profile_id"`
-	Status           string    `json:"status"`
-	Description      string    `json:"description"`
+	ID          uuid.UUID `json:"id"`
+	LocationID  uuid.UUID `json:"location_id"`
+	ProductID   uuid.UUID `json:"product_id"`
+	Status      string    `json:"status"`
+	Description string    `json:"description"`
 
 	ActivatedAt    *time.Time `json:"activated_at"`
 	SuspendedAt    *time.Time `json:"suspended_at"`
@@ -88,12 +89,11 @@ type serviceResponse struct {
 
 func newServiceResponse(s domainservice.Service) serviceResponse {
 	return serviceResponse{
-		ID:               s.ID,
-		LocationID:       s.LocationID,
-		ProductID:        s.ProductID,
-		ServiceProfileID: s.ServiceProfileID,
-		Status:           string(s.Status),
-		Description:      s.Description,
+		ID:          s.ID,
+		LocationID:  s.LocationID,
+		ProductID:   s.ProductID,
+		Status:      string(s.Status),
+		Description: s.Description,
 
 		ActivatedAt:    s.ActivatedAt,
 		SuspendedAt:    s.SuspendedAt,

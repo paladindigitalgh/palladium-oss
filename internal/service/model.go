@@ -5,24 +5,13 @@
 // interface — no SQL, no migrations, no HTTP CRUD — mirroring
 // internal/location's own package exactly.
 //
-// This package does not import internal/location, internal/product, or
-// internal/serviceprofile. LocationID, ProductID, and ServiceProfileID
-// are bare uuid.UUID values, not references to location.Location,
-// product.Product, or serviceprofile.ServiceProfile: the foreign keys to
-// locations(id), products(id), and service_profiles(id) are database
-// concepts, enforced by internal/service/postgres and its migrations,
-// not Go package dependencies — the same reasoning
-// internal/location/model.go documents for why Location does not import
-// internal/customer.
-//
-// ServiceProfileID describes the operational intent of this Service —
-// what kind of service it is (see internal/serviceprofile) — distinct
-// from ProductID, which describes what was sold (see internal/product's
-// package doc comment on the Catalog/Product relationship). A Service
-// references both because "what a subscriber purchased" and "how that
-// purchase is meant to operate" are different questions this milestone
-// keeps as two separate, required foreign keys rather than merging one
-// into the other.
+// This package does not import internal/location or internal/product.
+// LocationID and ProductID are bare uuid.UUID values, not references to
+// location.Location or product.Product: the foreign keys to locations(id)
+// and products(id) are database concepts, enforced by
+// internal/service/postgres and its migrations, not Go package
+// dependencies — the same reasoning internal/location/model.go documents
+// for why Location does not import internal/customer.
 //
 // There is deliberately no CustomerID field. Per this milestone's explicit
 // instruction, the customer relationship is obtained through the
@@ -32,6 +21,15 @@
 // drift from the Location's own CustomerID if the Location were ever
 // reassigned to a different Customer. Looking up "which Customer owns
 // this Service" is a join through Location, not a field on Service.
+//
+// There is likewise deliberately no ServiceType field. A Product now
+// carries a required ServiceType (see internal/product's package doc
+// comment: Residential, Business, or Internal), and a Service already
+// references a Product — duplicating that classification onto Service
+// as a second, independently-set field would be exactly the same
+// redundant-path problem CustomerID would be, just one join further
+// away. Looking up a Service's Service Type is a join through Product,
+// not a field on Service.
 //
 // A Service describes that a purchase exists and what state it is in,
 // never how it is delivered. Per this milestone's explicit scope:
@@ -72,12 +70,11 @@ import (
 // internal/location/model.go gives for Latitude/Longitude being
 // *float64.
 type Service struct {
-	ID               uuid.UUID
-	LocationID       uuid.UUID
-	ProductID        uuid.UUID
-	ServiceProfileID uuid.UUID
-	Status           ServiceStatus
-	Description      string
+	ID          uuid.UUID
+	LocationID  uuid.UUID
+	ProductID   uuid.UUID
+	Status      ServiceStatus
+	Description string
 
 	ActivatedAt    *time.Time
 	SuspendedAt    *time.Time

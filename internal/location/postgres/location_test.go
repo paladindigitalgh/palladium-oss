@@ -35,8 +35,6 @@ import (
 	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/service"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
-	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
-	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
 )
 
 // newTestQuerier opens a transaction against the real test database,
@@ -461,29 +459,21 @@ func TestLocationRepositoryDeleteBlockedByExistingService(t *testing.T) {
 	}
 	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
 	prod, err := productRepo.Create(ctx, product.Product{
-		CatalogID:  cat.ID,
-		ProviderID: pr.ID,
-		Name:       "Fixture Product " + uuid.NewString(),
-		Category:   product.ProductCategoryInternet,
-		Status:     product.ProductStatusActive,
+		CatalogID:   cat.ID,
+		ProviderID:  pr.ID,
+		Name:        "Fixture Product " + uuid.NewString(),
+		Category:    product.ProductCategoryInternet,
+		ServiceType: product.ServiceTypeResidential,
+		Status:      product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create product: %v", err)
 	}
-	profileRepo := serviceprofilepostgres.NewServiceProfileRepository(q, clock.New(), id.New())
-	profile, err := profileRepo.Create(ctx, serviceprofile.ServiceProfile{
-		Name:   "Fixture Service Profile " + uuid.NewString(),
-		Status: serviceprofile.StatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create service profile: %v", err)
-	}
 	serviceRepo := servicepostgres.NewServiceRepository(q, clock.New(), id.New())
 	if _, err := serviceRepo.Create(ctx, service.Service{
-		LocationID:       loc.ID,
-		ProductID:        prod.ID,
-		ServiceProfileID: profile.ID,
-		Status:           service.ServiceStatusActive,
+		LocationID: loc.ID,
+		ProductID:  prod.ID,
+		Status:     service.ServiceStatusActive,
 	}); err != nil {
 		t.Fatalf("fixture: create service: %v", err)
 	}

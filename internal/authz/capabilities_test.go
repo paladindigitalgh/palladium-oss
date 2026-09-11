@@ -466,44 +466,8 @@ func TestCanWriteAccessTopology(t *testing.T) {
 	}
 }
 
-// TestCanReadServiceProfiles and TestCanWriteServiceProfiles are the
-// same direct proof as TestCanReadAccessTopology/TestCanWriteAccessTopology,
-// applied to the Service Profile domain's access-control table ("apply
-// the standard RBAC matrix").
-func TestCanReadServiceProfiles(t *testing.T) {
-	cases := map[auth.Role]bool{
-		auth.RoleAdministrator: true,
-		auth.RoleOperator:      true,
-		auth.RoleViewer:        true,
-		auth.Role("Nonsense"):  false,
-		auth.Role(""):          false,
-	}
-
-	for role, want := range cases {
-		if got := authz.CanReadServiceProfiles(role); got != want {
-			t.Errorf("CanReadServiceProfiles(%q) = %v, want %v", role, got, want)
-		}
-	}
-}
-
-func TestCanWriteServiceProfiles(t *testing.T) {
-	cases := map[auth.Role]bool{
-		auth.RoleAdministrator: true,
-		auth.RoleOperator:      true,
-		auth.RoleViewer:        false,
-		auth.Role("Nonsense"):  false,
-		auth.Role(""):          false,
-	}
-
-	for role, want := range cases {
-		if got := authz.CanWriteServiceProfiles(role); got != want {
-			t.Errorf("CanWriteServiceProfiles(%q) = %v, want %v", role, got, want)
-		}
-	}
-}
-
 // TestCanReadProviders and TestCanWriteProviders are the same direct
-// proof as TestCanReadServiceProfiles/TestCanWriteServiceProfiles,
+// proof as TestCanReadAccessTopology/TestCanWriteAccessTopology,
 // applied to the Provider domain's access-control table ("apply the
 // standard RBAC matrix").
 func TestCanReadProviders(t *testing.T) {
@@ -627,13 +591,12 @@ func TestCanWriteConnectionProfiles(t *testing.T) {
 // check behind "no Site endpoint should require Administrator
 // exclusively" (goal 4) and its Customer, Location, Catalog, Service,
 // Service Equipment, Provisioning, Network, Access Topology,
-// Service Profile, Diagnostics, Authentication, and Connection Profile
-// equivalents: for every capability a Site, Customer, Location,
-// Catalog/Product, Service, Service Equipment, Provisioning,
-// OLT/PONPort, Access Interface/Access Attachment, Service
-// Profile, Diagnostics, Authentication, or Connection Profile endpoint
-// actually uses, at least one non-Administrator role must also satisfy
-// it.
+// Diagnostics, Authentication, and Connection Profile equivalents: for
+// every capability a Site, Customer, Location, Catalog/Product,
+// Service, Service Equipment, Provisioning, OLT/PONPort, Access
+// Interface/Access Attachment, Diagnostics, Authentication, or
+// Connection Profile endpoint actually uses, at least one
+// non-Administrator role must also satisfy it.
 func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 	capabilities := map[string]func(auth.Role) bool{
 		"CanReadInventory":           authz.CanReadInventory,
@@ -652,12 +615,10 @@ func TestNoAdministratorExclusiveCapabilityForSitesOrCustomers(t *testing.T) {
 		"CanWriteCustomerDevices":    authz.CanWriteCustomerDevices,
 		"CanReadWorkflow":            authz.CanReadWorkflow,
 		"CanWriteWorkflow":           authz.CanWriteWorkflow,
-		"CanReadNetwork":       authz.CanReadNetwork,
-		"CanWriteNetwork":      authz.CanWriteNetwork,
+		"CanReadNetwork":             authz.CanReadNetwork,
+		"CanWriteNetwork":            authz.CanWriteNetwork,
 		"CanReadAccessTopology":      authz.CanReadAccessTopology,
 		"CanWriteAccessTopology":     authz.CanWriteAccessTopology,
-		"CanReadServiceProfiles":     authz.CanReadServiceProfiles,
-		"CanWriteServiceProfiles":    authz.CanWriteServiceProfiles,
 		"CanRunDiagnostics":          authz.CanRunDiagnostics,
 		"CanReadAuthentication":      authz.CanReadAuthentication,
 		"CanWriteAuthentication":     authz.CanWriteAuthentication,

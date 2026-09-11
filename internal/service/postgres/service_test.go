@@ -26,8 +26,6 @@ import (
 	providerpostgres "github.com/paladindigitalgh/palladium-oss/internal/provider/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/service"
 	"github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
-	"github.com/paladindigitalgh/palladium-oss/internal/serviceprofile"
-	serviceprofilepostgres "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/postgres"
 	"github.com/paladindigitalgh/palladium-oss/internal/workflow"
 	workflowpostgres "github.com/paladindigitalgh/palladium-oss/internal/workflow/postgres"
 )
@@ -35,12 +33,11 @@ import (
 // newTestQuerier opens a transaction against the real test database,
 // rolled back automatically on cleanup — the same pattern as
 // internal/location/postgres/location_test.go and
-// internal/product/postgres/product_test.go. Service has three required
+// internal/product/postgres/product_test.go. Service has two required
 // foreign keys, so its fixtures run one level deeper than a single
 // dependency: a fixture Service needs a fixture Location (which itself
-// needs a fixture Customer), a fixture Product (which itself needs a
-// fixture Catalog), AND a fixture ServiceProfile, all sharing this one
-// transaction.
+// needs a fixture Customer) and a fixture Product (which itself needs a
+// fixture Catalog), all sharing this one transaction.
 func newTestQuerier(t *testing.T) (database.Querier, context.Context) {
 	t.Helper()
 
@@ -129,11 +126,12 @@ func createTestProduct(t *testing.T, ctx context.Context, q database.Querier) pr
 
 	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
 	p, err := productRepo.Create(ctx, product.Product{
-		CatalogID:  c.ID,
-		ProviderID: pr.ID,
-		Name:       "Fixture Product " + uuid.NewString(),
-		Category:   product.ProductCategoryInternet,
-		Status:     product.ProductStatusActive,
+		CatalogID:   c.ID,
+		ProviderID:  pr.ID,
+		Name:        "Fixture Product " + uuid.NewString(),
+		Category:    product.ProductCategoryInternet,
+		ServiceType: product.ServiceTypeResidential,
+		Status:      product.ProductStatusActive,
 	})
 	if err != nil {
 		t.Fatalf("fixture: create product: %v", err)
@@ -141,29 +139,11 @@ func createTestProduct(t *testing.T, ctx context.Context, q database.Querier) pr
 	return p
 }
 
-// createTestServiceProfile creates a real ServiceProfile row through
-// internal/serviceprofile/postgres — see createTestLocation's doc
-// comment for the same reasoning, applied to the third foreign key.
-func createTestServiceProfile(t *testing.T, ctx context.Context, q database.Querier) serviceprofile.ServiceProfile {
-	t.Helper()
-
-	profileRepo := serviceprofilepostgres.NewServiceProfileRepository(q, clock.New(), id.New())
-	p, err := profileRepo.Create(ctx, serviceprofile.ServiceProfile{
-		Name:   "Fixture Service Profile " + uuid.NewString(),
-		Status: serviceprofile.StatusActive,
-	})
-	if err != nil {
-		t.Fatalf("fixture: create service profile: %v", err)
-	}
-	return p
-}
-
-func testService(locationID, productID, serviceProfileID uuid.UUID) service.Service {
+func testService(locationID, productID uuid.UUID) service.Service {
 	return service.Service{
-		LocationID:       locationID,
-		ProductID:        productID,
-		ServiceProfileID: serviceProfileID,
-		Status:           service.ServiceStatusPending,
+		LocationID: locationID,
+		ProductID:  productID,
+		Status:     service.ServiceStatusPending,
 	}
 }
 
@@ -171,17 +151,15 @@ func TestServiceRepositoryCreate(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
 	activatedAt := time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC)
 	created, err := repo.Create(ctx, service.Service{
-		LocationID:       l.ID,
-		ProductID:        p.ID,
-		ServiceProfileID: sp.ID,
-		Status:           service.ServiceStatusActive,
-		Description:      "Primary residential internet service",
-		ActivatedAt:      &activatedAt,
+		LocationID:  l.ID,
+		ProductID:   p.ID,
+		Status:      service.ServiceStatusActive,
+		Description: "Primary residential internet service",
+		ActivatedAt: &activatedAt,
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -227,10 +205,9 @@ func TestServiceRepositoryCreateWithoutLifecycleTimestamps(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	created, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -254,13 +231,12 @@ func TestServiceRepositoryCreateIgnoresCallerSuppliedIdentity(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
 	bogusID := uuid.New()
 	bogusTime := time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	s := testService(l.ID, p.ID, sp.ID)
+	s := testService(l.ID, p.ID)
 	s.ID = bogusID
 	s.CreatedAt = bogusTime
 	s.UpdatedAt = bogusTime
@@ -281,10 +257,9 @@ func TestServiceRepositoryCreateIgnoresCallerSuppliedIdentity(t *testing.T) {
 func TestServiceRepositoryCreateFailsWhenLocationDoesNotExist(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	_, err := repo.Create(ctx, testService(uuid.New(), p.ID, sp.ID)) // location does not exist
+	_, err := repo.Create(ctx, testService(uuid.New(), p.ID)) // location does not exist
 
 	assertConflict(t, err)
 }
@@ -292,25 +267,9 @@ func TestServiceRepositoryCreateFailsWhenLocationDoesNotExist(t *testing.T) {
 func TestServiceRepositoryCreateFailsWhenProductDoesNotExist(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	_, err := repo.Create(ctx, testService(l.ID, uuid.New(), sp.ID)) // product does not exist
-
-	assertConflict(t, err)
-}
-
-// TestServiceRepositoryCreateFailsWhenServiceProfileDoesNotExist is
-// TestServiceRepositoryCreateFailsWhenLocationDoesNotExist's and
-// TestServiceRepositoryCreateFailsWhenProductDoesNotExist's counterpart
-// for the third foreign key this milestone adds.
-func TestServiceRepositoryCreateFailsWhenServiceProfileDoesNotExist(t *testing.T) {
-	q, ctx := newTestQuerier(t)
-	l := createTestLocation(t, ctx, q)
-	p := createTestProduct(t, ctx, q)
-	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
-
-	_, err := repo.Create(ctx, testService(l.ID, p.ID, uuid.New())) // service profile does not exist
+	_, err := repo.Create(ctx, testService(l.ID, uuid.New())) // product does not exist
 
 	assertConflict(t, err)
 }
@@ -319,10 +278,9 @@ func TestServiceRepositoryGet(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	created, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -355,14 +313,13 @@ func TestServiceRepositoryList(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	first, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	first, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	second, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	second, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -404,18 +361,17 @@ func TestServiceRepositoryListByLocationID(t *testing.T) {
 	l := createTestLocation(t, ctx, q)
 	otherLocation := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	first, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	first, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	second, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	second, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if _, err := repo.Create(ctx, testService(otherLocation.ID, p.ID, sp.ID)); err != nil {
+	if _, err := repo.Create(ctx, testService(otherLocation.ID, p.ID)); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -437,13 +393,11 @@ func TestServiceRepositoryUpdate(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	otherLocation := createTestLocation(t, ctx, q)
 	otherProduct := createTestProduct(t, ctx, q)
-	otherServiceProfile := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	created, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -451,14 +405,13 @@ func TestServiceRepositoryUpdate(t *testing.T) {
 	activatedAt := time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC)
 	suspendedAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	updated, err := repo.Update(ctx, service.Service{
-		ID:               created.ID,
-		LocationID:       otherLocation.ID,
-		ProductID:        otherProduct.ID,
-		ServiceProfileID: otherServiceProfile.ID,
-		Status:           service.ServiceStatusSuspended,
-		Description:      "Suspended for non-payment",
-		ActivatedAt:      &activatedAt,
-		SuspendedAt:      &suspendedAt,
+		ID:          created.ID,
+		LocationID:  otherLocation.ID,
+		ProductID:   otherProduct.ID,
+		Status:      service.ServiceStatusSuspended,
+		Description: "Suspended for non-payment",
+		ActivatedAt: &activatedAt,
+		SuspendedAt: &suspendedAt,
 	})
 	if err != nil {
 		t.Fatalf("Update() = %v", err)
@@ -469,9 +422,6 @@ func TestServiceRepositoryUpdate(t *testing.T) {
 	}
 	if updated.ProductID != otherProduct.ID {
 		t.Errorf("ProductID = %v, want %v (ProductID must be mutable via Update)", updated.ProductID, otherProduct.ID)
-	}
-	if updated.ServiceProfileID != otherServiceProfile.ID {
-		t.Errorf("ServiceProfileID = %v, want %v (ServiceProfileID must be mutable via Update)", updated.ServiceProfileID, otherServiceProfile.ID)
 	}
 	if updated.Status != service.ServiceStatusSuspended {
 		t.Errorf("Status = %q, want %q", updated.Status, service.ServiceStatusSuspended)
@@ -494,10 +444,9 @@ func TestServiceRepositoryUpdateNotFound(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	ghost := testService(l.ID, p.ID, sp.ID)
+	ghost := testService(l.ID, p.ID)
 	ghost.ID = uuid.New()
 
 	_, err := repo.Update(ctx, ghost)
@@ -509,10 +458,9 @@ func TestServiceRepositoryDelete(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	created, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -537,10 +485,9 @@ func TestServiceRepositoryDeleteCascadesWorkflowInstances(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	repo := postgres.NewServiceRepository(q, clock.New(), id.New())
 
-	created, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	created, err := repo.Create(ctx, testService(l.ID, p.ID))
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -577,15 +524,14 @@ func TestServiceRepositoryCreateConflictOnDuplicateID(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	fixedID := uuid.New()
 	repo := postgres.NewServiceRepository(q, clock.New(), id.Static{Value: fixedID})
 
-	if _, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID)); err != nil {
+	if _, err := repo.Create(ctx, testService(l.ID, p.ID)); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
 
-	_, err := repo.Create(ctx, testService(l.ID, p.ID, sp.ID))
+	_, err := repo.Create(ctx, testService(l.ID, p.ID))
 	assertConflict(t, err)
 }
 
@@ -600,9 +546,8 @@ func TestLocationRepositoryDeleteBlockedByExistingService(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	serviceRepo := postgres.NewServiceRepository(q, clock.New(), id.New())
-	if _, err := serviceRepo.Create(ctx, testService(l.ID, p.ID, sp.ID)); err != nil {
+	if _, err := serviceRepo.Create(ctx, testService(l.ID, p.ID)); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -620,35 +565,14 @@ func TestProductRepositoryDeleteBlockedByExistingService(t *testing.T) {
 	q, ctx := newTestQuerier(t)
 	l := createTestLocation(t, ctx, q)
 	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
 	serviceRepo := postgres.NewServiceRepository(q, clock.New(), id.New())
-	if _, err := serviceRepo.Create(ctx, testService(l.ID, p.ID, sp.ID)); err != nil {
+	if _, err := serviceRepo.Create(ctx, testService(l.ID, p.ID)); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
 	productRepo := productpostgres.NewProductRepository(q, clock.New(), id.New())
 
 	err := productRepo.Delete(ctx, p.ID)
-
-	assertConflict(t, err)
-}
-
-// TestServiceProfileRepositoryDeleteBlockedByExistingService is
-// TestLocationRepositoryDeleteBlockedByExistingService's counterpart for
-// the third foreign key this milestone adds.
-func TestServiceProfileRepositoryDeleteBlockedByExistingService(t *testing.T) {
-	q, ctx := newTestQuerier(t)
-	l := createTestLocation(t, ctx, q)
-	p := createTestProduct(t, ctx, q)
-	sp := createTestServiceProfile(t, ctx, q)
-	serviceRepo := postgres.NewServiceRepository(q, clock.New(), id.New())
-	if _, err := serviceRepo.Create(ctx, testService(l.ID, p.ID, sp.ID)); err != nil {
-		t.Fatalf("Create() = %v", err)
-	}
-
-	serviceProfileRepo := serviceprofilepostgres.NewServiceProfileRepository(q, clock.New(), id.New())
-
-	err := serviceProfileRepo.Delete(ctx, sp.ID)
 
 	assertConflict(t, err)
 }

@@ -1,7 +1,7 @@
 // Package httpapi is the Provider domain's REST layer. It depends on
 // internal/provider/service, never on a repository directly, and never
 // exposes internal/provider's domain types over the wire — see the DTOs
-// in this file. It mirrors internal/serviceprofile/httpapi exactly.
+// in this file. It mirrors internal/catalog/httpapi exactly.
 package httpapi
 
 import (
@@ -17,7 +17,7 @@ import (
 //
 // Status is a plain string here, not provider.Status, even though that
 // type would marshal to the same JSON today — the same "DTOs only"
-// separation internal/serviceprofile/httpapi.serviceProfileRequest
+// separation internal/catalog/httpapi.catalogRequest
 // documents. The conversion happens once, explicitly, in toProvider
 // below; ProviderService.Create/Update reject an unrecognized value via
 // Provider.Validate (see internal/provider/validate.go) exactly as they
@@ -67,7 +67,7 @@ func newProviderResponse(p provider.Provider) providerResponse {
 
 // providerListResponse wraps a slice of providers in an object rather
 // than returning a bare JSON array — the same reasoning as
-// internal/serviceprofile/httpapi's serviceProfileListResponse.
+// internal/catalog/httpapi's catalogListResponse.
 type providerListResponse struct {
 	Providers []providerResponse `json:"providers"`
 }
