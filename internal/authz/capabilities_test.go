@@ -199,6 +199,22 @@ func TestCanWriteNotes(t *testing.T) {
 	}
 }
 
+func TestCanReadReports(t *testing.T) {
+	cases := map[auth.Role]bool{
+		auth.RoleAdministrator: true,
+		auth.RoleOperator:      true,
+		auth.RoleViewer:        true,
+		auth.Role("Nonsense"):  false,
+		auth.Role(""):          false,
+	}
+
+	for role, want := range cases {
+		if got := authz.CanReadReports(role); got != want {
+			t.Errorf("CanReadReports(%q) = %v, want %v", role, got, want)
+		}
+	}
+}
+
 // TestCanReadCatalog and TestCanWriteCatalog are the same direct proof as
 // TestCanReadLocations/TestCanWriteLocations, applied to the Product
 // Catalog domain's access-control table ("apply the standard RBAC

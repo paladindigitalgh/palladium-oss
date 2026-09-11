@@ -19,7 +19,7 @@ import (
 // service, repository, or database involved.
 type userManagementService interface {
 	List(ctx context.Context) ([]auth.User, error)
-	Create(ctx context.Context, email, password string, role auth.Role) (auth.User, error)
+	Create(ctx context.Context, email, password, firstName, lastName string, role auth.Role) (auth.User, error)
 	UpdateRole(ctx context.Context, id uuid.UUID, role auth.Role) (auth.User, error)
 	Deactivate(ctx context.Context, id uuid.UUID) (auth.User, error)
 	Reactivate(ctx context.Context, id uuid.UUID) (auth.User, error)
@@ -57,7 +57,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.users.Create(r.Context(), req.Email, req.Password, auth.Role(req.Role))
+	created, err := h.users.Create(r.Context(), req.Email, req.Password, req.FirstName, req.LastName, auth.Role(req.Role))
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

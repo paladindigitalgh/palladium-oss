@@ -19,6 +19,8 @@ export interface Note {
   entityId: string
   authorUserId: string
   authorEmail: string
+  authorFirstName: string
+  authorLastName: string
   body: string
   createdAt: string
 }

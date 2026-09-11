@@ -111,6 +111,22 @@ func TestUserRepositoryCreate(t *testing.T) {
 	}
 }
 
+func TestUserRepositoryCreatePersistsName(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	user := testUser("named@example.com")
+	user.FirstName = "Jane"
+	user.LastName = "Doe"
+
+	created, err := repo.Create(ctx, user)
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if created.FirstName != "Jane" || created.LastName != "Doe" {
+		t.Errorf("name = %q %q, want Jane Doe", created.FirstName, created.LastName)
+	}
+}
+
 func TestUserRepositoryCreatePersistsEachDefinedRole(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
@@ -260,6 +276,52 @@ func TestUserRepositoryUpdatePasswordHashNotFound(t *testing.T) {
 	repo, ctx := newTestRepository(t, id.New())
 
 	_, err := repo.UpdatePasswordHash(ctx, uuid.New(), "$2a$10$anewhashanewhashanewhashanewhu")
+
+	assertNotFound(t, err)
+}
+
+func TestUserRepositoryUpdateName(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	created, err := repo.Create(ctx, testUser("jane@example.com"))
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if created.FirstName != "" || created.LastName != "" {
+		t.Errorf("Create() name = %q %q, want both blank by default", created.FirstName, created.LastName)
+	}
+
+	updated, err := repo.UpdateName(ctx, created.ID, "Jane", "Doe")
+	if err != nil {
+		t.Fatalf("UpdateName() = %v", err)
+	}
+
+	if updated.FirstName != "Jane" || updated.LastName != "Doe" {
+		t.Errorf("name = %q %q, want Jane Doe", updated.FirstName, updated.LastName)
+	}
+	if updated.Email != created.Email {
+		t.Errorf("Email changed: was %q, now %q", created.Email, updated.Email)
+	}
+	if !updated.CreatedAt.Equal(created.CreatedAt) {
+		t.Errorf("CreatedAt changed on UpdateName(): was %v, now %v", created.CreatedAt, updated.CreatedAt)
+	}
+	if !updated.UpdatedAt.After(created.UpdatedAt) {
+		t.Errorf("UpdatedAt (%v) did not advance past the original (%v)", updated.UpdatedAt, created.UpdatedAt)
+	}
+
+	cleared, err := repo.UpdateName(ctx, created.ID, "", "")
+	if err != nil {
+		t.Fatalf("UpdateName() (clear) = %v", err)
+	}
+	if cleared.FirstName != "" || cleared.LastName != "" {
+		t.Errorf("name after clearing = %q %q, want both blank", cleared.FirstName, cleared.LastName)
+	}
+}
+
+func TestUserRepositoryUpdateNameNotFound(t *testing.T) {
+	repo, ctx := newTestRepository(t, id.New())
+
+	_, err := repo.UpdateName(ctx, uuid.New(), "Jane", "Doe")
 
 	assertNotFound(t, err)
 }

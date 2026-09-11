@@ -37,6 +37,9 @@ func (s stubUserRepository) Create(_ context.Context, u auth.User) (auth.User, e
 func (s stubUserRepository) UpdatePasswordHash(context.Context, uuid.UUID, string) (auth.User, error) {
 	return auth.User{}, apperror.NotFound("not implemented in this stub")
 }
+func (s stubUserRepository) UpdateName(context.Context, uuid.UUID, string, string) (auth.User, error) {
+	return auth.User{}, apperror.NotFound("not implemented in this stub")
+}
 func (s stubUserRepository) List(context.Context) ([]auth.User, error) { return nil, nil }
 func (s stubUserRepository) UpdateRole(_ context.Context, _ uuid.UUID, role auth.Role) (auth.User, error) {
 	return auth.User{Role: role, Status: auth.UserStatusActive}, nil

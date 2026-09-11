@@ -1,27 +1,51 @@
 <script setup lang="ts">
-import { useTemplateRef } from 'vue'
+import { onMounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BaseIcon from '@/components/base/BaseIcon.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
+import ProfileEditDialog from '@/components/dialogs/ProfileEditDialog.vue'
 import { useDisclosure } from '@/composables/useDisclosure'
 import { useTheme } from '@/composables/useTheme'
 import { useAuth } from '@/composables/useAuth'
+import { useCurrentUser } from '@/composables/useCurrentUser'
+import { formatDisplayName } from '@/lib/users'
 
 /**
  * The theme toggle lives here because Theme is "Global Layer" state
  * (docs/04-NAVIGATION.md section 3) conventionally reached through the
  * user/profile menu. Sign out is now real: it clears the session and
  * returns to /login, where the router guard would have sent the
- * operator anyway. Profile remains disabled -- there is no profile
- * screen yet, only a session to end.
+ * operator anyway. Profile now opens ProfileEditDialog.vue -- the
+ * signed-in caller's own name/password editor.
+ *
+ * The displayed name/email comes from useCurrentUser (a full User
+ * record fetched from GET /me), not useAuth's decoded JWT claims: a
+ * token carries only ID and Email (see auth.Claims's doc comment), never
+ * FirstName/LastName, so this menu fetches the fuller record once on
+ * mount to be able to show "First Last" instead of always falling back
+ * to email.
  */
 const root = useTemplateRef<HTMLElement>('root')
 const { open, toggle } = useDisclosure(root)
 const { theme, toggleTheme } = useTheme()
-const { email, logout } = useAuth()
+const { email, isAuthenticated, logout } = useAuth()
+const { user, refresh, clear } = useCurrentUser()
 const router = useRouter()
 
+const showProfile = ref(false)
+
+onMounted(() => {
+  if (isAuthenticated.value) {
+    refresh().catch(() => {
+      // A failed background refresh just leaves the email fallback in
+      // place below -- nothing here needs to surface an error for a menu
+      // that only shows who is signed in.
+    })
+  }
+})
+
 function handleSignOut() {
+  clear()
   logout()
   router.push({ name: 'login' })
 }
@@ -41,7 +65,10 @@ function handleSignOut() {
     </button>
 
     <div v-if="open" class="user-menu__panel" role="menu">
-      <p v-if="email" class="user-menu__email">{{ email }}</p>
+      <p v-if="user" class="user-menu__email">
+        {{ formatDisplayName({ firstName: user.firstName, lastName: user.lastName, email: user.email }) }}
+      </p>
+      <p v-else-if="email" class="user-menu__email">{{ email }}</p>
 
       <button type="button" class="user-menu__item" role="menuitem" @click="toggleTheme">
         <BaseIcon :name="theme === 'dark' ? 'sun' : 'moon'" size="sm" />
@@ -50,19 +77,15 @@ function handleSignOut() {
 
       <div class="user-menu__divider" />
 
-      <BaseButton
-        variant="ghost"
-        size="sm"
-        class="user-menu__item"
-        disabled
-        disabled-reason="There is no profile screen yet"
-      >
+      <BaseButton variant="ghost" size="sm" class="user-menu__item" @click="showProfile = true">
         Profile
       </BaseButton>
       <BaseButton variant="ghost" size="sm" class="user-menu__item" @click="handleSignOut">
         Sign out
       </BaseButton>
     </div>
+
+    <ProfileEditDialog :open="showProfile" @close="showProfile = false" />
   </div>
 </template>
 

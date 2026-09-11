@@ -12,8 +12,10 @@ import { useAuth } from '@/composables/useAuth'
  *
  * Routes default to the shared PlaceholderWorkspaceView (see that file's
  * own doc comment) until a workspace has a real implementation, at which
- * point its nav id is added to VIEW_COMPONENTS below. Explorer is the
- * only remaining placeholder; every other nav item is implemented.
+ * point its nav id is added to VIEW_COMPONENTS below. Every primary nav
+ * item is implemented now -- PlaceholderWorkspaceView still exists here
+ * as the fallback a future new nav item lands on before its own view is
+ * built.
  *
  * Items with NAV_ITEMS children (Administration) are excluded from this
  * generated list: they are a sidebar-only grouping with no page of their
@@ -26,6 +28,7 @@ const VIEW_COMPONENTS: Record<string, () => Promise<{ default: Component }>> = {
   customers: () => import('@/views/CustomerCollectionView.vue'),
   devices: () => import('@/views/DeviceCollectionView.vue'),
   network: () => import('@/views/NetworkCollectionView.vue'),
+  explorer: () => import('@/views/ExplorerView.vue'),
 }
 
 const workspaceRoutes: RouteRecordRaw[] = NAV_ITEMS.filter((item) => !item.children).map((item) => ({

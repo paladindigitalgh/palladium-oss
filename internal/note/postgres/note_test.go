@@ -93,6 +93,8 @@ func createTestUser(t *testing.T, ctx context.Context, q database.Querier) auth.
 	u, err := repo.Create(ctx, auth.User{
 		Email:        "operator-" + uuid.NewString() + "@example.com",
 		PasswordHash: "fixture-hash",
+		FirstName:    "Jane",
+		LastName:     "Doe",
 		Role:         auth.RoleOperator,
 		Status:       auth.UserStatusActive,
 	})
@@ -109,11 +111,13 @@ func TestNoteRepositoryCreate(t *testing.T) {
 
 	entityID := uuid.New()
 	created, err := repo.Create(ctx, note.Note{
-		EntityType:   "customer",
-		EntityID:     entityID,
-		AuthorUserID: u.ID,
-		AuthorEmail:  u.Email,
-		Body:         "Called the customer back, issue resolved.",
+		EntityType:      "customer",
+		EntityID:        entityID,
+		AuthorUserID:    u.ID,
+		AuthorEmail:     u.Email,
+		AuthorFirstName: u.FirstName,
+		AuthorLastName:  u.LastName,
+		Body:            "Called the customer back, issue resolved.",
 	})
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -127,6 +131,9 @@ func TestNoteRepositoryCreate(t *testing.T) {
 	}
 	if created.AuthorUserID != u.ID || created.AuthorEmail != u.Email {
 		t.Errorf("author = %v/%q, want %v/%q", created.AuthorUserID, created.AuthorEmail, u.ID, u.Email)
+	}
+	if created.AuthorFirstName != "Jane" || created.AuthorLastName != "Doe" {
+		t.Errorf("author name = %q %q, want Jane Doe", created.AuthorFirstName, created.AuthorLastName)
 	}
 	if created.Body != "Called the customer back, issue resolved." {
 		t.Errorf("Body = %q, want %q", created.Body, "Called the customer back, issue resolved.")

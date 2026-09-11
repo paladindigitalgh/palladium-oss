@@ -59,6 +59,17 @@ func (f *fakeUserRepository) UpdatePasswordHash(_ context.Context, id uuid.UUID,
 	return auth.User{}, apperror.NotFound("user not found")
 }
 
+func (f *fakeUserRepository) UpdateName(_ context.Context, id uuid.UUID, firstName, lastName string) (auth.User, error) {
+	for i, u := range f.users {
+		if u.ID == id {
+			f.users[i].FirstName = firstName
+			f.users[i].LastName = lastName
+			return f.users[i], nil
+		}
+	}
+	return auth.User{}, apperror.NotFound("user not found")
+}
+
 func (f *fakeUserRepository) List(context.Context) ([]auth.User, error) {
 	return f.users, nil
 }

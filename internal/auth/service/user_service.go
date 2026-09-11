@@ -39,8 +39,8 @@ func (s *UserManagementService) List(ctx context.Context) ([]auth.User, error) {
 	return s.users.List(ctx)
 }
 
-// Create hashes password and persists a new User with the given email and
-// role.
+// Create hashes password and persists a new User with the given email,
+// role, and optional first/last name.
 //
 // Status is never a caller choice — a freshly created account always
 // starts UserStatusActive, the same reasoning
@@ -48,13 +48,20 @@ func (s *UserManagementService) List(ctx context.Context) ([]auth.User, error) {
 // always stamps Status "Active": this is a form that creates a fresh,
 // currently-usable account, not one that also needs to create a
 // pre-deactivated one.
-func (s *UserManagementService) Create(ctx context.Context, email, password string, role auth.Role) (auth.User, error) {
+func (s *UserManagementService) Create(ctx context.Context, email, password, firstName, lastName string, role auth.Role) (auth.User, error) {
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		return auth.User{}, err
 	}
 
-	user := auth.User{Email: email, PasswordHash: hash, Role: role, Status: auth.UserStatusActive}
+	user := auth.User{
+		Email:        email,
+		PasswordHash: hash,
+		FirstName:    firstName,
+		LastName:     lastName,
+		Role:         role,
+		Status:       auth.UserStatusActive,
+	}
 	if err := user.Validate(); err != nil {
 		return auth.User{}, err
 	}

@@ -34,24 +34,28 @@ type noteCreateRequest struct {
 // change to how the domain model is composed internally can never
 // silently change the API's JSON shape.
 type noteResponse struct {
-	ID           uuid.UUID `json:"id"`
-	EntityType   string    `json:"entity_type"`
-	EntityID     uuid.UUID `json:"entity_id"`
-	AuthorUserID uuid.UUID `json:"author_user_id"`
-	AuthorEmail  string    `json:"author_email"`
-	Body         string    `json:"body"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID              uuid.UUID `json:"id"`
+	EntityType      string    `json:"entity_type"`
+	EntityID        uuid.UUID `json:"entity_id"`
+	AuthorUserID    uuid.UUID `json:"author_user_id"`
+	AuthorEmail     string    `json:"author_email"`
+	AuthorFirstName string    `json:"author_first_name"`
+	AuthorLastName  string    `json:"author_last_name"`
+	Body            string    `json:"body"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 func newNoteResponse(n note.Note) noteResponse {
 	return noteResponse{
-		ID:           n.ID,
-		EntityType:   n.EntityType,
-		EntityID:     n.EntityID,
-		AuthorUserID: n.AuthorUserID,
-		AuthorEmail:  n.AuthorEmail,
-		Body:         n.Body,
-		CreatedAt:    n.CreatedAt,
+		ID:              n.ID,
+		EntityType:      n.EntityType,
+		EntityID:        n.EntityID,
+		AuthorUserID:    n.AuthorUserID,
+		AuthorEmail:     n.AuthorEmail,
+		AuthorFirstName: n.AuthorFirstName,
+		AuthorLastName:  n.AuthorLastName,
+		Body:            n.Body,
+		CreatedAt:       n.CreatedAt,
 	}
 }
 

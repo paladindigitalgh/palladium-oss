@@ -72,6 +72,17 @@ func (f *fakeUserRepository) UpdatePasswordHash(_ context.Context, id uuid.UUID,
 	return u, nil
 }
 
+func (f *fakeUserRepository) UpdateName(_ context.Context, id uuid.UUID, firstName, lastName string) (auth.User, error) {
+	u, ok := f.byID[id]
+	if !ok {
+		return auth.User{}, apperror.NotFound("user not found")
+	}
+	u.FirstName = firstName
+	u.LastName = lastName
+	f.byID[id] = u
+	return u, nil
+}
+
 func (f *fakeUserRepository) UpdateRole(_ context.Context, id uuid.UUID, role auth.Role) (auth.User, error) {
 	u, ok := f.byID[id]
 	if !ok {
@@ -102,7 +113,7 @@ func TestUserManagementServiceCreateHashesPasswordAndForcesActiveStatus(t *testi
 	repo := newFakeUserRepository()
 	svc := service.NewUserManagementService(repo)
 
-	created, err := svc.Create(context.Background(), "jane@example.com", "correct horse battery staple", auth.RoleOperator)
+	created, err := svc.Create(context.Background(), "jane@example.com", "correct horse battery staple", "Jane", "Doe", auth.RoleOperator)
 	if err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -119,13 +130,29 @@ func TestUserManagementServiceCreateHashesPasswordAndForcesActiveStatus(t *testi
 	if created.Role != auth.RoleOperator {
 		t.Errorf("Role = %q, want %q", created.Role, auth.RoleOperator)
 	}
+	if created.FirstName != "Jane" || created.LastName != "Doe" {
+		t.Errorf("name = %q %q, want Jane Doe", created.FirstName, created.LastName)
+	}
+}
+
+func TestUserManagementServiceCreateAllowsBlankName(t *testing.T) {
+	repo := newFakeUserRepository()
+	svc := service.NewUserManagementService(repo)
+
+	created, err := svc.Create(context.Background(), "jane@example.com", "correct horse battery staple", "", "", auth.RoleOperator)
+	if err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if created.FirstName != "" || created.LastName != "" {
+		t.Errorf("name = %q %q, want both blank", created.FirstName, created.LastName)
+	}
 }
 
 func TestUserManagementServiceCreateRejectsInvalidRole(t *testing.T) {
 	repo := newFakeUserRepository()
 	svc := service.NewUserManagementService(repo)
 
-	_, err := svc.Create(context.Background(), "jane@example.com", "some password", auth.Role("SuperAdmin"))
+	_, err := svc.Create(context.Background(), "jane@example.com", "some password", "", "", auth.Role("SuperAdmin"))
 
 	if !apperror.Is(err, apperror.KindInvalid) {
 		t.Fatalf("Kind = %q, want %q", apperror.KindOf(err), apperror.KindInvalid)

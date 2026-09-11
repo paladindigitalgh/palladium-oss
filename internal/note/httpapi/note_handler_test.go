@@ -49,11 +49,29 @@ func (f *fakeNoteService) ListByEntity(context.Context, string, uuid.UUID) ([]no
 	return f.notes, nil
 }
 
+// fakeUserLookup is the seam httpapi.NoteHandler's userLookup dependency
+// uses. Keyed by ID so a test can plant exactly the author a given
+// claims.UserID should resolve to, without a real auth.UserRepository.
+type fakeUserLookup struct {
+	byID map[uuid.UUID]auth.User
+}
+
+func (f *fakeUserLookup) GetByID(_ context.Context, id uuid.UUID) (auth.User, error) {
+	user, ok := f.byID[id]
+	if !ok {
+		return auth.User{}, apperror.NotFound("user not found")
+	}
+	return user, nil
+}
+
 func TestNoteHandlerCreateCapturesAuthorFromClaims(t *testing.T) {
 	svc := &fakeNoteService{}
-	h := httpapi.NewNoteHandler(svc)
-
 	claims := auth.Claims{UserID: uuid.New(), Email: "jane@example.com"}
+	users := &fakeUserLookup{byID: map[uuid.UUID]auth.User{
+		claims.UserID: {ID: claims.UserID, Email: claims.Email, FirstName: "Jane", LastName: "Doe"},
+	}}
+	h := httpapi.NewNoteHandler(svc, users)
+
 	entityID := uuid.New()
 	body := `{"entity_type":"customer","entity_id":"` + entityID.String() + `","body":"Called back, resolved."}`
 
@@ -71,6 +89,9 @@ func TestNoteHandlerCreateCapturesAuthorFromClaims(t *testing.T) {
 	if svc.gotCreate.AuthorEmail != claims.Email {
 		t.Errorf("AuthorEmail = %q, want %q", svc.gotCreate.AuthorEmail, claims.Email)
 	}
+	if svc.gotCreate.AuthorFirstName != "Jane" || svc.gotCreate.AuthorLastName != "Doe" {
+		t.Errorf("author name = %q %q, want Jane Doe", svc.gotCreate.AuthorFirstName, svc.gotCreate.AuthorLastName)
+	}
 	if svc.gotCreate.EntityType != "customer" || svc.gotCreate.EntityID != entityID {
 		t.Errorf("entity = %s/%v, want customer/%v", svc.gotCreate.EntityType, svc.gotCreate.EntityID, entityID)
 	}
@@ -79,7 +100,9 @@ func TestNoteHandlerCreateCapturesAuthorFromClaims(t *testing.T) {
 	}
 
 	var resp struct {
-		AuthorEmail string `json:"author_email"`
+		AuthorEmail     string `json:"author_email"`
+		AuthorFirstName string `json:"author_first_name"`
+		AuthorLastName  string `json:"author_last_name"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -87,10 +110,13 @@ func TestNoteHandlerCreateCapturesAuthorFromClaims(t *testing.T) {
 	if resp.AuthorEmail != "jane@example.com" {
 		t.Errorf("response author_email = %q, want %q", resp.AuthorEmail, "jane@example.com")
 	}
+	if resp.AuthorFirstName != "Jane" || resp.AuthorLastName != "Doe" {
+		t.Errorf("response author name = %q %q, want Jane Doe", resp.AuthorFirstName, resp.AuthorLastName)
+	}
 }
 
 func TestNoteHandlerCreateRejectsMalformedJSON(t *testing.T) {
-	h := httpapi.NewNoteHandler(&fakeNoteService{})
+	h := httpapi.NewNoteHandler(&fakeNoteService{}, &fakeUserLookup{})
 
 	req := httptest.NewRequest(http.MethodPost, "/notes", strings.NewReader(`{not json`))
 	rec := httptest.NewRecorder()
@@ -103,7 +129,7 @@ func TestNoteHandlerCreateRejectsMalformedJSON(t *testing.T) {
 
 func TestNoteHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 	svc := &fakeNoteService{err: apperror.Invalid("body: is required")}
-	h := httpapi.NewNoteHandler(svc)
+	h := httpapi.NewNoteHandler(svc, &fakeUserLookup{})
 
 	req := httptest.NewRequest(http.MethodPost, "/notes", strings.NewReader(`{"entity_type":"customer","entity_id":"`+uuid.New().String()+`"}`))
 	rec := httptest.NewRecorder()
@@ -115,7 +141,7 @@ func TestNoteHandlerCreatePropagatesServiceValidationError(t *testing.T) {
 }
 
 func TestNoteHandlerListRequiresEntityType(t *testing.T) {
-	h := httpapi.NewNoteHandler(&fakeNoteService{})
+	h := httpapi.NewNoteHandler(&fakeNoteService{}, &fakeUserLookup{})
 
 	req := httptest.NewRequest(http.MethodGet, "/notes?entity_id="+uuid.New().String(), nil)
 	rec := httptest.NewRecorder()
@@ -127,7 +153,7 @@ func TestNoteHandlerListRequiresEntityType(t *testing.T) {
 }
 
 func TestNoteHandlerListRequiresValidEntityID(t *testing.T) {
-	h := httpapi.NewNoteHandler(&fakeNoteService{})
+	h := httpapi.NewNoteHandler(&fakeNoteService{}, &fakeUserLookup{})
 
 	req := httptest.NewRequest(http.MethodGet, "/notes?entity_type=customer&entity_id=not-a-uuid", nil)
 	rec := httptest.NewRecorder()
@@ -143,7 +169,7 @@ func TestNoteHandlerListReturnsNotes(t *testing.T) {
 	svc := &fakeNoteService{notes: []note.Note{
 		{ID: uuid.New(), EntityType: "customer", EntityID: entityID, AuthorEmail: "jane@example.com", Body: "First"},
 	}}
-	h := httpapi.NewNoteHandler(svc)
+	h := httpapi.NewNoteHandler(svc, &fakeUserLookup{})
 
 	req := httptest.NewRequest(http.MethodGet, "/notes?entity_type=customer&entity_id="+entityID.String(), nil)
 	rec := httptest.NewRecorder()

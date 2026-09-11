@@ -78,6 +78,20 @@ func (f *fakeUserRepository) UpdatePasswordHash(_ context.Context, id uuid.UUID,
 	return auth.User{}, apperror.NotFound("user not found")
 }
 
+func (f *fakeUserRepository) UpdateName(_ context.Context, id uuid.UUID, firstName, lastName string) (auth.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for email, u := range f.byEmail {
+		if u.ID == id {
+			u.FirstName = firstName
+			u.LastName = lastName
+			f.byEmail[email] = u
+			return u, nil
+		}
+	}
+	return auth.User{}, apperror.NotFound("user not found")
+}
+
 func (f *fakeUserRepository) List(_ context.Context) ([]auth.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

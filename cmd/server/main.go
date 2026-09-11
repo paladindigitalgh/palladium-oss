@@ -104,6 +104,8 @@ import (
 	provisioningkontronservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/service"
 	provisioningpostgres "github.com/paladindigitalgh/palladium-oss/internal/provisioning/postgres"
 	provisioningservice "github.com/paladindigitalgh/palladium-oss/internal/provisioning/service"
+	reporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/report/httpapi"
+	reportpostgres "github.com/paladindigitalgh/palladium-oss/internal/report/postgres"
 	api "github.com/paladindigitalgh/palladium-oss/internal/server"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	servicepostgres "github.com/paladindigitalgh/palladium-oss/internal/service/postgres"
@@ -346,13 +348,29 @@ func run() error {
 	eventRepo := eventpostgres.NewEventRepository(pool, clock.New(), id.New())
 	eventHandler := eventhttpapi.NewEventHandler(eventRepo)
 
+	// userRepo is built here, well before the rest of auth's wiring
+	// further down this file, so NoteHandler (immediately below) can use
+	// it to resolve an author's current FirstName/LastName at Create time
+	// (see note_handler.go's own doc comment on why that snapshot can't
+	// come from JWT claims). The later auth wiring reuses this exact
+	// instance rather than constructing a second one — see its own
+	// comment for why sharing is preferred.
+	userRepo := authpostgres.NewUserRepository(pool, clock.New(), id.New())
+
 	// Note, unlike Event, gets a real service layer: Create validates a
 	// client-submitted body (see internal/note/service), the same
 	// reasoning every other client-writable domain in this file gets one
 	// and Event does not.
 	noteRepo := notepostgres.NewNoteRepository(pool, clock.New(), id.New())
 	noteSvc := noteservice.NewNoteService(noteRepo)
-	noteHandler := notehttpapi.NewNoteHandler(noteSvc)
+	noteHandler := notehttpapi.NewNoteHandler(noteSvc, userRepo)
+
+	// Report, like Event, has no service layer: every method is a read
+	// query with no business logic (see internal/report's own package
+	// doc comment), and needs neither clock nor id.Generator since it
+	// never writes anything.
+	reportRepo := reportpostgres.NewRepository(pool)
+	reportHandler := reporthttpapi.NewReportHandler(reportRepo)
 
 	// pluginRegistry is built and populated with every available plugin
 	// once, at startup — the same "every Register call happens before
@@ -632,20 +650,26 @@ func run() error {
 	// config values.
 	tokenIssuer := auth.NewTokenIssuer([]byte(cfg.JWT.Secret), cfg.JWT.Expiration, clock.New())
 
-	userRepo := authpostgres.NewUserRepository(pool, clock.New(), id.New())
+	// userRepo itself is built much earlier in this file (see the comment
+	// above noteHandler's wiring) — authService, userManagementSvc,
+	// profileSvc, and authzMiddleware below all reuse that exact
+	// instance rather than each constructing their own, so every one of
+	// them is always looking at the same table.
 	authService := auth.NewAuthService(userRepo, tokenIssuer)
 	loginHandler := authhttpapi.NewLoginHandler(authService, cfg.JWT.Expiration)
 
-	// userManagementSvc reuses userRepo, the same instance authService and
-	// authzMiddleware below already depend on — see authzMiddleware's own
-	// comment for why sharing one instance is preferred over a second.
 	userManagementSvc := authservice.NewUserManagementService(userRepo)
 	userHandler := authhttpapi.NewUserHandler(userManagementSvc)
 
-	// authz.Middleware reuses userRepo (the same UserRepository
-	// authService already depends on) rather than a second instance —
-	// there is no reason for two, and sharing makes it obvious both are
-	// always looking at the same table.
+	// profileSvc/profileHandler back /api/v1/me: a signed-in caller
+	// viewing and editing their own account (name, password), as opposed
+	// to userManagementSvc/userHandler's Administrator-only /api/v1/users
+	// (any account, by ID). See internal/auth/service.ProfileService's
+	// own doc comment for why this is a separate type rather than more
+	// methods on UserManagementService.
+	profileSvc := authservice.NewProfileService(userRepo)
+	profileHandler := authhttpapi.NewProfileHandler(profileSvc)
+
 	authzMiddleware := authz.NewMiddleware(userRepo)
 
 	router := api.NewRouter(api.Dependencies{
@@ -681,6 +705,7 @@ func run() error {
 		WorkflowHandler:                                    workflowHandler,
 		EventHandler:                                       eventHandler,
 		NoteHandler:                                        noteHandler,
+		ReportHandler:                                      reportHandler,
 		AccessNetworkHandler:                               accessNetworkHandler,
 		OLTHandler:                                         oltHandler,
 		OLTModelHandler:                                    oltModelHandler,
@@ -692,6 +717,7 @@ func run() error {
 		Tokens:                                             tokenIssuer,
 		LoginHandler:                                       loginHandler,
 		UserHandler:                                        userHandler,
+		ProfileHandler:                                     profileHandler,
 		Authz:                                              authzMiddleware,
 		AllowedOrigin:                                      cfg.HTTP.AllowedOrigin,
 	})

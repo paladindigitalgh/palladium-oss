@@ -56,6 +56,9 @@ func (f *fakeUserRepository) List(context.Context) ([]auth.User, error) {
 	}
 	return users, nil
 }
+func (f *fakeUserRepository) UpdateName(context.Context, uuid.UUID, string, string) (auth.User, error) {
+	return auth.User{}, apperror.NotFound("not implemented")
+}
 func (f *fakeUserRepository) UpdateRole(context.Context, uuid.UUID, auth.Role) (auth.User, error) {
 	return auth.User{}, apperror.NotFound("not implemented")
 }

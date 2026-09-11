@@ -27,6 +27,10 @@ func (u User) Validate() error {
 		errs.Add("password_hash", "is required")
 	}
 
+	// FirstName/LastName are never checked here: both are optional (see
+	// model.go's doc comment on User), so there is nothing a client could
+	// get wrong about leaving them blank.
+
 	if !u.Role.Valid() {
 		errs.Add("role", fmt.Sprintf("must be one of: %s", roleNames()))
 	}

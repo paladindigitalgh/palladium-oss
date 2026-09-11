@@ -41,6 +41,7 @@ import (
 	providerhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provider/httpapi"
 	provisioninghttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/httpapi"
 	provisioningkontronhttpapi "github.com/paladindigitalgh/palladium-oss/internal/provisioning/kontron/httpapi"
+	reporthttpapi "github.com/paladindigitalgh/palladium-oss/internal/report/httpapi"
 	servicehttpapi "github.com/paladindigitalgh/palladium-oss/internal/service/httpapi"
 	serviceequipmenthttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceequipment/httpapi"
 	serviceprofilehttpapi "github.com/paladindigitalgh/palladium-oss/internal/serviceprofile/httpapi"
@@ -80,6 +81,7 @@ type Dependencies struct {
 	WorkflowHandler                                    *workflowhttpapi.WorkflowHandler
 	EventHandler                                       *eventhttpapi.EventHandler
 	NoteHandler                                        *notehttpapi.NoteHandler
+	ReportHandler                                      *reporthttpapi.ReportHandler
 	AccessNetworkHandler                               *accessnetworkhttpapi.AccessNetworkHandler
 	OLTHandler                                         *olthttpapi.OLTHandler
 	OLTModelHandler                                    *oltmodelhttpapi.OLTModelHandler
@@ -95,6 +97,7 @@ type Dependencies struct {
 	Tokens                                             *auth.TokenIssuer
 	LoginHandler                                       *authhttpapi.LoginHandler
 	UserHandler                                        *authhttpapi.UserHandler
+	ProfileHandler                                     *authhttpapi.ProfileHandler
 	Authz                                              *authz.Middleware
 	// AllowedOrigin is the frontend origin CORS middleware accepts
 	// cross-origin requests from (see corsMiddleware). Empty disables
@@ -726,6 +729,19 @@ func NewRouter(deps Dependencies) http.Handler {
 			r.Post("/{id}/reactivate", deps.UserHandler.Reactivate)
 		})
 
+		// /me is deliberately outside RequireUserManagement: it always
+		// acts on whichever User the caller's own JWT names (see
+		// authhttpapi.ProfileHandler's doc comment), never a User given
+		// by ID, so every Role — not just Administrator — may reach it.
+		// auth.Middleware alone is the only guard a caller needs to pass.
+		r.Route("/me", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+
+			r.Get("/", deps.ProfileHandler.Get)
+			r.Put("/", deps.ProfileHandler.UpdateName)
+			r.Put("/password", deps.ProfileHandler.ChangePassword)
+		})
+
 		// /diagnostics has no read/write split — RequireDiagnostics is
 		// the one capability guarding this whole route (see
 		// authz.CanRunDiagnostics's doc comment for why running a
@@ -851,6 +867,19 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Use(deps.Authz.RequireNoteWrite())
 				r.Post("/", deps.NoteHandler.Create)
 			})
+		})
+
+		// /reports backs Explorer's curated cross-domain reports
+		// (docs/09-WORKSPACE-SPECIFICATIONS.md §15) -- entirely read-only
+		// (RequireReports alone, no write pair, the same shape /events
+		// uses above), since internal/report has no write route at all.
+		r.Route("/reports", func(r chi.Router) {
+			r.Use(auth.Middleware(deps.Tokens))
+			r.Use(deps.Authz.RequireReports())
+
+			r.Get("/customers-contacts", deps.ReportHandler.CustomersWithContacts)
+			r.Get("/devices", deps.ReportHandler.Devices)
+			r.Get("/customers-devices", deps.ReportHandler.CustomersWithDevices)
 		})
 
 		// /authentication-methods gets its own dedicated capability pair

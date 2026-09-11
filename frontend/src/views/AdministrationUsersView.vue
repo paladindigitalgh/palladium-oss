@@ -11,6 +11,7 @@ import SimpleTable, { type SimpleTableColumn } from '@/components/data-display/S
 import UserFormDialog from '@/components/dialogs/UserFormDialog.vue'
 import { listUsers, updateUserRole, deactivateUser, reactivateUser } from '@/services/users/userRepository'
 import { ApiError } from '@/services/api/httpClient'
+import { formatDisplayName } from '@/lib/users'
 import type { User } from '@/types/user'
 
 /**
@@ -54,6 +55,7 @@ const visibleUsers = computed(() =>
 )
 
 const userColumns: SimpleTableColumn[] = [
+  { key: 'name', label: 'Name' },
   { key: 'email', label: 'Email' },
   { key: 'role', label: 'Role' },
   { key: 'status', label: 'Status' },
@@ -131,6 +133,9 @@ async function handleToggleStatus(user: User) {
         empty-icon="settings"
         empty-title="No users yet"
       >
+        <template #cell-name="{ row }">
+          {{ formatDisplayName({ firstName: row.firstName, lastName: row.lastName, email: row.email }) }}
+        </template>
         <template #cell-email="{ row }">{{ row.email }}</template>
         <template #cell-role="{ row }">
           <BaseSelect

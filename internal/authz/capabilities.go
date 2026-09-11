@@ -733,3 +733,23 @@ func CanWriteNotes(role auth.Role) bool {
 		return false
 	}
 }
+
+// CanReadReports reports whether role may read Explorer's curated
+// reports (internal/report) — cross-domain, read-only joins over data
+// every one of these roles can already see individually through
+// Customers/Devices/Contacts. All three built-in roles can, the same
+// "everyone can read" rule CanReadNotes and CanReadCustomers already
+// give their own resources; its own named function for the same reason
+// CanReadCustomers's doc comment gives for not reusing CanReadInventory
+// — a report is its own resource, only coincidentally the same answer
+// today. There is no CanWriteReports: a report has no write route at
+// all (see internal/report's own package doc comment), the same shape
+// CanReadEvents already has for Event.
+func CanReadReports(role auth.Role) bool {
+	switch role {
+	case auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer:
+		return true
+	default:
+		return false
+	}
+}

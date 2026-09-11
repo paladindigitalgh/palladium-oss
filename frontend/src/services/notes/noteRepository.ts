@@ -7,6 +7,8 @@ interface NoteDto {
   entity_id: string
   author_user_id: string
   author_email: string
+  author_first_name: string
+  author_last_name: string
   body: string
   created_at: string
 }
@@ -18,6 +20,8 @@ function fromDto(dto: NoteDto): Note {
     entityId: dto.entity_id,
     authorUserId: dto.author_user_id,
     authorEmail: dto.author_email,
+    authorFirstName: dto.author_first_name,
+    authorLastName: dto.author_last_name,
     body: dto.body,
     createdAt: dto.created_at,
   }

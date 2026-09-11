@@ -20,6 +20,15 @@ type noteService interface {
 	ListByEntity(ctx context.Context, entityType string, entityID uuid.UUID) ([]note.Note, error)
 }
 
+// userLookup is the seam NoteHandler uses to resolve the current
+// AuthorFirstName/AuthorLastName snapshot at Create time — the minimal
+// slice of auth.UserRepository it actually needs, not the whole
+// interface, the same "depend on the seam, not the concrete type"
+// reasoning noteService above already follows.
+type userLookup interface {
+	GetByID(ctx context.Context, id uuid.UUID) (auth.User, error)
+}
+
 // NoteHandler serves the Note domain's two REST endpoints:
 //
 //	POST /api/v1/notes
@@ -32,11 +41,12 @@ type noteService interface {
 // Service.
 type NoteHandler struct {
 	notes noteService
+	users userLookup
 }
 
 // NewNoteHandler builds a NoteHandler.
-func NewNoteHandler(notes noteService) *NoteHandler {
-	return &NoteHandler{notes: notes}
+func NewNoteHandler(notes noteService, users userLookup) *NoteHandler {
+	return &NoteHandler{notes: notes, users: users}
 }
 
 // Create handles POST /api/v1/notes. AuthorUserID and AuthorEmail are
@@ -48,6 +58,16 @@ func NewNoteHandler(notes noteService) *NoteHandler {
 // UUID left on AuthorUserID fails note.Note.Validate() with a clear
 // "author_user_id is required" error rather than silently attributing
 // the Note to nobody.
+//
+// AuthorFirstName/AuthorLastName cannot come from claims the same way —
+// a JWT carries only ID and Email (see auth.Claims's doc comment), never
+// a display name that could go stale mid-session — so this handler looks
+// the caller up by ID instead, once, at write time, and snapshots
+// whatever FirstName/LastName that User currently has (see note.Note's
+// doc comment on why this is a snapshot, not a read-time join). A lookup
+// failure is not fatal to creating the Note: it just leaves both blank,
+// the same as any User who never set a name, so a transient lookup
+// problem never blocks an operator from recording a Note.
 func (h *NoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req noteCreateRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -63,6 +83,11 @@ func (h *NoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
 		n.AuthorUserID = claims.UserID
 		n.AuthorEmail = claims.Email
+
+		if author, err := h.users.GetByID(r.Context(), claims.UserID); err == nil {
+			n.AuthorFirstName = author.FirstName
+			n.AuthorLastName = author.LastName
+		}
 	}
 
 	created, err := h.notes.Create(r.Context(), n)

@@ -33,13 +33,14 @@ func NewNoteRepository(db database.Querier, clock clock.Clock, ids id.Generator)
 // in this codebase.
 func (r *NoteRepository) Create(ctx context.Context, n note.Note) (note.Note, error) {
 	const query = `
-		INSERT INTO notes (id, entity_type, entity_id, author_user_id, author_email, body, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, entity_type, entity_id, author_user_id, author_email, body, created_at
+		INSERT INTO notes (id, entity_type, entity_id, author_user_id, author_email, author_first_name, author_last_name, body, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, entity_type, entity_id, author_user_id, author_email, author_first_name, author_last_name, body, created_at
 	`
 
 	created, err := scanNote(r.db.QueryRow(ctx, query,
-		r.ids.New(), n.EntityType, n.EntityID, n.AuthorUserID, n.AuthorEmail, n.Body, r.clock.Now()))
+		r.ids.New(), n.EntityType, n.EntityID, n.AuthorUserID, n.AuthorEmail,
+		n.AuthorFirstName, n.AuthorLastName, n.Body, r.clock.Now()))
 	if err != nil {
 		return note.Note{}, translateError("create note", err)
 	}
@@ -51,7 +52,7 @@ func (r *NoteRepository) Create(ctx context.Context, n note.Note) (note.Note, er
 // why this order differs from Event's own ListByEntity.
 func (r *NoteRepository) ListByEntity(ctx context.Context, entityType string, entityID uuid.UUID) ([]note.Note, error) {
 	const query = `
-		SELECT id, entity_type, entity_id, author_user_id, author_email, body, created_at
+		SELECT id, entity_type, entity_id, author_user_id, author_email, author_first_name, author_last_name, body, created_at
 		FROM notes
 		WHERE entity_type = $1 AND entity_id = $2
 		ORDER BY created_at DESC
@@ -84,6 +85,7 @@ type rowScanner interface {
 
 func scanNote(row rowScanner) (note.Note, error) {
 	var n note.Note
-	err := row.Scan(&n.ID, &n.EntityType, &n.EntityID, &n.AuthorUserID, &n.AuthorEmail, &n.Body, &n.CreatedAt)
+	err := row.Scan(&n.ID, &n.EntityType, &n.EntityID, &n.AuthorUserID, &n.AuthorEmail,
+		&n.AuthorFirstName, &n.AuthorLastName, &n.Body, &n.CreatedAt)
 	return n, err
 }

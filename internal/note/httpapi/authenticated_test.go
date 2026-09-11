@@ -37,6 +37,9 @@ func (s stubUserRepository) Create(_ context.Context, u auth.User) (auth.User, e
 func (s stubUserRepository) UpdatePasswordHash(context.Context, uuid.UUID, string) (auth.User, error) {
 	return auth.User{}, apperror.NotFound("not implemented in this stub")
 }
+func (s stubUserRepository) UpdateName(context.Context, uuid.UUID, string, string) (auth.User, error) {
+	return auth.User{}, apperror.NotFound("not implemented in this stub")
+}
 func (s stubUserRepository) List(context.Context) ([]auth.User, error) { return nil, nil }
 func (s stubUserRepository) UpdateRole(_ context.Context, _ uuid.UUID, role auth.Role) (auth.User, error) {
 	return auth.User{Role: role, Status: auth.UserStatusActive}, nil
@@ -57,8 +60,9 @@ var _ auth.UserRepository = stubUserRepository{}
 // what distinguishes these tests from note_handler_test.go's: those test
 // the handler in isolation, with no middleware in front of it at all.
 func newAuthenticatedTestRouter(svc *fakeNoteService, tokens *auth.TokenIssuer, role auth.Role) http.Handler {
-	handler := httpapi.NewNoteHandler(svc)
-	authzMiddleware := authz.NewMiddleware(stubUserRepository{role: role})
+	users := stubUserRepository{role: role}
+	handler := httpapi.NewNoteHandler(svc, users)
+	authzMiddleware := authz.NewMiddleware(users)
 
 	r := chi.NewRouter()
 	r.Route("/notes", func(r chi.Router) {

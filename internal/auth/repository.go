@@ -22,9 +22,9 @@ import (
 //     UpdateStatus) — both events.actor_user_id and
 //     workflow_instances.requested_by_user_id reference users(id) with
 //     ON DELETE RESTRICT, so a real delete would fail for any User who
-//     has ever done anything. UpdatePasswordHash, UpdateRole, and
-//     UpdateStatus are the mutations User Management and login-adjacent
-//     flows need; nothing yet needs to change Email.
+//     has ever done anything. UpdatePasswordHash, UpdateName, UpdateRole,
+//     and UpdateStatus are the mutations User Management, Profile, and
+//     login-adjacent flows need; nothing yet needs to change Email.
 //   - Count exists solely for internal/auth/bootstrap's "refuse to create
 //     an administrator if a user already exists" check. It predates List
 //     and was never generalized into it: Count answers exactly one
@@ -36,6 +36,7 @@ type UserRepository interface {
 	List(ctx context.Context) ([]User, error)
 	Create(ctx context.Context, user User) (User, error)
 	UpdatePasswordHash(ctx context.Context, id uuid.UUID, passwordHash string) (User, error)
+	UpdateName(ctx context.Context, id uuid.UUID, firstName, lastName string) (User, error)
 	UpdateRole(ctx context.Context, id uuid.UUID, role Role) (User, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status UserStatus) (User, error)
 	Count(ctx context.Context) (int, error)

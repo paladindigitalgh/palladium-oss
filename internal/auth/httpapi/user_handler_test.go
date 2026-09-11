@@ -46,11 +46,11 @@ func (f *fakeUserManagementService) List(context.Context) ([]auth.User, error) {
 	return users, nil
 }
 
-func (f *fakeUserManagementService) Create(_ context.Context, email, _ string, role auth.Role) (auth.User, error) {
+func (f *fakeUserManagementService) Create(_ context.Context, email, _, firstName, lastName string, role auth.Role) (auth.User, error) {
 	if f.err != nil {
 		return auth.User{}, f.err
 	}
-	u := auth.User{ID: uuid.New(), Email: email, Role: role, Status: auth.UserStatusActive}
+	u := auth.User{ID: uuid.New(), Email: email, FirstName: firstName, LastName: lastName, Role: role, Status: auth.UserStatusActive}
 	f.byID[u.ID] = u
 	return u, nil
 }
@@ -109,7 +109,7 @@ func newUserTestRouter(svc *fakeUserManagementService) http.Handler {
 func TestUserHandlerCreate(t *testing.T) {
 	router := newUserTestRouter(newFakeUserManagementService())
 
-	body := `{"email":"jane@example.com","password":"correct horse battery staple","role":"Operator"}`
+	body := `{"email":"jane@example.com","password":"correct horse battery staple","first_name":"Jane","last_name":"Doe","role":"Operator"}`
 	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -121,6 +121,8 @@ func TestUserHandlerCreate(t *testing.T) {
 	var resp struct {
 		ID           string `json:"id"`
 		Email        string `json:"email"`
+		FirstName    string `json:"first_name"`
+		LastName     string `json:"last_name"`
 		Role         string `json:"role"`
 		Status       string `json:"status"`
 		PasswordHash string `json:"password_hash"`
@@ -131,6 +133,9 @@ func TestUserHandlerCreate(t *testing.T) {
 	if resp.Email != "jane@example.com" {
 		t.Errorf("email = %q, want %q", resp.Email, "jane@example.com")
 	}
+	if resp.FirstName != "Jane" || resp.LastName != "Doe" {
+		t.Errorf("name = %q %q, want Jane Doe", resp.FirstName, resp.LastName)
+	}
 	if resp.Role != "Operator" {
 		t.Errorf("role = %q, want %q", resp.Role, "Operator")
 	}
@@ -139,6 +144,30 @@ func TestUserHandlerCreate(t *testing.T) {
 	}
 	if resp.PasswordHash != "" {
 		t.Error("response included password_hash, want it never exposed over HTTP")
+	}
+}
+
+func TestUserHandlerCreateAllowsBlankName(t *testing.T) {
+	router := newUserTestRouter(newFakeUserManagementService())
+
+	body := `{"email":"jane@example.com","password":"correct horse battery staple","role":"Operator"}`
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	var resp struct {
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.FirstName != "" || resp.LastName != "" {
+		t.Errorf("name = %q %q, want both blank", resp.FirstName, resp.LastName)
 	}
 }
 

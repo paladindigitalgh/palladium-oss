@@ -4,6 +4,7 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import BaseEmptyState from '@/components/base/BaseEmptyState.vue'
 import BaseLoadingState from '@/components/base/BaseLoadingState.vue'
 import { formatDisplayDateTime } from '@/lib/dates'
+import { formatDisplayName } from '@/lib/users'
 import type { Note } from '@/types/note'
 
 /**
@@ -92,7 +93,9 @@ function handleSubmit() {
       <ol class="notes-section__list">
         <li v-for="n in pageItems" :key="n.id" class="notes-section__note">
           <div class="notes-section__note-header">
-            <span class="notes-section__author">{{ n.authorEmail }}</span>
+            <span class="notes-section__author">{{
+              formatDisplayName({ firstName: n.authorFirstName, lastName: n.authorLastName, email: n.authorEmail })
+            }}</span>
             <span class="notes-section__timestamp">{{ formatDisplayDateTime(n.createdAt) }}</span>
           </div>
           <p class="notes-section__body">{{ n.body }}</p>

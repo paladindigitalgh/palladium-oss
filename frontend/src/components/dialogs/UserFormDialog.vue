@@ -11,15 +11,20 @@ import type { User } from '@/types/user'
 /**
  * Creates a User account. Create-only, like ProviderFormDialog.vue:
  * there is no "edit a user's email or password" flow here -- Role is
- * changed inline in the Users table on AdministrationView.vue, and
- * deactivating/reactivating are separate actions there too.
+ * changed inline in the Users table on AdministrationView.vue,
+ * deactivating/reactivating are separate actions there too, and a User
+ * changes their own name/password themselves via the Profile screen
+ * (ProfileEditDialog.vue, reached from UserMenu.vue), not through this
+ * Administrator-only form.
  *
  * There is no Status field: a freshly created account always starts
  * Active (see internal/auth/service.UserManagementService.Create), and
  * the initial password is typed directly into this form by the
  * Administrator creating the account -- there is no invite/email
  * infrastructure to send it through instead, so it must be relayed to
- * the new user out of band.
+ * the new user out of band. First/Last Name are both optional (see
+ * internal/auth.User's doc comment) -- an Administrator can leave either
+ * or both blank, and the new User can fill them in later themselves.
  */
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{
@@ -35,6 +40,8 @@ const roleOptions = [
 
 const email = ref('')
 const password = ref('')
+const firstName = ref('')
+const lastName = ref('')
 const role = ref<User['role']>('Viewer')
 const submitting = ref(false)
 const error = ref<string | null>(null)
@@ -42,6 +49,8 @@ const error = ref<string | null>(null)
 function reset() {
   email.value = ''
   password.value = ''
+  firstName.value = ''
+  lastName.value = ''
   role.value = 'Viewer'
   error.value = null
 }
@@ -62,7 +71,13 @@ async function handleSubmit() {
   error.value = null
   submitting.value = true
   try {
-    const user = await createUser({ email: email.value, password: password.value, role: role.value })
+    const user = await createUser({
+      email: email.value,
+      password: password.value,
+      firstName: firstName.value,
+      lastName: lastName.value,
+      role: role.value,
+    })
     reset()
     emit('created', user)
   } catch (err) {
@@ -78,6 +93,8 @@ async function handleSubmit() {
     <form class="user-form" @submit.prevent="handleSubmit">
       <BaseInput v-model="email" type="email" label="Email" placeholder="jane@example.com" required />
       <BaseInput v-model="password" type="password" label="Initial Password" required />
+      <BaseInput v-model="firstName" label="First Name" placeholder="Optional" />
+      <BaseInput v-model="lastName" label="Last Name" placeholder="Optional" />
       <BaseSelect v-model="role" label="Role" :options="roleOptions" />
 
       <p v-if="error" class="user-form__error" role="alert">{{ error }}</p>

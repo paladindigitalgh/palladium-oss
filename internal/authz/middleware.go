@@ -362,3 +362,12 @@ func (m *Middleware) RequireNoteRead() func(http.Handler) http.Handler {
 func (m *Middleware) RequireNoteWrite() func(http.Handler) http.Handler {
 	return m.Require(CanWriteNotes)
 }
+
+// RequireReports returns middleware allowing any Role that
+// CanReadReports (Administrator, Operator, Viewer). Applied to the whole
+// /reports route group — like RequireEventRead, there is no write
+// counterpart, since a report has no write route at all (see
+// internal/report's own package doc comment).
+func (m *Middleware) RequireReports() func(http.Handler) http.Handler {
+	return m.Require(CanReadReports)
+}

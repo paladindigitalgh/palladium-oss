@@ -40,10 +40,21 @@ import (
 // Status (see status.go) was added alongside User Management: whether a
 // User may authenticate is a separate question from what Role they hold,
 // the same separation Role itself draws from authz's capabilities.
+//
+// FirstName/LastName are both optional (empty string means unset, the
+// same shape every other optional text field in this schema uses) — a
+// User can be created, and keep signing in, with nothing but an email
+// and password. Unlike Email, they carry no identity meaning: nothing
+// looks a User up by name, and nothing requires them to be set. They
+// exist purely for display, wherever the system shows who did
+// something (e.g. a Note's author) — the caller-facing fallback to
+// Email when they are blank lives in the presentation layer, not here.
 type User struct {
 	ID           uuid.UUID
 	Email        string
 	PasswordHash string
+	FirstName    string
+	LastName     string
 	Role         Role
 	Status       UserStatus
 	CreatedAt    time.Time

@@ -44,8 +44,19 @@ type Note struct {
 	// needing internal/auth's User Management permission (see
 	// internal/authz's RequireUserManagement gate on GET /users) just to
 	// resolve a name.
-	AuthorUserID uuid.UUID
-	AuthorEmail  string
+	//
+	// AuthorFirstName/AuthorLastName are the same kind of snapshot,
+	// captured from the author's User record as it stood at creation
+	// time (see httpapi's Create handler) rather than from JWT claims —
+	// a JWT carries only ID and Email (see auth.Claims's doc comment),
+	// deliberately not a display name that can change mid-session. Both
+	// are optional, exactly as they are on auth.User: a Note written by
+	// a User with no name set simply carries two empty strings here, and
+	// callers fall back to AuthorEmail for display.
+	AuthorUserID    uuid.UUID
+	AuthorEmail     string
+	AuthorFirstName string
+	AuthorLastName  string
 
 	Body string
 
