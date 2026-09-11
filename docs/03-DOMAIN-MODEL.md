@@ -2,7 +2,7 @@
 document: 03-DOMAIN-MODEL
 status: Draft
 title: Domain Model
-version: 1.5-draft
+version: 1.7-draft
 ---
 
 # Domain Model
@@ -863,6 +863,7 @@ A User records:
 
 -   Email (the unique identity a caller logs in with)
 -   Password hash
+-   First Name / Last Name (both optional, added 2026-09-10)
 -   Role (Administrator, Operator, Viewer)
 -   Current status (Active / Inactive)
 
@@ -872,6 +873,18 @@ section 21's Product on Catalog vs. Provider): Role decides what an
 active User is allowed to do; status decides whether they may
 authenticate at all. Deactivating a User does not change their Role, and
 promoting a User does not reactivate them.
+
+First Name/Last Name carry no identity meaning of their own -- nothing
+looks a User up by name, and a User can be created and keep signing in
+with neither ever set. They exist purely so the system can show *who*
+did something (a Note's author, the account menu) as a real name instead
+of always falling back to Email, everywhere the display convention is
+"First Last, else Email." Unlike Email and Role, a User sets or changes
+their own First Name/Last Name (and password) themselves, through a
+self-service Profile screen reached from the account menu -- the one
+User Management action (section 16) that never requires the
+Administrator-only capability every other change to a User does, since a
+User is always allowed to edit their own account.
 
 Role is deliberately a single flat enum, not a hierarchy or a set of
 composable permissions — RBAC v1 (`internal/authz`) answers
@@ -1022,6 +1035,73 @@ Detail Workspaces — see docs/09-WORKSPACE-SPECIFICATIONS.md sections 8,
 
 ------------------------------------------------------------------------
 
+# 28. Report
+
+A Report is a curated, read-only cross-domain query backing the
+Explorer Workspace (docs/09-WORKSPACE-SPECIFICATIONS.md section 15,
+added 2026-09-11) — "every customer with their contact info," "every
+device," "every customer with the devices tied to them." A Report has no
+lifecycle of its own: it is never created, updated, or deleted, and
+`internal/report` has no dependency on `internal/customer`,
+`internal/inventory`, `internal/contact`, `internal/service`, or
+`internal/customerdevice` — each Report row is its own flat,
+already-joined shape, not a reuse of any of those domains' own Go types,
+even though its SQL reads directly from their tables.
+
+Version 1 ships three Reports, matching exactly what an operator asked
+to pull as a CSV rather than a broader set invented ahead of a real
+need:
+
+-   **Customers & Contacts** — every Customer, one row per Contact; a
+    Customer with none on file still gets exactly one row, with every
+    Contact field blank, so a "who do I call" export never silently
+    drops a customer.
+-   **Devices** — every Device, its resolved Manufacturer/Model, its
+    physical Site/Building/Room/Rack path if racked, and whichever
+    Customer currently has it, if any.
+-   **Customers & Devices** — every currently-active Customer-Device
+    relationship, covering both of the two ways section 9's Relationship
+    Overview says a Device reaches a Customer: a direct Customer Device
+    placement (section 26), or delivery through an active Service
+    Equipment assignment (section 7). A Device reaching the same
+    Customer both ways at once produces two rows, one per relationship —
+    this Report never collapses them into one, unlike the Devices
+    Report's single "whichever wins" column above.
+
+Explorer is deliberately a curated set of real, hand-written queries,
+not a dynamic ad hoc query builder an operator assembles from arbitrary
+filters and joins — a decision made explicitly with the user before
+building it, matching how every other domain in this document already
+exposes purpose-built reads rather than a generic query layer, and
+avoiding a large, novel piece of query-engine infrastructure nothing
+else in the codebase needed. A Report's rows still open into its
+subject's own Workspace when selected (a Customer row into the Customer
+Detail Workspace, a Device row into the Device Detail Workspace) —
+Explorer is a way into the rest of Palladium, not a reporting silo
+alongside it.
+
+## Responsibilities
+
+`internal/report` exists to answer read queries only:
+
+-   List every row of a named Report (no filter, sort, or pagination
+    server-side — see the interaction note below)
+
+Every capability that guards a Report route (`RequireReports`) is read
+only, open to every Role (Administrator, Operator, Viewer): a Report
+only ever surfaces data each of those Roles can already see
+individually, through Customers, Devices, or Contacts.
+
+## Interaction with Display
+
+Unlike every other Collection View in this document, a Report is
+fetched once, in full, when selected in Explorer, not re-fetched on
+every search/sort/page change — search, sort, pagination, and CSV export
+all happen client-side against that one cached array. A Report is a
+pull-once CSV-prep tool, not a live filtered browse list.
+
+------------------------------------------------------------------------
+
 # Closing Statement
 
 The Domain Model defines the language of Palladium.
@@ -1045,6 +1125,7 @@ understandable, extensible, and maintainable as it grows.
   1.4 Draft   2026-09-09   Added section 26 (Customer Device), documenting `internal/customerdevice` -- the one deliberate exception to section 4's "Customers do not directly own network equipment" rule, letting a Device be placed at a Customer's premises before any Service exists. Corrected section 6 and the section 16 Device row: Device status is a flat Unused/Active/Retired set (not the original seven-value procurement progression, which never matched Device's actual CPE-only scope), Active now derives from either a Service Equipment assignment or a Customer Device placement, and a Device is never permanently deleted (removed the corresponding stale hard-delete assumption). Added section 7 coverage of `internal/onuauthorization`'s fallback OLT-resolution role, and new section 17 invariants for Customer Device's own one-active-placement rule and its detach-blocked-while-in-service rule
   1.5 Draft   2026-09-10   Added section 7 coverage of the new Access Attachment auto-sync: authorizing a Device via the OLT blacklist flow now also finds-or-creates its PON Port/Access Interface (`internal/provisioning/kontron/service`), and creating its Service Equipment record auto-creates the matching Access Attachment (`ServiceEquipmentService.syncAccessAttachment`) when both are on file -- closing the gap flagged in 1.4's docs-sync pass where this was manual-only
   1.6 Draft   2026-09-10   Added section 27 (Note), documenting the new `internal/note` domain. Added a Location field to section 26 (Customer Device) and an "Interaction with Location" subsection covering why a Location with any Device placement history can never be hard-deleted; removed section 26's Description field, and the stale Description bullet from sections 20-24 (Product Catalog, Product, Service Profile, Provider, Provisioning Profile) -- Description was removed from all ten domains for never displaying anywhere but a create modal (CustomerType's "Government" value was removed for the same reason: modeled but never used). Added section 17 invariants for Note immutability and the Location-delete restriction
+  1.7 Draft   2026-09-11   Added optional First Name/Last Name to section 25 (User & Role), and documented that a User edits their own name/password through a self-service Profile screen, not the Administrator-only User Management flow. Added section 28 (Report), documenting the new `internal/report` domain backing Explorer (docs/09-WORKSPACE-SPECIFICATIONS.md section 15): three curated cross-domain reports (Customers & Contacts, Devices, Customers & Devices), not a dynamic ad hoc query builder
 
 ------------------------------------------------------------------------
 

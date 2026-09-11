@@ -27,12 +27,13 @@
 
 ## Phase 2 — Authentication
 
-- [x] User model
+- [x] User model (gained optional First Name/Last Name, 2026-09-10 -- see docs/03-DOMAIN-MODEL.md section 25)
 - [x] Roles
 - [x] Permissions (RBAC capabilities, see internal/authz)
 - [x] JWT
 - [ ] OIDC
 - [x] Login API
+- [x] Self-service Profile (2026-09-10): a User edits their own First/Last Name and password via a Profile screen reached from the account menu, guarded by `/me` (any authenticated Role) rather than the Administrator-only `/users` API User Management uses
 
 ---
 
@@ -134,11 +135,14 @@ Palladium is not deferring the Capability Model further out of necessity — VLA
 - [x] Customer UI, now including a Devices section (2026-09-09 -- Attach/Detach a Device directly to a Customer, internal/customerdevice) and Add Service gated on having an eligible Device. The Services table gained a Device column and ONU Diagnostics blocks became individually collapsible (2026-09-10)
 - [x] Workflow UI (Provision/Suspend/Resume actions + workflow history on the Service Detail Workspace; no dedicated workflow-instance browser). Provision-service also runs automatically now from the Customer Workspace's Add Service (2026-09-09), not only this manual button
 - [x] Network UI (AccessNetwork -> OLT -> PONPort -> AccessInterface, plus Attach/Detach for equipment)
-- [x] Notes UI (internal/note -- collapsible, paginated, newest-first Notes section with an inline add-note textarea, on the Customer, Device, and Service Detail Workspaces, added 2026-09-10)
+- [x] Notes UI (internal/note -- collapsible, paginated, newest-first Notes section with an inline add-note textarea, on the Customer, Device, and Service Detail Workspaces, added 2026-09-10). Notes (and the account menu) now show an author's First/Last Name when set, falling back to Email otherwise (2026-09-10)
+- [x] Explorer UI (2026-09-11 -- docs/09-WORKSPACE-SPECIFICATIONS.md section 15, docs/03-DOMAIN-MODEL.md section 28): three curated cross-domain reports (Customers & Contacts, Devices, Customers & Devices) backed by real internal/report SQL joins, not a dynamic ad hoc query builder. A report is fetched once and searched/sorted/exported to CSV entirely client-side; a result row opens into its own Customer or Device Detail Workspace
 - [x] Frontend test suite (Vitest + @vue/test-utils)
 - [x] Collection View default filters (Customers/Devices/Users hide Archived/Retired-Disposed/Inactive by default, with an "Include..." checkbox -- see docs/09-WORKSPACE-SPECIFICATIONS.md section 5)
 
 SectionCard's collapse animation (every Detail Workspace section, app-wide) was fixed 2026-09-10: it was failing to reach a true 0 height whenever padding lived directly on the collapsing element itself, since padding can never shrink below its own size -- padding now lives on an inner wrapper instead, the same fix BaseDisclosure.vue already had.
+
+A disabled BaseButton's accessible disabled-reason text (a `position: absolute` visually-hidden span) had no positioned ancestor anywhere up to `<html>`, so its fallback position was computed against the whole document's unclipped layout instead of the button -- silently making the entire app scrollable past its real content on any page with a disabled button that had a reason (found live on the Customer Workspace's disabled "Add Service" button). Fixed 2026-09-10 by giving `.base-button` `position: relative`.
 
 There is no standalone Services page or nav entry (2026-09-08, at the user's explicit request) -- a Service is only ever reached through its Customer or Device, never browsed on its own; ServiceDetailView itself is unaffected.
 

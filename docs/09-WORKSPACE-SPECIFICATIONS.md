@@ -2,7 +2,7 @@
 document: 09-WORKSPACE-SPECIFICATIONS
 status: Draft
 title: Workspace Specifications
-version: 1.15-draft
+version: 1.17-draft
 ---
 
 # Workspace Specifications
@@ -1099,19 +1099,29 @@ investigation.
 
 ## Purpose
 
-Explorer is Palladium's ad hoc query and reporting engine. It lets
-operators explore relationships within the OSS database, review results
-directly in the interface, and export them for further use.
+Explorer is Palladium's home for pulling data out of the OSS: a curated
+set of real, cross-domain reports an operator can browse, search, and
+export to CSV -- "every customer with their contact info," "every
+device," "every customer with the devices tied to them."
 
 It should answer:
 
-**"Which records match a specific operational condition, right now?"**
+**"Give me a CSV of this, right now."**
 
 Explorer is not a topology viewer, map, or visualization tool. It has no
 notion of physical or logical network diagrams; its subject is data, not
 diagrams. Network topology is addressed by dedicated workspaces (see
 Site Workspace, section 12, and the future Network Topology workspace,
 section 20).
+
+As of 2026-09-11, Explorer ships as three curated reports
+(`internal/report`; docs/03-DOMAIN-MODEL.md section 28), not the dynamic
+ad hoc query builder this section originally described -- a decision
+made explicitly with the user before building it (see that section's own
+reasoning for why: it matches how every other domain in this codebase
+already exposes purpose-built reads rather than a generic query layer).
+"Save a query for reuse" and a true operator-assembled Query Builder
+remain a future direction, not something this Workspace does today.
 
 ## Primary Audience
 
@@ -1122,42 +1132,56 @@ section 20).
 
 ## Primary Actions
 
--   Build or select a query
--   Run a query across one or more domains
--   Filter and sort results
+-   Select a report (Customers & Contacts, Devices, or Customers &
+    Devices -- see docs/03-DOMAIN-MODEL.md section 28 for what each one
+    returns)
+-   Search and sort results (entirely client-side against that report's
+    already-fetched rows -- see the Interaction with Display note below)
 -   Open a result directly into its own Workspace
--   Export results to CSV
--   Save a query for reuse (future)
+-   Export the currently-filtered results to CSV
 
 ## Primary Panels
 
-Explorer is a query engine, not a single-object workspace, so it is not
-a Detail Workspace and does not use section 6, "Detail Workspace
-Structure" -- opening a result leads to that object's own Detail
-Workspace instead.
+Explorer is not a single-object workspace, so it is not a Detail
+Workspace and does not use section 6, "Detail Workspace Structure" --
+opening a result leads to that object's own Detail Workspace instead.
 
--   Query Builder
--   Result Table
--   Saved Queries (future)
--   Export Options
+-   Report picker
+-   Result Table (search box + sortable columns, the same DataTable
+    component every Collection View already uses)
+-   Export CSV action
 
-## Example Queries
+## Reports
 
--   Show all customers on a specific OLT
--   Show all customers without a service
--   Show all ONUs that have never informed
--   Show all devices with outdated firmware
--   Show all inventory assigned to a specific site
--   Show all subscribers on a VLAN
+-   **Customers & Contacts** -- every Customer, one row per Contact
+    (blank contact fields for a Customer with none on file)
+-   **Devices** -- every Device, resolved Manufacturer/Model, physical
+    Site/Building/Room/Rack path if racked, and whichever Customer
+    currently has it, if any
+-   **Customers & Devices** -- every active Customer-Device
+    relationship, one row per relationship (a Device reaching a Customer
+    both a direct placement and an active Service at once gets two rows)
+
+## Interaction with Display
+
+Unlike every other Collection View in this document, a report is
+fetched once, in full, when selected -- not re-fetched on every
+search/sort/page change the way e.g. the Device Collection View is. A
+report is a pull-once CSV-prep tool, not a live filtered browse list, so
+search, sort, pagination, and CSV export all happen client-side against
+that one cached array; Export CSV exports every row currently matching
+the search box, not just the visible page.
 
 ------------------------------------------------------------------------
 
 # Design Principle
 
-Explorer trades the fixed structure of a traditional reporting page for
-the flexibility of a direct question. Every result should open into its
-subject's own Workspace, keeping Explorer consistent with the rest of
-Palladium rather than a separate reporting silo.
+Explorer ships as a curated set of real reports, not a dynamic query an
+operator assembles themselves -- the same "purpose-built reads, not a
+generic query layer" architecture every other domain in this codebase
+already follows. Every result still opens into its subject's own
+Workspace, keeping Explorer consistent with the rest of Palladium rather
+than a separate reporting silo.
 
 # 16. Administration Workspace
 
@@ -1256,7 +1280,8 @@ hold has nothing to do with how the ISP sells or delivers service.
 Administrator-only (RequireUserManagement guards every verb on /users,
 no read/write split -- the same shape /diagnostics uses). "New User"
 creates an account with an Administrator-typed initial password (there
-is no invite/email infrastructure to send one through instead); Role
+is no invite/email infrastructure to send one through instead) and
+optional First/Last Name (docs/03-DOMAIN-MODEL.md section 25); Role
 is changed inline via a per-row select, not a dialog. There is no
 Delete: both events.actor_user_id and
 workflow_instances.requested_by_user_id reference users(id) with
@@ -1265,6 +1290,14 @@ stands in for it -- a deactivated account cannot log in and loses every
 capability-gated route on its very next request, but its history stays
 intact. Palladium refuses any action (deactivate, or a Role change away
 from Administrator) that would leave zero active Administrators.
+
+This page never edits a User's own name or password (added 2026-09-10)
+-- every User does that themselves, for their own account only, via a
+Profile screen reached from the account menu in the top-right corner of
+every page (UserMenu.vue). That screen is the one User Management action
+that runs behind `/me` (auth.Middleware alone, no RequireUserManagement)
+rather than this Administrator-only `/users` API, since every Role may
+edit their own account regardless of what they may do to anyone else's.
 
 ### Hardware (/administration/hardware)
 
@@ -1415,6 +1448,7 @@ understanding, investigating, and acting on the network.
   1.14 Draft  2026-09-09   Corrected the Device Workspace (section 10): status is now Unused/Active/Retired (not the stale seven-value list), New Device no longer asks for Rack/Asset Tag/Status and can authorize a blacklisted ONU inline instead of a separate "Discover ONU" flow, and "Delete Device" no longer exists -- replaced by "Remove Device" (renamed from "Deauthorize ONU"), with no delete action at all. Corrected the Customer Workspace (section 8): "Delete Customer" corrected to "Remove Customer"; documented the new Devices section (Attach/Detach, `internal/customerdevice`) and that Add Service is now gated on an eligible Device, has no Status field, defaults Active, and runs the real provision-service Workflow as part of creating the Service, surfacing failures as a dismissible banner. Corrected the Service Workspace (section 9): "Delete Service" corrected to "Remove Service"; documented the known gap where a Service created via Add Service that starts Active skips this Workspace's Pending-only "Provision Service" button entirely if its automatic provisioning attempt failed
   1.15 Draft  2026-09-10   Corrected the Customer Workspace's Add Service description (section 8): a provisioning failure is no longer most commonly a missing Access Attachment -- creating the Service Equipment record now auto-syncs one (docs/03-DOMAIN-MODEL.md section 7) whenever the Device has a known OnuAuthorization and matching Access Interface, so the Network workspace is only still needed by hand for a Device never authorized through Palladium's own OLT blacklist flow; a remaining failure is now usually a real OLT-side configuration problem
   1.16 Draft  2026-09-10   Added a Notes section (section 8, 9, and 10 -- Customer, Service, and Device Workspaces), backed by the new internal/note domain. Removed "Government" from the Customer Workspace's customer-type list (section 8). Documented the Services table's Device column and the Device picker's real visibility rule (section 8); corrected the stale claim that a failed Add Service leaves the Service and its Service Equipment record behind (it is all-or-nothing as of today) and removed the now-resolved "known gap" about this Workspace's dynamic action mislabeling a Service whose auto-provisioning failed (section 9), since that scenario can no longer happen. Corrected Remove Service's own description (section 9): workflow history does not block it, and documented the two different Remove-Service entry points (this Workspace's strict one, and the Customer Workspace's full-teardown one). Documented ONU Diagnostics blocks becoming individually collapsible, and Remove Device navigating back to the Devices list on success (section 10). Documented the Device Manufacturer/Model catalog and its per-entry Default checkbox on the Hardware panel (section 16)
+  1.17 Draft  2026-09-11   Rewrote Explorer (section 15) to match what actually shipped: a curated set of three real reports (Customers & Contacts, Devices, Customers & Devices -- see docs/03-DOMAIN-MODEL.md section 28), not the dynamic ad hoc query builder this section originally described -- a decision made explicitly with the user before building it. Documented the Users panel (section 16) gaining optional First/Last Name on New User, and the new self-service Profile screen (reached from the account menu, guarded by `/me` rather than this page's Administrator-only `/users` API) for a User's own name/password
 
 ------------------------------------------------------------------------
 
