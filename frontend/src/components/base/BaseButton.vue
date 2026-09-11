@@ -38,6 +38,16 @@ withDefaults(
 
 <style scoped>
 .base-button {
+  /* Establishes a positioning context for the disabled-reason
+     .visually-hidden span below: without this, that span (position:
+     absolute, no positioned ancestor anywhere up to <html>) computes its
+     fallback position against the whole document's unclipped flow
+     instead of this button, landing far down the page and silently
+     expanding <html>'s scrollable area past the real content -- the
+     entire app (sidebar included) becomes scrollable past where content
+     actually ends. Found live: a disabled "Add Service" button on a
+     Customer Detail page. */
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
