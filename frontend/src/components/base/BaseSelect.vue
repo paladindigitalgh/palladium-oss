@@ -44,6 +44,14 @@ const model = defineModel<string>({ required: true })
 
 <style scoped>
 .base-select {
+  /* Without this, .base-select__label--hidden below (position: absolute,
+     no positioned ancestor of its own) resolves its containing block all
+     the way up to the initial containing block instead of this element,
+     silently making the whole page scrollable past its real content --
+     the exact bug BaseButton.vue's own disabled-reason span had, fixed
+     there in commit 98e09a4 by giving .base-button position: relative;
+     same fix, same reasoning, one component over. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
